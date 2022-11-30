@@ -15,5 +15,5 @@ class conanRecipe(ConanFile):
 			self.copy("*")
 		if self.settings.os == "Macos":
 			self.copy("*")
-                if self.settings.os == "Linux":
-                        self.copy("*")
+		if self.settings.os == "Linux":
+			self.copy("*")
