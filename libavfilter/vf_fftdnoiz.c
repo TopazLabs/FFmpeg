@@ -208,13 +208,17 @@ static int config_input(AVFilterLink *inlink)
 
     for (int i = 0; i < s->nb_threads; i++) {
         float scale = 1.f, iscale = 1.f;
+        int ret;
 
-        av_tx_init(&s->fft[i],  &s->tx_fn,  AV_TX_FLOAT_FFT, 0, s->block_size, &scale,  0);
-        av_tx_init(&s->ifft[i], &s->itx_fn, AV_TX_FLOAT_FFT, 1, s->block_size, &iscale, 0);
-        av_tx_init(&s->fft_r[i],  &s->tx_r_fn,  AV_TX_FLOAT_FFT, 0, 1 + s->nb_prev + s->nb_next, &scale,  0);
-        av_tx_init(&s->ifft_r[i], &s->itx_r_fn, AV_TX_FLOAT_FFT, 1, 1 + s->nb_prev + s->nb_next, &iscale, 0);
-        if (!s->fft[i] || !s->ifft[i] || !s->fft_r[i] || !s->ifft_r[i])
-            return AVERROR(ENOMEM);
+        if ((ret = av_tx_init(&s->fft[i],    &s->tx_fn,    AV_TX_FLOAT_FFT,
+                              0, s->block_size,               &scale,  0)) < 0 ||
+            (ret = av_tx_init(&s->ifft[i],   &s->itx_fn,   AV_TX_FLOAT_FFT,
+                              1, s->block_size,               &iscale, 0)) < 0 ||
+            (ret = av_tx_init(&s->fft_r[i],  &s->tx_r_fn,  AV_TX_FLOAT_FFT,
+                              0, 1 + s->nb_prev + s->nb_next, &scale,  0)) < 0 ||
+            (ret = av_tx_init(&s->ifft_r[i], &s->itx_r_fn, AV_TX_FLOAT_FFT,
+                              1, 1 + s->nb_prev + s->nb_next, &iscale, 0)) < 0)
+            return ret;
     }
 
     for (i = 0; i < s->nb_planes; i++) {
@@ -308,6 +312,7 @@ static void import_block(FFTdnoizContext *s,
         dst_out += data_linesize;
     }
 
+    dst = dst_out;
     for (int i = rh; i < block; i++) {
         for (int j = 0; j < block; j++) {
             dst[j].re = ddst[j].re;
@@ -347,8 +352,8 @@ static void export_block(FFTdnoizContext *s,
     AVComplexFloat *hdata = p->hdata[jobnr];
     AVComplexFloat *hdata_out = p->hdata_out[jobnr];
     AVComplexFloat *vdata_out = p->vdata_out[jobnr];
-    const int rw = FFMIN(size, width  - x * size + hoverlap);
-    const int rh = FFMIN(size, height - y * size + hoverlap);
+    const int rw = FFMIN(size, width  - x * size);
+    const int rh = FFMIN(size, height - y * size);
     AVComplexFloat *hdst, *vdst = vdata_out, *hdst_out = hdata_out;
     float *bsrc = buffer;
 

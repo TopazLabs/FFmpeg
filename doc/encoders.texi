@@ -3564,6 +3564,24 @@ bitrate, @var{target_bitrate}, within the accuracy range @var{avbr_accuracy},
 after a @var{avbr_Convergence} period. This method does not follow HRD and the
 instant bitrate is not capped or padded.
 
+@item @var{skip_frame}
+Use per-frame metadata "qsv_skip_frame" to skip frame when encoding. This option
+defines the usage of this metadata.
+@table @samp
+@item no_skip
+Frame skipping is disabled.
+@item insert_dummy
+Encoder inserts into bitstream frame where all macroblocks are encoded as
+skipped.
+@item insert_nothing
+Similar to insert_dummy, but encoder inserts nothing into bitstream. The skipped
+frames are still used in brc. For example, gop still include skipped frames, and
+the frames after skipped frames will be larger in size.
+@item brc_only
+skip_frame metadata indicates the number of missed frames before the current
+frame.
+@end table
+
 @end table
 
 @subsection HEVC Options
@@ -3654,6 +3672,15 @@ Set the encoding profile (scc requires libmfx >= 1.32).
 @item scc
 @end table
 
+@item @var{tier}
+Set the encoding tier (only level >= 4 can support high tier).
+This option only takes effect when the level option is specified.
+
+@table @samp
+@item main
+@item high
+@end table
+
 @item @var{gpb}
 1: GPB (generalized P/B frame)
 
@@ -3742,6 +3769,24 @@ bitrate, @var{target_bitrate}, within the accuracy range @var{avbr_accuracy},
 after a @var{avbr_Convergence} period. This method does not follow HRD and the
 instant bitrate is not capped or padded.
 
+@item @var{skip_frame}
+Use per-frame metadata "qsv_skip_frame" to skip frame when encoding. This option
+defines the usage of this metadata.
+@table @samp
+@item no_skip
+Frame skipping is disabled.
+@item insert_dummy
+Encoder inserts into bitstream frame where all macroblocks are encoded as
+skipped.
+@item insert_nothing
+Similar to insert_dummy, but encoder inserts nothing into bitstream. The skipped
+frames are still used in brc. For example, gop still include skipped frames, and
+the frames after skipped frames will be larger in size.
+@item brc_only
+skip_frame metadata indicates the number of missed frames before the current
+frame.
+@end table
+
 @end table
 
 @subsection MPEG2 Options
@@ -3773,6 +3818,38 @@ Number of columns for tiled encoding (requires libmfx >= 1.29).
 
 @item @var{tile_rows}
 Number of rows for tiled encoding (requires libmfx  >= 1.29).
+@end table
+
+@subsection AV1 Options
+These options are used by av1_qsv (requires libvpl).
+@table @option
+@item @var{profile}
+@table @samp
+@item unknown
+@item main
+@end table
+
+@item @var{tile_cols}
+Number of columns for tiled encoding.
+
+@item @var{tile_rows}
+Number of rows for tiled encoding.
+
+@item @var{adaptive_i}
+This flag controls insertion of I frames by the QSV encoder. Turn ON this flag
+to allow changing of frame type from P and B to I.
+
+@item @var{adaptive_b}
+This flag controls changing of frame type from B to P.
+
+@item @var{b_strategy}
+This option controls usage of B frames as reference.
+
+@item @var{extbrc}
+Extended bitrate control.
+
+@item @var{look_ahead_depth}
+Depth of look ahead in number frames, available when extbrc option is enabled.
 @end table
 
 @section snow

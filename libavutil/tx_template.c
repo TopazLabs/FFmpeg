@@ -27,38 +27,40 @@
 #define TABLE_DEF(name, size) \
     DECLARE_ALIGNED(32, TXSample, TX_TAB(ff_tx_tab_ ##name))[size]
 
-#define SR_TABLE(len) \
-    TABLE_DEF(len, len/4 + 1)
+#define SR_POW2_TABLES \
+    SR_TABLE(8)        \
+    SR_TABLE(16)       \
+    SR_TABLE(32)       \
+    SR_TABLE(64)       \
+    SR_TABLE(128)      \
+    SR_TABLE(256)      \
+    SR_TABLE(512)      \
+    SR_TABLE(1024)     \
+    SR_TABLE(2048)     \
+    SR_TABLE(4096)     \
+    SR_TABLE(8192)     \
+    SR_TABLE(16384)    \
+    SR_TABLE(32768)    \
+    SR_TABLE(65536)    \
+    SR_TABLE(131072)   \
 
+#define SR_TABLE(len) \
+    TABLE_DEF(len, len/4 + 1);
 /* Power of two tables */
-SR_TABLE(8);
-SR_TABLE(16);
-SR_TABLE(32);
-SR_TABLE(64);
-SR_TABLE(128);
-SR_TABLE(256);
-SR_TABLE(512);
-SR_TABLE(1024);
-SR_TABLE(2048);
-SR_TABLE(4096);
-SR_TABLE(8192);
-SR_TABLE(16384);
-SR_TABLE(32768);
-SR_TABLE(65536);
-SR_TABLE(131072);
+SR_POW2_TABLES
+#undef SR_TABLE
 
 /* Other factors' tables */
 TABLE_DEF(53, 12);
 TABLE_DEF( 7,  6);
 TABLE_DEF( 9,  8);
 
-typedef struct FFSRTabsInitOnce {
+typedef struct FFTabInitData {
     void (*func)(void);
-    AVOnce control;
     int factors[TX_MAX_SUB]; /* Must be sorted high -> low */
-} FFSRTabsInitOnce;
+} FFTabInitData;
 
-#define INIT_FF_SR_TAB(len)                                        \
+#define SR_TABLE(len)                                              \
 static av_cold void TX_TAB(ff_tx_init_tab_ ##len)(void)            \
 {                                                                  \
     double freq = 2*M_PI/len;                                      \
@@ -69,39 +71,19 @@ static av_cold void TX_TAB(ff_tx_init_tab_ ##len)(void)            \
                                                                    \
     *tab = 0;                                                      \
 }
+SR_POW2_TABLES
+#undef SR_TABLE
 
-INIT_FF_SR_TAB(8)
-INIT_FF_SR_TAB(16)
-INIT_FF_SR_TAB(32)
-INIT_FF_SR_TAB(64)
-INIT_FF_SR_TAB(128)
-INIT_FF_SR_TAB(256)
-INIT_FF_SR_TAB(512)
-INIT_FF_SR_TAB(1024)
-INIT_FF_SR_TAB(2048)
-INIT_FF_SR_TAB(4096)
-INIT_FF_SR_TAB(8192)
-INIT_FF_SR_TAB(16384)
-INIT_FF_SR_TAB(32768)
-INIT_FF_SR_TAB(65536)
-INIT_FF_SR_TAB(131072)
+static void (*const sr_tabs_init_funcs[])(void) = {
+#define SR_TABLE(len) TX_TAB(ff_tx_init_tab_ ##len),
+    SR_POW2_TABLES
+#undef SR_TABLE
+};
 
-static FFSRTabsInitOnce sr_tabs_init_once[] = {
-    { TX_TAB(ff_tx_init_tab_8),      AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_16),     AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_32),     AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_64),     AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_128),    AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_256),    AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_512),    AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_1024),   AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_2048),   AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_4096),   AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_8192),   AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_16384),  AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_32768),  AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_65536),  AV_ONCE_INIT },
-    { TX_TAB(ff_tx_init_tab_131072), AV_ONCE_INIT },
+static AVOnce sr_tabs_init_once[] = {
+#define SR_TABLE(len) AV_ONCE_INIT,
+    SR_POW2_TABLES
+#undef SR_TABLE
 };
 
 static av_cold void TX_TAB(ff_tx_init_tab_53)(void)
@@ -145,10 +127,16 @@ static av_cold void TX_TAB(ff_tx_init_tab_9)(void)
     TX_TAB(ff_tx_tab_9)[7] = TX_TAB(ff_tx_tab_9)[3] - TX_TAB(ff_tx_tab_9)[4];
 }
 
-static FFSRTabsInitOnce nptwo_tabs_init_once[] = {
-    { TX_TAB(ff_tx_init_tab_53),      AV_ONCE_INIT, { 15, 5, 3 } },
-    { TX_TAB(ff_tx_init_tab_9),       AV_ONCE_INIT, {  9 }       },
-    { TX_TAB(ff_tx_init_tab_7),       AV_ONCE_INIT, {  7 }       },
+static const FFTabInitData nptwo_tabs_init_data[] = {
+    { TX_TAB(ff_tx_init_tab_53),      { 15, 5, 3 } },
+    { TX_TAB(ff_tx_init_tab_9),       {  9 }       },
+    { TX_TAB(ff_tx_init_tab_7),       {  7 }       },
+};
+
+static AVOnce nptwo_tabs_init_once[] = {
+    AV_ONCE_INIT,
+    AV_ONCE_INIT,
+    AV_ONCE_INIT,
 };
 
 av_cold void TX_TAB(ff_tx_init_tabs)(int len)
@@ -157,23 +145,23 @@ av_cold void TX_TAB(ff_tx_init_tabs)(int len)
     if (factor_2) {
         int idx = factor_2 - 3;
         for (int i = 0; i <= idx; i++)
-            ff_thread_once(&sr_tabs_init_once[i].control,
-                            sr_tabs_init_once[i].func);
+            ff_thread_once(&sr_tabs_init_once[i],
+                            sr_tabs_init_funcs[i]);
         len >>= factor_2;
     }
 
-    for (int i = 0; i < FF_ARRAY_ELEMS(nptwo_tabs_init_once); i++) {
+    for (int i = 0; i < FF_ARRAY_ELEMS(nptwo_tabs_init_data); i++) {
         int f, f_idx = 0;
 
         if (len <= 1)
             return;
 
-        while ((f = nptwo_tabs_init_once[i].factors[f_idx++])) {
+        while ((f = nptwo_tabs_init_data[i].factors[f_idx++])) {
             if (f % len)
                 continue;
 
-            ff_thread_once(&nptwo_tabs_init_once[i].control,
-                            nptwo_tabs_init_once[i].func);
+            ff_thread_once(&nptwo_tabs_init_once[i],
+                            nptwo_tabs_init_data[i].func);
             len /= f;
             break;
         }

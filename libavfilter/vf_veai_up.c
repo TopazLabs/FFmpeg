@@ -90,7 +90,8 @@ static int config_props(AVFilterLink *outlink) {
     int scale = veai->scale;
     double sar = av_q2d(inlink->sample_aspect_ratio) > 0 ? av_q2d(inlink->sample_aspect_ratio) : 1;
     if(scale == 0) {
-      float x = veai->w/(sar*inlink->w), y = veai->h*1.0f/inlink->h;
+      //float x = veai->w/(sar*inlink->w), y = veai->h*1.0f/inlink->h;
+      float x = veai->w/inlink->w, y = veai->h*1.0f/inlink->h;
       float v = x > y ? x : y;
       scale = (v > 2.4) ? 4 : (v > 1.2 ? 2 : 1);
       av_log(ctx, AV_LOG_VERBOSE, "SAR: %lf scale: %d x: %f y: %f v: %f\n", sar, scale, x, y, v);
@@ -106,7 +107,7 @@ static int config_props(AVFilterLink *outlink) {
 }
 
 static const enum AVPixelFormat pix_fmts[] = {
-    AV_PIX_FMT_BGR48,
+    AV_PIX_FMT_RGB48,
     AV_PIX_FMT_NONE
 };
 

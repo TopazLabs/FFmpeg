@@ -113,7 +113,7 @@ static int config_props(AVFilterLink *outlink) {
 
 
 static const enum AVPixelFormat pix_fmts[] = {
-    AV_PIX_FMT_BGR48,
+    AV_PIX_FMT_RGB48,
     AV_PIX_FMT_NONE
 };
 

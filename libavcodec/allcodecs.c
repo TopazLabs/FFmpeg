@@ -381,6 +381,7 @@ extern const FFCodec ff_vp9_decoder;
 extern const FFCodec ff_vp9_rkmpp_decoder;
 extern const FFCodec ff_vp9_v4l2m2m_decoder;
 extern const FFCodec ff_vqa_decoder;
+extern const FFCodec ff_vqc_decoder;
 extern const FFCodec ff_wbmp_decoder;
 extern const FFCodec ff_wbmp_encoder;
 extern const FFCodec ff_webp_decoder;
@@ -826,7 +827,9 @@ extern const FFCodec ff_libaom_av1_decoder;
 /* hwaccel hooks only, so prefer external decoders */
 extern const FFCodec ff_av1_decoder;
 extern const FFCodec ff_av1_cuvid_decoder;
+extern const FFCodec ff_av1_nvenc_encoder;
 extern const FFCodec ff_av1_qsv_decoder;
+extern const FFCodec ff_av1_qsv_encoder;
 extern const FFCodec ff_libopenh264_encoder;
 extern const FFCodec ff_libopenh264_decoder;
 extern const FFCodec ff_h264_amf_encoder;
