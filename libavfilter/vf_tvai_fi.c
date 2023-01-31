@@ -42,6 +42,7 @@ typedef struct  {
     double slowmo;
     double vram;
     int canDownloadModels;
+    int duplicate;
     void* pFrameProcessor;
     AVRational frame_rate;
     AVFrame* previousFrame;
@@ -56,6 +57,7 @@ static const AVOption tvai_fi_options[] = {
     { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", OFFSET(vram), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
+    { "duplicate",  "Remove duplicate frames",  OFFSET(duplicate),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "duplicate" },
     { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
     { NULL }
 };
@@ -91,8 +93,8 @@ static int config_props(AVFilterLink *outlink) {
     av_log(ctx, AV_LOG_DEBUG, "Set frame rate to %lf -> %lf\n", av_q2d(inlink->frame_rate), av_q2d(outlink->frame_rate));
     av_log(ctx, AV_LOG_DEBUG, "Set fpsFactor to %lf generating %lf frames\n", fpsFactor, 1/fpsFactor);
     threshold = fpsFactor*0.3;
-    float params[3] = {threshold, fpsFactor, tvai->slowmo};
-    tvai->pFrameProcessor = ff_tvai_verifyAndCreate(inlink, outlink, strncmp(tvai->model, "apo-", 4) ? (char*)"fi" : (char*)"ap8", tvai->model, ModelTypeFrameInterpolation, tvai->device, tvai->extraThreads, tvai->vram, 1, tvai->canDownloadModels, params, 3, ctx);
+    float params[4] = {threshold, fpsFactor, tvai->slowmo, tvai->duplicate};
+    tvai->pFrameProcessor = ff_tvai_verifyAndCreate(inlink, outlink, strncmp(tvai->model, "apo-", 4) ? (char*)"fi" : (char*)"ap8", tvai->model, ModelTypeFrameInterpolation, tvai->device, tvai->extraThreads, tvai->vram, 1, tvai->canDownloadModels, params, 4, ctx);
     outlink->time_base = inlink->time_base;
     outlink->frame_rate = tvai->frame_rate.num > 0 ? tvai->frame_rate : inlink->frame_rate;
     return tvai->pFrameProcessor == NULL ? AVERROR(EINVAL) : 0;
