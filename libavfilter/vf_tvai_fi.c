@@ -57,7 +57,7 @@ static const AVOption tvai_fi_options[] = {
     { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", OFFSET(vram), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
-    { "rdt",  "Remove duplicate threshold. (0 or below means do not remove)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.05, 0.05, FLAGS, "rdt" },
+    { "rdt",  "Remove duplicate threshold. (0 or below means do not remove)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.5, FLAGS, "rdt" },
     { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
     { NULL }
 };
