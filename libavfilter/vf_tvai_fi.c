@@ -57,16 +57,12 @@ static const AVOption tvai_fi_options[] = {
     { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", OFFSET(vram), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
-    { "rdt",  "Remove duplicate threshold. (0 or below means do not remove)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.1, FLAGS, "rdt" },
+    { "rdt",  "Replace duplicate threshold. (0 or below means do not remove, high value will detect more duplicates)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.2, FLAGS, "rdt" },
     { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
     { NULL }
 };
 
 AVFILTER_DEFINE_CLASS(tvai_fi);
-
-static int filter_frame_chronos(AVFilterLink *inlink, AVFrame *in);
-static int filter_frame_apollo(AVFilterLink *inlink, AVFrame *in);
-int handlePostFlight(void* pProcessor, AVFilterLink *outlink, AVFrame *in, AVFilterContext* ctx);
 
 static av_cold int init(AVFilterContext *ctx) {
     TVAIFIContext *tvai = ctx->priv;
@@ -124,32 +120,18 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
 
 static int request_frame(AVFilterLink *outlink) {
     AVFilterContext *ctx = outlink->src;
-    TVAIFIContext *tvai = ctx->priv;
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
-        tvai_end_stream(tvai->pFrameProcessor);
-        int i = 0, remaining = tvai_remaining_frames(tvai->pFrameProcessor), pr = 0;
-        while(remaining > 0 && i < 5000) {
-            if(ff_tvai_add_output(tvai->pFrameProcessor, outlink, tvai->previousFrame, 0))
-                return ret;
-            tvai_wait(20);
-            pr = remaining;
-            remaining = tvai_remaining_frames(tvai->pFrameProcessor);
-            if(pr == remaining)
-                i++;
-            else
-                i = 0;
-        }
-        if(remaining > 0) {
-            av_log(ctx, AV_LOG_WARNING, "Waited too long for processing, ending file %s %d\n", tvai->model, remaining);    
-        }
-        av_log(ctx, AV_LOG_DEBUG, "End of file reached %s %d\n", tvai->model, tvai->pFrameProcessor == NULL);
+        TVAIFIContext *tvai = ctx->priv;
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame);
+        if(r)
+            return r;
     }
     return ret;
 }
 
 static av_cold void uninit(AVFilterContext *ctx) {
-    TVAIFIContext *tvai = ctx->priv;
+    // TVAIFIContext *tvai = ctx->priv;
     // if(tvai->pFrameProcessor)
     //   tvai_destroy(tvai->pFrameProcessor);
 }

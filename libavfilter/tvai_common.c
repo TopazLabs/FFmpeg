@@ -134,4 +134,25 @@ void ff_tvai_ignore_output(void *pProcessor) {
     }
 }
 
+int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame) {
+    tvai_end_stream(pFrameProcessor);
+    int i = 0, remaining = tvai_remaining_frames(pFrameProcessor), pr = 0;
+    while(remaining > 0 && i < 200) {
+        int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame, 0);
+        if(ret)
+            return ret;
+        tvai_wait(500);
+        pr = remaining;
+        remaining = tvai_remaining_frames(pFrameProcessor);
+        if(pr == remaining)
+            i++;
+        else
+            i = 0;
+    }
+    if(remaining > 0) {
+        av_log(NULL, AV_LOG_WARNING, "Waited too long for processing, ending file %d\n", remaining);    
+    }
+    return 0;
+}
+
 

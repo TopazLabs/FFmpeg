@@ -27,4 +27,6 @@ int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, 
 int ff_tvai_process(void *pFrameProcessor, AVFrame* frame, int copy);
 void ff_tvai_ignore_output(void *pProcessor);
 
+int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame);
+
 #endif

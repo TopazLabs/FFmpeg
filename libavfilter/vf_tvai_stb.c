@@ -132,23 +132,9 @@ static int request_frame(AVFilterLink *outlink) {
     TVAIStbContext *tvai = ctx->priv;
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
-        tvai_end_stream(tvai->pFrameProcessor);
-        int i = 0, remaining = tvai_remaining_frames(tvai->pFrameProcessor), pr = 0;
-        while(remaining > 0 && i < 5000) {
-            if(ff_tvai_add_output(tvai->pFrameProcessor, outlink, tvai->previousFrame, 0))
-                return ret;
-            tvai_wait(20);
-            pr = remaining;
-            remaining = tvai_remaining_frames(tvai->pFrameProcessor);
-            if(pr == remaining)
-                i++;
-            else
-                i = 0;
-        }
-        if(remaining > 0) {
-            av_log(ctx, AV_LOG_WARNING, "Waited too long for processing, ending file %s %d\n", tvai->model, remaining);    
-        }
-        av_log(ctx, AV_LOG_DEBUG, "End of file reached %s %d\n", tvai->model, tvai->pFrameProcessor == NULL);
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame);
+        if(r)
+            return r;
     }
     return ret;
 }
