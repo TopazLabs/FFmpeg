@@ -137,7 +137,7 @@ void ff_tvai_ignore_output(void *pProcessor) {
 int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame) {
     tvai_end_stream(pFrameProcessor);
     int i = 0, remaining = tvai_remaining_frames(pFrameProcessor), pr = 0;
-    while(remaining > 0 && i < 200) {
+    while(remaining > 0 && i < 50) {
         int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame, 0);
         if(ret)
             return ret;
