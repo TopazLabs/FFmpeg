@@ -37,7 +37,7 @@ steps:
     displayName: 'Set conan cache location'
 
   - script: |
-      python -m pip install conan
+      python -m pip install conan==1.59.0
       conan remote add topaz-zuel-copy https://topaz.jfrog.io/artifactory/api/conan/topaz-zuel-copy
       conan remote update topaz-zuel-copy https://topaz.jfrog.io/artifactory/api/conan/topaz-zuel-copy --insert
       conan user -p $(CONAN_PASSWORD) -r topaz-zuel-copy build.bot
