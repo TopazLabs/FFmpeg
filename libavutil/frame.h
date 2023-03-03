@@ -451,14 +451,18 @@ typedef struct AVFrame {
      */
     AVRational time_base;
 
+#if FF_API_FRAME_PICTURE_NUMBER
     /**
      * picture number in bitstream order
      */
+    attribute_deprecated
     int coded_picture_number;
     /**
      * picture number in display order
      */
+    attribute_deprecated
     int display_picture_number;
+#endif
 
     /**
      * quality (between 1 (good) and FF_LAMBDA_MAX (bad))
@@ -491,6 +495,7 @@ typedef struct AVFrame {
      */
     int palette_has_changed;
 
+#if FF_API_REORDERED_OPAQUE
     /**
      * reordered opaque 64 bits (generally an integer or a double precision float
      * PTS but can be anything).
@@ -498,8 +503,12 @@ typedef struct AVFrame {
      * that time,
      * the decoder reorders values as needed and sets AVFrame.reordered_opaque
      * to exactly one of the values provided by the user through AVCodecContext.reordered_opaque
+     *
+     * @deprecated Use AV_CODEC_FLAG_COPY_OPAQUE instead
      */
+    attribute_deprecated
     int64_t reordered_opaque;
+#endif
 
     /**
      * Sample rate of the audio data.
@@ -720,15 +729,6 @@ typedef struct AVFrame {
 } AVFrame;
 
 
-#if FF_API_COLORSPACE_NAME
-/**
- * Get the name of a colorspace.
- * @return a static string identifying the colorspace; can be NULL.
- * @deprecated use av_color_space_name()
- */
-attribute_deprecated
-const char *av_get_colorspace_name(enum AVColorSpace val);
-#endif
 /**
  * Allocate an AVFrame and set its fields to default values.  The resulting
  * struct must be freed using av_frame_free().

@@ -21,12 +21,11 @@
  */
 
 /**
- * @file
- * libavformat API example.
+ * @file libavformat muxing API usage example
+ * @example mux.c
  *
- * Output a media file in any supported libavformat format. The default
- * codecs are used.
- * @example muxing.c
+ * Generate a synthetic audio and video signal and mux them to a media file in
+ * any supported libavformat format. The default codecs are used.
  */
 
 #include <stdlib.h>

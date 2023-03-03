@@ -21,9 +21,10 @@
  */
 
 /**
- * @file
- * Shows how the metadata API can be used in application programs.
- * @example metadata.c
+ * @file libavformat metadata extraction API usage example
+ * @example show_metadata.c
+ *
+ * Show metadata from an input file.
  */
 
 #include <stdio.h>
