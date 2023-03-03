@@ -69,6 +69,7 @@ typedef struct AudioSurroundContext {
     float f_i[SC_NB];
     float f_o[SC_NB];
     int   lfe_mode;
+    float smooth;
     float angle;
     float focus;
     int   win_size;
@@ -84,7 +85,7 @@ typedef struct AudioSurroundContext {
     float *input_levels;
     float *output_levels;
     int output_lfe;
-    int have_lfe;
+    int create_lfe;
     int lowcutf;
     int highcutf;
 
@@ -96,9 +97,13 @@ typedef struct AudioSurroundContext {
     int nb_in_channels;
     int nb_out_channels;
 
+    AVFrame *factors;
+    AVFrame *sfactors;
     AVFrame *input_in;
     AVFrame *input;
     AVFrame *output;
+    AVFrame *output_mag;
+    AVFrame *output_ph;
     AVFrame *output_out;
     AVFrame *overlap_buffer;
     AVFrame *window;
@@ -108,7 +113,9 @@ typedef struct AudioSurroundContext {
     float *l_phase;
     float *r_phase;
     float *c_phase;
+    float *c_mag;
     float *lfe_mag;
+    float *lfe_phase;
     float *mag_total;
 
     int rdft_size;
@@ -118,24 +125,7 @@ typedef struct AudioSurroundContext {
     float *window_func_lut;
 
     void (*filter)(AVFilterContext *ctx);
-    int (*upmix)(AVFilterContext *ctx, int ch);
-    void (*upmix_2_1)(AVFilterContext *ctx,
-                      float l_phase,
-                      float r_phase,
-                      float c_phase,
-                      float mag_total,
-                      float lfe_im,
-                      float lfe_re,
-                      float x, float y,
-                      int n);
-    void (*upmix_3_0)(AVFilterContext *ctx,
-                      float l_phase,
-                      float r_phase,
-                      float c_mag,
-                      float c_phase,
-                      float mag_total,
-                      float x, float y,
-                      int n);
+    void (*upmix)(AVFilterContext *ctx, int ch);
     void (*upmix_5_0)(AVFilterContext *ctx,
                       float c_re, float c_im,
                       float mag_totall, float mag_totalr,
@@ -292,10 +282,15 @@ static int config_output(AVFilterLink *outlink)
 
     set_output_levels(ctx);
 
+    s->factors = ff_get_audio_buffer(outlink, s->win_size + 2);
+    s->sfactors = ff_get_audio_buffer(outlink, s->win_size + 2);
+    s->output_ph = ff_get_audio_buffer(outlink, s->win_size + 2);
+    s->output_mag = ff_get_audio_buffer(outlink, s->win_size + 2);
     s->output_out = ff_get_audio_buffer(outlink, s->win_size + 2);
     s->output = ff_get_audio_buffer(outlink, s->win_size + 2);
     s->overlap_buffer = ff_get_audio_buffer(outlink, s->win_size * 2);
-    if (!s->overlap_buffer || !s->output || !s->output_out)
+    if (!s->overlap_buffer || !s->output || !s->output_out || !s->output_mag ||
+        !s->output_ph || !s->factors || !s->sfactors)
         return AVERROR(ENOMEM);
 
     s->rdft_size = s->win_size / 2 + 1;
@@ -304,11 +299,13 @@ static int config_output(AVFilterLink *outlink)
     s->y_pos = av_calloc(s->rdft_size, sizeof(*s->y_pos));
     s->l_phase = av_calloc(s->rdft_size, sizeof(*s->l_phase));
     s->r_phase = av_calloc(s->rdft_size, sizeof(*s->r_phase));
+    s->c_mag   = av_calloc(s->rdft_size, sizeof(*s->c_mag));
     s->c_phase = av_calloc(s->rdft_size, sizeof(*s->c_phase));
     s->mag_total = av_calloc(s->rdft_size, sizeof(*s->mag_total));
     s->lfe_mag = av_calloc(s->rdft_size, sizeof(*s->lfe_mag));
-    if (!s->x_pos || !s->y_pos || !s->l_phase || !s->r_phase ||
-        !s->c_phase || !s->mag_total || !s->lfe_mag)
+    s->lfe_phase = av_calloc(s->rdft_size, sizeof(*s->lfe_phase));
+    if (!s->x_pos || !s->y_pos || !s->l_phase || !s->r_phase || !s->lfe_phase ||
+        !s->c_phase || !s->mag_total || !s->lfe_mag || !s->c_mag)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -375,11 +372,11 @@ static void stereo_position(float a, float p, float *x, float *y)
 }
 
 static inline void get_lfe(int output_lfe, int n, float lowcut, float highcut,
-                           float *lfe_mag, float *mag_total, int lfe_mode)
+                           float *lfe_mag, float c_mag, float *mag_total, int lfe_mode)
 {
     if (output_lfe && n < highcut) {
         *lfe_mag    = n < lowcut ? 1.f : .5f*(1.f+cosf(M_PI*(lowcut-n)/(lowcut-highcut)));
-        *lfe_mag   *= *mag_total;
+        *lfe_mag   *= c_mag;
         if (lfe_mode)
             *mag_total -= *lfe_mag;
     } else {
@@ -391,227 +388,241 @@ static inline void get_lfe(int output_lfe, int n, float lowcut, float highcut,
         dst[2 * n    ] = mag * cosf(ph);  \
         dst[2 * n + 1] = mag * sinf(ph);
 
-static int stereo_upmix(AVFilterContext *ctx, int ch)
+static void calculate_factors(AVFilterContext *ctx, int ch, int chan)
 {
     AudioSurroundContext *s = ctx->priv;
+    float *factor = (float *)s->factors->extended_data[ch];
+    const float f_x = s->f_x[sc_map[chan >= 0 ? chan : 0]];
+    const float f_y = s->f_y[sc_map[chan >= 0 ? chan : 0]];
+    const int rdft_size = s->rdft_size;
+    const float *x = s->x_pos;
+    const float *y = s->y_pos;
+
+    switch (chan) {
+    case AV_CHAN_FRONT_CENTER:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(1.f - fabsf(x[n]), f_x) * powf((y[n] + 1.f) * .5f, f_y);
+        break;
+    case AV_CHAN_FRONT_LEFT:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(.5f * ( x[n] + 1.f), f_x) * powf((y[n] + 1.f) * .5f, f_y);
+        break;
+    case AV_CHAN_FRONT_RIGHT:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(.5f * (-x[n] + 1.f), f_x) * powf((y[n] + 1.f) * .5f, f_y);
+        break;
+    case AV_CHAN_LOW_FREQUENCY:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(1.f - fabsf(x[n]), f_x) * powf((1.f - fabs(y[n])), f_y);
+        break;
+    case AV_CHAN_BACK_CENTER:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(1.f - fabsf(x[n]), f_x) * powf((1.f - y[n]) * .5f, f_y);
+        break;
+    case AV_CHAN_BACK_LEFT:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(.5f * ( x[n] + 1.f), f_x) * powf(1.f - ((y[n] + 1.f) * .5f), f_y);
+        break;
+    case AV_CHAN_BACK_RIGHT:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(.5f * (-x[n] + 1.f), f_x) * powf(1.f - ((y[n] + 1.f) * .5f), f_y);
+        break;
+    case AV_CHAN_SIDE_LEFT:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(.5f * ( x[n] + 1.f), f_x) * powf(1.f - fabsf(y[n]), f_y);
+        break;
+    case AV_CHAN_SIDE_RIGHT:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = powf(.5f * (-x[n] + 1.f), f_x) * powf(1.f - fabsf(y[n]), f_y);
+        break;
+    default:
+        for (int n = 0; n < rdft_size; n++)
+            factor[n] = 1.f;
+        break;
+    }
+}
+
+static void do_transform(AVFilterContext *ctx, int ch)
+{
+    AudioSurroundContext *s = ctx->priv;
+    float *sfactor = (float *)s->sfactors->extended_data[ch];
+    float *factor = (float *)s->factors->extended_data[ch];
+    float *omag = (float *)s->output_mag->extended_data[ch];
+    float *oph = (float *)s->output_ph->extended_data[ch];
     float *dst = (float *)s->output->extended_data[ch];
+    const int rdft_size = s->rdft_size;
+    const float smooth = s->smooth;
+
+    if (smooth > 0.f) {
+        for (int n = 0; n < rdft_size; n++)
+            sfactor[n] = smooth * factor[n] + (1.f - smooth) * sfactor[n];
+
+        factor = sfactor;
+    }
+
+    for (int n = 0; n < rdft_size; n++)
+        omag[n] *= factor[n];
+
+    for (int n = 0; n < rdft_size; n++) {
+        const float mag = omag[n];
+        const float ph = oph[n];
+
+        TRANSFORM
+    }
+}
+
+static void stereo_copy(AVFilterContext *ctx, int ch, int chan)
+{
+    AudioSurroundContext *s = ctx->priv;
+    float *omag = (float *)s->output_mag->extended_data[ch];
+    float *oph = (float *)s->output_ph->extended_data[ch];
     const float *mag_total = s->mag_total;
     const int rdft_size = s->rdft_size;
     const float *c_phase = s->c_phase;
     const float *l_phase = s->l_phase;
     const float *r_phase = s->r_phase;
     const float *lfe_mag = s->lfe_mag;
-    const float *x = s->x_pos;
-    const float *y = s->y_pos;
-    const int chan = av_channel_layout_channel_from_index(&s->out_ch_layout, ch);
-    const float f_x = s->f_x[sc_map[chan]];
-    const float f_y = s->f_y[sc_map[chan]];
+    const float *c_mag = s->c_mag;
 
     switch (chan) {
     case AV_CHAN_FRONT_CENTER:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(1.f - fabsf(x[n]), f_x) * powf((y[n] + 1.f) * .5f, f_y) * mag_total[n];
-            float ph = c_phase[n];
-
-            TRANSFORM
-        }
-        break;
-    case AV_CHAN_FRONT_LEFT:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(.5f * ( x[n] + 1.f), f_x) * powf((y[n] + 1.f) * .5f, f_y) * mag_total[n];
-            float ph = l_phase[n];
-
-            TRANSFORM
-        }
-        break;
-    case AV_CHAN_FRONT_RIGHT:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(.5f * (-x[n] + 1.f), f_x) * powf((y[n] + 1.f) * .5f, f_y) * mag_total[n];
-            float ph = r_phase[n];
-
-            TRANSFORM
-        }
+        memcpy(omag, c_mag, rdft_size * sizeof(*omag));
         break;
     case AV_CHAN_LOW_FREQUENCY:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = lfe_mag[n];
-            float ph = c_phase[n];
-
-            TRANSFORM
-        }
+        memcpy(omag, lfe_mag, rdft_size * sizeof(*omag));
         break;
+    case AV_CHAN_FRONT_LEFT:
+    case AV_CHAN_FRONT_RIGHT:
     case AV_CHAN_BACK_CENTER:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(1.f - fabsf(x[n]), f_x) * powf((1.f - y[n]) * .5f, f_y) * mag_total[n];
-            float ph = c_phase[n];
-
-            TRANSFORM
-        }
-        break;
     case AV_CHAN_BACK_LEFT:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(.5f * ( x[n] + 1.f), f_x) * powf(1.f - ((y[n] + 1.f) * .5f), f_y) * mag_total[n];
-            float ph = l_phase[n];
-
-            TRANSFORM
-        }
-        break;
     case AV_CHAN_BACK_RIGHT:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(.5f * (-x[n] + 1.f), f_x) * powf(1.f - ((y[n] + 1.f) * .5f), f_y) * mag_total[n];
-            float ph = r_phase[n];
-
-            TRANSFORM
-        }
-        break;
     case AV_CHAN_SIDE_LEFT:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(.5f * ( x[n] + 1.f), f_x) * powf(1.f - fabsf(y[n]), f_y) * mag_total[n];
-            float ph = l_phase[n];
-
-            TRANSFORM
-        }
-        break;
     case AV_CHAN_SIDE_RIGHT:
-        for (int n = 0; n < rdft_size; n++) {
-            float mag = powf(.5f * (-x[n] + 1.f), f_x) * powf(1.f - fabsf(y[n]), f_y) * mag_total[n];
-            float ph = r_phase[n];
-
-            TRANSFORM
-        }
+        memcpy(omag, mag_total, rdft_size * sizeof(*omag));
         break;
     default:
         break;
     }
 
-    return 0;
+    switch (chan) {
+    case AV_CHAN_FRONT_CENTER:
+    case AV_CHAN_LOW_FREQUENCY:
+    case AV_CHAN_BACK_CENTER:
+        memcpy(oph, c_phase, rdft_size * sizeof(*oph));
+        break;
+    case AV_CHAN_FRONT_LEFT:
+    case AV_CHAN_BACK_LEFT:
+    case AV_CHAN_SIDE_LEFT:
+        memcpy(oph, l_phase, rdft_size * sizeof(*oph));
+        break;
+    case AV_CHAN_FRONT_RIGHT:
+    case AV_CHAN_BACK_RIGHT:
+    case AV_CHAN_SIDE_RIGHT:
+        memcpy(oph, r_phase, rdft_size * sizeof(*oph));
+        break;
+    default:
+        break;
+    }
 }
 
-static void upmix_3_1_surround(AVFilterContext *ctx,
-                               float l_phase,
-                               float r_phase,
-                               float c_phase,
-                               float c_mag,
-                               float mag_total,
-                               float x, float y,
-                               int n)
+static void stereo_upmix(AVFilterContext *ctx, int ch)
 {
     AudioSurroundContext *s = ctx->priv;
-    float lfe_mag, l_mag, r_mag, *dstc, *dstl, *dstr, *dstlfe;
+    const int chan = av_channel_layout_channel_from_index(&s->out_ch_layout, ch);
 
-    dstl = (float *)s->output->extended_data[0];
-    dstr = (float *)s->output->extended_data[1];
-    dstc = (float *)s->output->extended_data[2];
-    dstlfe = (float *)s->output->extended_data[3];
+    calculate_factors(ctx, ch, chan);
 
-    get_lfe(s->output_lfe, n, s->lowcut, s->highcut, &lfe_mag, &c_mag, s->lfe_mode);
+    stereo_copy(ctx, ch, chan);
 
-    l_mag = powf(.5f * ( x + 1.f), s->f_x[SC_FL]) * powf((y + 1.f) * .5f, s->f_y[SC_FL]) * mag_total;
-    r_mag = powf(.5f * (-x + 1.f), s->f_x[SC_FR]) * powf((y + 1.f) * .5f, s->f_y[SC_FR]) * mag_total;
-
-    dstl[2 * n    ] = l_mag * cosf(l_phase);
-    dstl[2 * n + 1] = l_mag * sinf(l_phase);
-
-    dstr[2 * n    ] = r_mag * cosf(r_phase);
-    dstr[2 * n + 1] = r_mag * sinf(r_phase);
-
-    dstc[2 * n    ] = c_mag * cosf(c_phase);
-    dstc[2 * n + 1] = c_mag * sinf(c_phase);
-
-    dstlfe[2 * n    ] = lfe_mag * cosf(c_phase);
-    dstlfe[2 * n + 1] = lfe_mag * sinf(c_phase);
+    do_transform(ctx, ch);
 }
 
-static void upmix_5_1_back_surround(AVFilterContext *ctx,
-                                    float l_phase,
-                                    float r_phase,
-                                    float c_phase,
-                                    float c_mag,
-                                    float mag_total,
-                                    float x, float y,
-                                    int n)
+static void l2_1_upmix(AVFilterContext *ctx, int ch)
 {
     AudioSurroundContext *s = ctx->priv;
-    float lfe_mag, l_mag, r_mag, *dstc, *dstl, *dstr, *dstlfe;
-    float ls_mag, rs_mag, *dstls, *dstrs;
+    const int chan = av_channel_layout_channel_from_index(&s->out_ch_layout, ch);
+    float *omag = (float *)s->output_mag->extended_data[ch];
+    float *oph = (float *)s->output_ph->extended_data[ch];
+    const float *mag_total = s->mag_total;
+    const float *lfe_phase = s->lfe_phase;
+    const int rdft_size = s->rdft_size;
+    const float *c_phase = s->c_phase;
+    const float *l_phase = s->l_phase;
+    const float *r_phase = s->r_phase;
+    const float *lfe_mag = s->lfe_mag;
+    const float *c_mag = s->c_mag;
 
-    dstl = (float *)s->output->extended_data[0];
-    dstr = (float *)s->output->extended_data[1];
-    dstc = (float *)s->output->extended_data[2];
-    dstlfe = (float *)s->output->extended_data[3];
-    dstls = (float *)s->output->extended_data[4];
-    dstrs = (float *)s->output->extended_data[5];
+    switch (chan) {
+    case AV_CHAN_LOW_FREQUENCY:
+        calculate_factors(ctx, ch, -1);
+        break;
+    default:
+        calculate_factors(ctx, ch, chan);
+        break;
+    }
 
-    get_lfe(s->output_lfe, n, s->lowcut, s->highcut, &lfe_mag, &c_mag, s->lfe_mode);
+    switch (chan) {
+    case AV_CHAN_FRONT_CENTER:
+        memcpy(omag, c_mag, rdft_size * sizeof(*omag));
+        break;
+    case AV_CHAN_LOW_FREQUENCY:
+        memcpy(omag, lfe_mag, rdft_size * sizeof(*omag));
+        break;
+    case AV_CHAN_FRONT_LEFT:
+    case AV_CHAN_FRONT_RIGHT:
+    case AV_CHAN_BACK_CENTER:
+    case AV_CHAN_BACK_LEFT:
+    case AV_CHAN_BACK_RIGHT:
+    case AV_CHAN_SIDE_LEFT:
+    case AV_CHAN_SIDE_RIGHT:
+        memcpy(omag, mag_total, rdft_size * sizeof(*omag));
+        break;
+    default:
+        break;
+    }
 
-    l_mag = powf(.5f * ( x + 1.f),  s->f_x[SC_FL]) * powf((y + 1.f) * .5f, s->f_y[SC_FL]) * mag_total;
-    r_mag = powf(.5f * (-x + 1.f),  s->f_x[SC_FR]) * powf((y + 1.f) * .5f, s->f_y[SC_FR]) * mag_total;
-    ls_mag = powf(.5f * ( x + 1.f), s->f_x[SC_BL]) * powf(1.f - ((y + 1.f) * .5f), s->f_y[SC_BL]) * mag_total;
-    rs_mag = powf(.5f * (-x + 1.f), s->f_x[SC_BR]) * powf(1.f - ((y + 1.f) * .5f), s->f_y[SC_BR]) * mag_total;
+    switch (chan) {
+    case AV_CHAN_LOW_FREQUENCY:
+        memcpy(oph, lfe_phase, rdft_size * sizeof(*oph));
+        break;
+    case AV_CHAN_FRONT_CENTER:
+    case AV_CHAN_BACK_CENTER:
+        memcpy(oph, c_phase, rdft_size * sizeof(*oph));
+        break;
+    case AV_CHAN_FRONT_LEFT:
+    case AV_CHAN_BACK_LEFT:
+    case AV_CHAN_SIDE_LEFT:
+        memcpy(oph, l_phase, rdft_size * sizeof(*oph));
+        break;
+    case AV_CHAN_FRONT_RIGHT:
+    case AV_CHAN_BACK_RIGHT:
+    case AV_CHAN_SIDE_RIGHT:
+        memcpy(oph, r_phase, rdft_size * sizeof(*oph));
+        break;
+    default:
+        break;
+    }
 
-    dstl[2 * n    ] = l_mag * cosf(l_phase);
-    dstl[2 * n + 1] = l_mag * sinf(l_phase);
-
-    dstr[2 * n    ] = r_mag * cosf(r_phase);
-    dstr[2 * n + 1] = r_mag * sinf(r_phase);
-
-    dstc[2 * n    ] = c_mag * cosf(c_phase);
-    dstc[2 * n + 1] = c_mag * sinf(c_phase);
-
-    dstlfe[2 * n    ] = lfe_mag * cosf(c_phase);
-    dstlfe[2 * n + 1] = lfe_mag * sinf(c_phase);
-
-    dstls[2 * n    ] = ls_mag * cosf(l_phase);
-    dstls[2 * n + 1] = ls_mag * sinf(l_phase);
-
-    dstrs[2 * n    ] = rs_mag * cosf(r_phase);
-    dstrs[2 * n + 1] = rs_mag * sinf(r_phase);
+    do_transform(ctx, ch);
 }
 
-static void upmix_5_1_back_2_1(AVFilterContext *ctx,
-                               float l_phase,
-                               float r_phase,
-                               float c_phase,
-                               float mag_total,
-                               float lfe_re,
-                               float lfe_im,
-                               float x, float y,
-                               int n)
+static void surround_upmix(AVFilterContext *ctx, int ch)
 {
     AudioSurroundContext *s = ctx->priv;
-    float c_mag, l_mag, r_mag, *dstc, *dstl, *dstr, *dstlfe;
-    float ls_mag, rs_mag, *dstls, *dstrs;
+    const int chan = av_channel_layout_channel_from_index(&s->out_ch_layout, ch);
 
-    dstl = (float *)s->output->extended_data[0];
-    dstr = (float *)s->output->extended_data[1];
-    dstc = (float *)s->output->extended_data[2];
-    dstlfe = (float *)s->output->extended_data[3];
-    dstls = (float *)s->output->extended_data[4];
-    dstrs = (float *)s->output->extended_data[5];
+    switch (chan) {
+    case AV_CHAN_FRONT_CENTER:
+        calculate_factors(ctx, ch, -1);
+        break;
+    default:
+        calculate_factors(ctx, ch, chan);
+        break;
+    }
 
-    c_mag  = powf(1.f - fabsf(x),   s->f_x[SC_FC]) * powf((y + 1.f) * .5f, s->f_y[SC_FC]) * mag_total;
-    l_mag  = powf(.5f * ( x + 1.f), s->f_x[SC_FL]) * powf((y + 1.f) * .5f, s->f_y[SC_FL]) * mag_total;
-    r_mag  = powf(.5f * (-x + 1.f), s->f_x[SC_FR]) * powf((y + 1.f) * .5f, s->f_y[SC_FR]) * mag_total;
-    ls_mag = powf(.5f * ( x + 1.f), s->f_x[SC_BL]) * powf(1.f - ((y + 1.f) * .5f), s->f_y[SC_BL]) * mag_total;
-    rs_mag = powf(.5f * (-x + 1.f), s->f_x[SC_BR]) * powf(1.f - ((y + 1.f) * .5f), s->f_y[SC_BR]) * mag_total;
+    stereo_copy(ctx, ch, chan);
 
-    dstl[2 * n    ] = l_mag * cosf(l_phase);
-    dstl[2 * n + 1] = l_mag * sinf(l_phase);
-
-    dstr[2 * n    ] = r_mag * cosf(r_phase);
-    dstr[2 * n + 1] = r_mag * sinf(r_phase);
-
-    dstc[2 * n    ] = c_mag * cosf(c_phase);
-    dstc[2 * n + 1] = c_mag * sinf(c_phase);
-
-    dstlfe[2 * n    ] = lfe_re;
-    dstlfe[2 * n + 1] = lfe_im;
-
-    dstls[2 * n    ] = ls_mag * cosf(l_phase);
-    dstls[2 * n + 1] = ls_mag * sinf(l_phase);
-
-    dstrs[2 * n    ] = rs_mag * cosf(r_phase);
-    dstrs[2 * n + 1] = rs_mag * sinf(r_phase);
+    do_transform(ctx, ch);
 }
 
 static void upmix_7_1_5_0_side(AVFilterContext *ctx,
@@ -640,7 +651,7 @@ static void upmix_7_1_5_0_side(AVFilterContext *ctx,
 
     c_phase = atan2f(c_im, c_re);
 
-    get_lfe(s->output_lfe, n, s->lowcut, s->highcut, &lfe_mag, &mag_total, s->lfe_mode);
+    get_lfe(s->output_lfe, n, s->lowcut, s->highcut, &lfe_mag, hypotf(c_re, c_im), &mag_total, s->lfe_mode);
 
     fl_mag = powf(.5f * (xl + 1.f), s->f_x[SC_FL]) * powf((yl + 1.f) * .5f, s->f_y[SC_FL]) * mag_totall;
     fr_mag = powf(.5f * (xr + 1.f), s->f_x[SC_FR]) * powf((yr + 1.f) * .5f, s->f_y[SC_FR]) * mag_totalr;
@@ -735,7 +746,7 @@ static void filter_stereo(AVFilterContext *ctx)
     AudioSurroundContext *s = ctx->priv;
     const float *srcl = (const float *)s->input->extended_data[0];
     const float *srcr = (const float *)s->input->extended_data[1];
-    const int output_lfe = s->output_lfe && s->have_lfe;
+    const int output_lfe = s->output_lfe && s->create_lfe;
     const int lfe_mode = s->lfe_mode;
     const float highcut = s->highcut;
     const float lowcut = s->lowcut;
@@ -746,6 +757,7 @@ static void filter_stereo(AVFilterContext *ctx)
     float *lphase = s->l_phase;
     float *rphase = s->r_phase;
     float *cphase = s->c_phase;
+    float *cmag = s->c_mag;
     float *xpos = s->x_pos;
     float *ypos = s->y_pos;
 
@@ -753,6 +765,119 @@ static void filter_stereo(AVFilterContext *ctx)
         float l_re = srcl[2 * n], r_re = srcr[2 * n];
         float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
         float c_phase = atan2f(l_im + r_im, l_re + r_re);
+        float l_mag = hypotf(l_re, l_im);
+        float r_mag = hypotf(r_re, r_im);
+        float mag_total = hypotf(l_mag, r_mag);
+        float l_phase = atan2f(l_im, l_re);
+        float r_phase = atan2f(r_im, r_re);
+        float phase_dif = fabsf(l_phase - r_phase);
+        float mag_sum = l_mag + r_mag;
+        float c_mag = mag_sum * 0.5f;
+        float mag_dif, x, y;
+
+        mag_sum = mag_sum < MIN_MAG_SUM ? 1.f : mag_sum;
+        mag_dif = (l_mag - r_mag) / mag_sum;
+        if (phase_dif > M_PI)
+            phase_dif = 2.f * M_PI - phase_dif;
+
+        stereo_position(mag_dif, phase_dif, &x, &y);
+        angle_transform(&x, &y, angle);
+        focus_transform(&x, &y, focus);
+        get_lfe(output_lfe, n, lowcut, highcut, &lfemag[n], c_mag, &mag_total, lfe_mode);
+
+        xpos[n]   = x;
+        ypos[n]   = y;
+        lphase[n] = l_phase;
+        rphase[n] = r_phase;
+        cmag[n]   = c_mag;
+        cphase[n] = c_phase;
+        magtotal[n] = mag_total;
+    }
+}
+
+static void filter_2_1(AVFilterContext *ctx)
+{
+    AudioSurroundContext *s = ctx->priv;
+    const float *srcl = (const float *)s->input->extended_data[0];
+    const float *srcr = (const float *)s->input->extended_data[1];
+    const float *srclfe = (const float *)s->input->extended_data[2];
+    const float angle = s->angle;
+    const float focus = s->focus;
+    float *magtotal = s->mag_total;
+    float *lfephase = s->lfe_phase;
+    float *lfemag = s->lfe_mag;
+    float *lphase = s->l_phase;
+    float *rphase = s->r_phase;
+    float *cphase = s->c_phase;
+    float *cmag = s->c_mag;
+    float *xpos = s->x_pos;
+    float *ypos = s->y_pos;
+
+    for (int n = 0; n < s->rdft_size; n++) {
+        float l_re = srcl[2 * n], r_re = srcr[2 * n];
+        float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
+        float lfe_re = srclfe[2 * n], lfe_im = srclfe[2 * n + 1];
+        float c_phase = atan2f(l_im + r_im, l_re + r_re);
+        float l_mag = hypotf(l_re, l_im);
+        float r_mag = hypotf(r_re, r_im);
+        float lfe_mag = hypotf(lfe_re, lfe_im);
+        float lfe_phase = atan2f(lfe_im, lfe_re);
+        float mag_total = hypotf(l_mag, r_mag);
+        float l_phase = atan2f(l_im, l_re);
+        float r_phase = atan2f(r_im, r_re);
+        float phase_dif = fabsf(l_phase - r_phase);
+        float mag_sum = l_mag + r_mag;
+        float c_mag = mag_sum * 0.5f;
+        float mag_dif, x, y;
+
+        mag_sum = mag_sum < MIN_MAG_SUM ? 1.f : mag_sum;
+        mag_dif = (l_mag - r_mag) / mag_sum;
+        if (phase_dif > M_PI)
+            phase_dif = 2.f * M_PI - phase_dif;
+
+        stereo_position(mag_dif, phase_dif, &x, &y);
+        angle_transform(&x, &y, angle);
+        focus_transform(&x, &y, focus);
+
+        xpos[n]   = x;
+        ypos[n]   = y;
+        lphase[n] = l_phase;
+        rphase[n] = r_phase;
+        cmag[n]   = c_mag;
+        cphase[n] = c_phase;
+        lfemag[n] = lfe_mag;
+        lfephase[n] = lfe_phase;
+        magtotal[n] = mag_total;
+    }
+}
+
+static void filter_surround(AVFilterContext *ctx)
+{
+    AudioSurroundContext *s = ctx->priv;
+    const float *srcl = (const float *)s->input->extended_data[0];
+    const float *srcr = (const float *)s->input->extended_data[1];
+    const float *srcc = (const float *)s->input->extended_data[2];
+    const int output_lfe = s->output_lfe && s->create_lfe;
+    const int lfe_mode = s->lfe_mode;
+    const float highcut = s->highcut;
+    const float lowcut = s->lowcut;
+    const float angle = s->angle;
+    const float focus = s->focus;
+    float *magtotal = s->mag_total;
+    float *lfemag = s->lfe_mag;
+    float *lphase = s->l_phase;
+    float *rphase = s->r_phase;
+    float *cphase = s->c_phase;
+    float *cmag = s->c_mag;
+    float *xpos = s->x_pos;
+    float *ypos = s->y_pos;
+
+    for (int n = 0; n < s->rdft_size; n++) {
+        float l_re = srcl[2 * n], r_re = srcr[2 * n];
+        float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
+        float c_re = srcc[2 * n], c_im = srcc[2 * n + 1];
+        float c_phase = atan2f(c_im, c_re);
+        float c_mag = hypotf(c_re, c_im);
         float l_mag = hypotf(l_re, l_im);
         float r_mag = hypotf(r_re, r_im);
         float mag_total = hypotf(l_mag, r_mag);
@@ -770,87 +895,15 @@ static void filter_stereo(AVFilterContext *ctx)
         stereo_position(mag_dif, phase_dif, &x, &y);
         angle_transform(&x, &y, angle);
         focus_transform(&x, &y, focus);
-        get_lfe(output_lfe, n, lowcut, highcut, &lfemag[n], &mag_total, lfe_mode);
+        get_lfe(output_lfe, n, lowcut, highcut, &lfemag[n], c_mag, &mag_total, lfe_mode);
 
         xpos[n]   = x;
         ypos[n]   = y;
         lphase[n] = l_phase;
         rphase[n] = r_phase;
+        cmag[n]   = c_mag;
         cphase[n] = c_phase;
         magtotal[n] = mag_total;
-    }
-}
-
-static void filter_surround(AVFilterContext *ctx)
-{
-    AudioSurroundContext *s = ctx->priv;
-    float *srcl, *srcr, *srcc;
-    int n;
-
-    srcl = (float *)s->input->extended_data[0];
-    srcr = (float *)s->input->extended_data[1];
-    srcc = (float *)s->input->extended_data[2];
-
-    for (n = 0; n < s->rdft_size; n++) {
-        float l_re = srcl[2 * n], r_re = srcr[2 * n];
-        float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
-        float c_re = srcc[2 * n], c_im = srcc[2 * n + 1];
-        float c_mag = hypotf(c_re, c_im);
-        float c_phase = atan2f(c_im, c_re);
-        float l_mag = hypotf(l_re, l_im);
-        float r_mag = hypotf(r_re, r_im);
-        float mag_total = hypotf(l_mag, r_mag);
-        float l_phase = atan2f(l_im, l_re);
-        float r_phase = atan2f(r_im, r_re);
-        float phase_dif = fabsf(l_phase - r_phase);
-        float mag_sum = l_mag + r_mag;
-        float mag_dif, x, y;
-
-        mag_sum = mag_sum < MIN_MAG_SUM ? 1.f : mag_sum;
-        mag_dif = (l_mag - r_mag) / mag_sum;
-        if (phase_dif > M_PI)
-            phase_dif = 2.f * M_PI - phase_dif;
-
-        stereo_position(mag_dif, phase_dif, &x, &y);
-        angle_transform(&x, &y, s->angle);
-
-        s->upmix_3_0(ctx, l_phase, r_phase, c_phase, c_mag, mag_total, x, y, n);
-    }
-}
-
-static void filter_2_1(AVFilterContext *ctx)
-{
-    AudioSurroundContext *s = ctx->priv;
-    float *srcl, *srcr, *srclfe;
-    int n;
-
-    srcl = (float *)s->input->extended_data[0];
-    srcr = (float *)s->input->extended_data[1];
-    srclfe = (float *)s->input->extended_data[2];
-
-    for (n = 0; n < s->rdft_size; n++) {
-        float l_re = srcl[2 * n], r_re = srcr[2 * n];
-        float l_im = srcl[2 * n + 1], r_im = srcr[2 * n + 1];
-        float lfe_re = srclfe[2 * n], lfe_im = srclfe[2 * n + 1];
-        float c_phase = atan2f(l_im + r_im, l_re + r_re);
-        float l_mag = hypotf(l_re, l_im);
-        float r_mag = hypotf(r_re, r_im);
-        float mag_total = hypotf(l_mag, r_mag);
-        float l_phase = atan2f(l_im, l_re);
-        float r_phase = atan2f(r_im, r_re);
-        float phase_dif = fabsf(l_phase - r_phase);
-        float mag_sum = l_mag + r_mag;
-        float mag_dif, x, y;
-
-        mag_sum = mag_sum < MIN_MAG_SUM ? 1.f : mag_sum;
-        mag_dif = (l_mag - r_mag) / mag_sum;
-        if (phase_dif > M_PI)
-            phase_dif = 2.f * M_PI - phase_dif;
-
-        stereo_position(mag_dif, phase_dif, &x, &y);
-        angle_transform(&x, &y, s->angle);
-
-        s->upmix_2_1(ctx, l_phase, r_phase, c_phase, mag_total, lfe_re, lfe_im, x, y, n);
     }
 }
 
@@ -1046,9 +1099,9 @@ static void allchannels_spread(AVFilterContext *ctx)
 static av_cold int init(AVFilterContext *ctx)
 {
     AudioSurroundContext *s = ctx->priv;
-    float overlap;
     int64_t in_channel_layout, out_channel_layout;
-    int i, ret;
+    float overlap;
+    int ret;
 
     if ((ret = av_channel_layout_from_string(&s->out_ch_layout, s->out_channel_layout_str)) < 0) {
         av_log(ctx, AV_LOG_ERROR, "Error parsing output channel layout '%s'.\n",
@@ -1073,60 +1126,21 @@ static av_cold int init(AVFilterContext *ctx)
     out_channel_layout = s->out_ch_layout.order == AV_CHANNEL_ORDER_NATIVE ?
                          s->out_ch_layout.u.mask : 0;
 
-    s->have_lfe = av_channel_layout_index_from_channel(&s->out_ch_layout,
-                                                       AV_CHAN_LOW_FREQUENCY) >= 0;
+    s->create_lfe = av_channel_layout_index_from_channel(&s->out_ch_layout,
+                                                         AV_CHAN_LOW_FREQUENCY) >= 0;
 
     switch (in_channel_layout) {
     case AV_CH_LAYOUT_STEREO:
         s->filter = filter_stereo;
         s->upmix = stereo_upmix;
-        switch (out_channel_layout) {
-        case AV_CH_LAYOUT_MONO:
-        case AV_CH_LAYOUT_STEREO:
-        case AV_CH_LAYOUT_2POINT1:
-        case AV_CH_LAYOUT_2_1:
-        case AV_CH_LAYOUT_2_2:
-        case AV_CH_LAYOUT_SURROUND:
-        case AV_CH_LAYOUT_3POINT1:
-        case AV_CH_LAYOUT_QUAD:
-        case AV_CH_LAYOUT_4POINT0:
-        case AV_CH_LAYOUT_4POINT1:
-        case AV_CH_LAYOUT_5POINT0:
-        case AV_CH_LAYOUT_5POINT1:
-        case AV_CH_LAYOUT_5POINT0_BACK:
-        case AV_CH_LAYOUT_5POINT1_BACK:
-        case AV_CH_LAYOUT_6POINT0:
-        case AV_CH_LAYOUT_6POINT1:
-        case AV_CH_LAYOUT_7POINT0:
-        case AV_CH_LAYOUT_7POINT1:
-        case AV_CH_LAYOUT_OCTAGONAL:
-            break;
-        default:
-            goto fail;
-        }
         break;
     case AV_CH_LAYOUT_2POINT1:
         s->filter = filter_2_1;
-        switch (out_channel_layout) {
-        case AV_CH_LAYOUT_5POINT1_BACK:
-            s->upmix_2_1 = upmix_5_1_back_2_1;
-            break;
-        default:
-            goto fail;
-        }
+        s->upmix = l2_1_upmix;
         break;
     case AV_CH_LAYOUT_SURROUND:
         s->filter = filter_surround;
-        switch (out_channel_layout) {
-        case AV_CH_LAYOUT_3POINT1:
-            s->upmix_3_0 = upmix_3_1_surround;
-            break;
-        case AV_CH_LAYOUT_5POINT1_BACK:
-            s->upmix_3_0 = upmix_5_1_back_surround;
-            break;
-        default:
-            goto fail;
-        }
+        s->upmix = surround_upmix;
         break;
     case AV_CH_LAYOUT_5POINT0:
         s->filter = filter_5_0_side;
@@ -1173,7 +1187,7 @@ fail:
     if (s->overlap == 1)
         s->overlap = overlap;
 
-    for (i = 0; i < s->win_size; i++)
+    for (int i = 0; i < s->win_size; i++)
         s->window_func_lut[i] = sqrtf(s->window_func_lut[i] / s->win_size);
     s->hop_size = FFMAX(1, s->win_size * (1. - s->overlap));
 
@@ -1222,7 +1236,7 @@ static int ifft_channel(AVFilterContext *ctx, AVFrame *out, int ch)
 
     dst = (float *)s->output_out->extended_data[ch];
     ptr = (float *)s->overlap_buffer->extended_data[ch];
-    s->itx_fn(s->irdft[ch], dst, (float *)s->output->extended_data[ch], sizeof(float));
+    s->itx_fn(s->irdft[ch], dst, (float *)s->output->extended_data[ch], sizeof(AVComplexFloat));
 
     memmove(s->overlap_buffer->extended_data[ch],
             s->overlap_buffer->extended_data[ch] + s->hop_size * sizeof(float),
@@ -1277,7 +1291,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                       FFMIN(outlink->ch_layout.nb_channels,
                             ff_filter_get_nb_threads(ctx)));
 
-    out->pts = in->pts;
+    av_frame_copy_props(out, in);
     out->nb_samples = in->nb_samples;
 
     av_frame_free(&in);
@@ -1323,10 +1337,14 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     AudioSurroundContext *s = ctx->priv;
 
+    av_frame_free(&s->factors);
+    av_frame_free(&s->sfactors);
     av_frame_free(&s->window);
     av_frame_free(&s->input_in);
     av_frame_free(&s->input);
     av_frame_free(&s->output);
+    av_frame_free(&s->output_ph);
+    av_frame_free(&s->output_mag);
     av_frame_free(&s->output_out);
     av_frame_free(&s->overlap_buffer);
 
@@ -1344,9 +1362,11 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->y_pos);
     av_freep(&s->l_phase);
     av_freep(&s->r_phase);
+    av_freep(&s->c_mag);
     av_freep(&s->c_phase);
     av_freep(&s->mag_total);
     av_freep(&s->lfe_mag);
+    av_freep(&s->lfe_phase);
 }
 
 static int process_command(AVFilterContext *ctx, const char *cmd, const char *args,
@@ -1383,6 +1403,7 @@ static const AVOption surround_options[] = {
     { "lfe_mode",  "set LFE channel mode",      OFFSET(lfe_mode),               AV_OPT_TYPE_INT,    {.i64=0},     0,   1, TFLAGS, "lfe_mode" },
     {  "add",      "just add LFE channel",                  0,                  AV_OPT_TYPE_CONST,  {.i64=0},     0,   1, TFLAGS, "lfe_mode" },
     {  "sub",      "substract LFE channel with others",     0,                  AV_OPT_TYPE_CONST,  {.i64=1},     0,   1, TFLAGS, "lfe_mode" },
+    { "smooth",    "set temporal smoothness strength",      OFFSET(smooth),     AV_OPT_TYPE_FLOAT,  {.dbl=0},     0,   1, TFLAGS },
     { "angle",     "set soundfield transform angle",        OFFSET(angle),      AV_OPT_TYPE_FLOAT,  {.dbl=90},    0, 360, TFLAGS },
     { "focus",     "set soundfield transform focus",        OFFSET(focus),      AV_OPT_TYPE_FLOAT,  {.dbl=0},    -1,   1, TFLAGS },
     { "fc_in",     "set front center channel input level",  OFFSET(f_i[SC_FC]), AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  10, TFLAGS },

@@ -169,7 +169,7 @@ AVDictionary *strip_specifiers(const AVDictionary *dict)
     const AVDictionaryEntry *e = NULL;
     AVDictionary    *ret = NULL;
 
-    while ((e = av_dict_get(dict, "", e, AV_DICT_IGNORE_SUFFIX))) {
+    while ((e = av_dict_iterate(dict, e))) {
         char *p = strchr(e->key, ':');
 
         if (p)
@@ -417,7 +417,7 @@ static int opt_map(void *optctx, const char *opt, const char *arg)
                 if (check_stream_specifier(input_files[file_idx]->ctx, input_files[file_idx]->ctx->streams[i],
                             *p == ':' ? p + 1 : p) <= 0)
                     continue;
-                if (input_streams[input_files[file_idx]->ist_index + i]->user_set_discard == AVDISCARD_ALL) {
+                if (input_files[file_idx]->streams[i]->user_set_discard == AVDISCARD_ALL) {
                     disabled = 1;
                     continue;
                 }
@@ -523,7 +523,7 @@ static int opt_map_channel(void *optctx, const char *opt, const char *arg)
     if (allow_unused = strchr(mapchan, '?'))
         *allow_unused = 0;
     if (m->channel_idx < 0 || m->channel_idx >= st->codecpar->ch_layout.nb_channels ||
-        input_streams[input_files[m->file_idx]->ist_index + m->stream_idx]->user_set_discard == AVDISCARD_ALL) {
+        input_files[m->file_idx]->streams[m->stream_idx]->user_set_discard == AVDISCARD_ALL) {
         if (allow_unused) {
             av_log(NULL, AV_LOG_VERBOSE, "mapchan: invalid audio channel #%d.%d.%d\n",
                     m->file_idx, m->stream_idx, m->channel_idx);
@@ -623,7 +623,8 @@ static int opt_recording_timestamp(void *optctx, const char *opt, const char *ar
     return 0;
 }
 
-const AVCodec *find_codec_or_die(const char *name, enum AVMediaType type, int encoder)
+const AVCodec *find_codec_or_die(void *logctx, const char *name,
+                                 enum AVMediaType type, int encoder)
 {
     const AVCodecDescriptor *desc;
     const char *codec_string = encoder ? "encoder" : "decoder";
@@ -637,16 +638,16 @@ const AVCodec *find_codec_or_die(const char *name, enum AVMediaType type, int en
         codec = encoder ? avcodec_find_encoder(desc->id) :
                           avcodec_find_decoder(desc->id);
         if (codec)
-            av_log(NULL, AV_LOG_VERBOSE, "Matched %s '%s' for codec '%s'.\n",
+            av_log(logctx, AV_LOG_VERBOSE, "Matched %s '%s' for codec '%s'.\n",
                    codec_string, codec->name, desc->name);
     }
 
     if (!codec) {
-        av_log(NULL, AV_LOG_FATAL, "Unknown %s '%s'\n", codec_string, name);
+        av_log(logctx, AV_LOG_FATAL, "Unknown %s '%s'\n", codec_string, name);
         exit_program(1);
     }
     if (codec->type != type && !recast_media) {
-        av_log(NULL, AV_LOG_FATAL, "Invalid %s type '%s'\n", codec_string, name);
+        av_log(logctx, AV_LOG_FATAL, "Invalid %s type '%s'\n", codec_string, name);
         exit_program(1);
     }
     return codec;
@@ -1543,6 +1544,19 @@ const OptionDef options[] = {
         { .off = OFFSET(bits_per_raw_sample) },
         "set the number of bits per raw sample", "number" },
 
+    { "stats_enc_pre",      HAS_ARG | OPT_SPEC | OPT_EXPERT | OPT_OUTPUT | OPT_STRING, { .off = OFFSET(enc_stats_pre)      },
+        "write encoding stats before encoding" },
+    { "stats_enc_post",     HAS_ARG | OPT_SPEC | OPT_EXPERT | OPT_OUTPUT | OPT_STRING, { .off = OFFSET(enc_stats_post)     },
+        "write encoding stats after encoding" },
+    { "stats_mux_pre",      HAS_ARG | OPT_SPEC | OPT_EXPERT | OPT_OUTPUT | OPT_STRING, { .off = OFFSET(mux_stats)          },
+        "write packets stats before muxing" },
+    { "stats_enc_pre_fmt",  HAS_ARG | OPT_SPEC | OPT_EXPERT | OPT_OUTPUT | OPT_STRING, { .off = OFFSET(enc_stats_pre_fmt)  },
+        "format of the stats written with -stats_enc_pre" },
+    { "stats_enc_post_fmt", HAS_ARG | OPT_SPEC | OPT_EXPERT | OPT_OUTPUT | OPT_STRING, { .off = OFFSET(enc_stats_post_fmt) },
+        "format of the stats written with -stats_enc_post" },
+    { "stats_mux_pre_fmt",  HAS_ARG | OPT_SPEC | OPT_EXPERT | OPT_OUTPUT | OPT_STRING, { .off = OFFSET(mux_stats_fmt)      },
+        "format of the stats written with -stats_mux_pre" },
+
     /* video options */
     { "vframes",      OPT_VIDEO | HAS_ARG  | OPT_PERFILE | OPT_OUTPUT,           { .func_arg = opt_video_frames },
         "set the number of video frames to output", "number" },
@@ -1627,8 +1641,6 @@ const OptionDef options[] = {
     { "force_key_frames", OPT_VIDEO | OPT_STRING | HAS_ARG | OPT_EXPERT |
                           OPT_SPEC | OPT_OUTPUT,                                 { .off = OFFSET(forced_key_frames) },
         "force key frames at specified timestamps", "timestamps" },
-    { "ab",           OPT_VIDEO | HAS_ARG | OPT_PERFILE | OPT_OUTPUT,            { .func_arg = opt_bitrate },
-        "audio bitrate (please use -b:a)", "bitrate" },
     { "b",            OPT_VIDEO | HAS_ARG | OPT_PERFILE | OPT_OUTPUT,            { .func_arg = opt_bitrate },
         "video bitrate (please use -b:v)", "bitrate" },
     { "hwaccel",          OPT_VIDEO | OPT_STRING | HAS_ARG | OPT_EXPERT |
@@ -1648,6 +1660,11 @@ const OptionDef options[] = {
     { "autoscale",        HAS_ARG | OPT_BOOL | OPT_SPEC |
                           OPT_EXPERT | OPT_OUTPUT,                               { .off = OFFSET(autoscale) },
         "automatically insert a scale filter at the end of the filter graph" },
+    { "fix_sub_duration_heartbeat", OPT_VIDEO | OPT_BOOL | OPT_EXPERT |
+                                    OPT_SPEC | OPT_OUTPUT,                       { .off = OFFSET(fix_sub_duration_heartbeat) },
+        "set this video output stream to be a heartbeat stream for "
+        "fix_sub_duration, according to which subtitles should be split at "
+        "random access points" },
 
     /* audio options */
     { "aframes",        OPT_AUDIO | HAS_ARG  | OPT_PERFILE | OPT_OUTPUT,           { .func_arg = opt_audio_frames },
@@ -1665,6 +1682,8 @@ const OptionDef options[] = {
     { "acodec",         OPT_AUDIO | HAS_ARG  | OPT_PERFILE |
                         OPT_INPUT | OPT_OUTPUT,                                    { .func_arg = opt_audio_codec },
         "force audio codec ('copy' to copy stream)", "codec" },
+    { "ab",             OPT_AUDIO | HAS_ARG | OPT_PERFILE | OPT_OUTPUT,            { .func_arg = opt_bitrate },
+        "audio bitrate (please use -b:a)", "bitrate" },
     { "atag",           OPT_AUDIO | HAS_ARG  | OPT_EXPERT | OPT_PERFILE |
                         OPT_OUTPUT,                                                { .func_arg = opt_old2new },
         "force audio tag/fourcc", "fourcc/tag" },
