@@ -21,8 +21,12 @@
  */
 
 /**
- * @example resampling_audio.c
- * libswresample API use example.
+ * @file audio resampling API usage example
+ * @example resample_audio.c
+ *
+ * Generate a synthetic audio signal, and Use libswresample API to perform audio
+ * resampling. The output is written to a raw audio file to be played with
+ * ffplay.
  */
 
 #include <libavutil/opt.h>

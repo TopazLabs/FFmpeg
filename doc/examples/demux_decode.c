@@ -21,12 +21,12 @@
  */
 
 /**
- * @file
- * Demuxing and decoding example.
+ * @file libavformat and libavcodec demuxing and decoding API usage example
+ * @example demux_decode.c
  *
- * Show how to use the libavformat and libavcodec API to demux and
- * decode audio and video data.
- * @example demuxing_decoding.c
+ * Show how to use the libavformat and libavcodec API to demux and decode audio
+ * and video data. Write the output as raw audio and input files to be played by
+ * ffplay.
  */
 
 #include <libavutil/imgutils.h>
@@ -73,8 +73,8 @@ static int output_video_frame(AVFrame *frame)
         return -1;
     }
 
-    printf("video_frame n:%d coded_n:%d\n",
-           video_frame_count++, frame->coded_picture_number);
+    printf("video_frame n:%d\n",
+           video_frame_count++);
 
     /* copy decoded frame to destination buffer:
      * this is required since rawvideo expects non aligned data */
