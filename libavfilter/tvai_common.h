@@ -13,7 +13,7 @@
 #include "tvai.h"
 
 int ff_tvai_checkDevice(int deviceIndex, AVFilterContext* ctx);
-int ff_tvai_checkScale(int scale, AVFilterContext* ctx);
+int ff_tvai_checkScale(char* modelName, int scale, AVFilterContext* ctx);
 int ff_tvai_checkModel(char* modelName, ModelType modelType, AVFilterContext* ctx);
 void ff_tvai_handleLogging(void);
 int ff_tvai_verifyAndSetInfo(VideoProcessorInfo* info, AVFilterLink *inlink, AVFilterLink *outlink, char *processorName, char* modelName, ModelType modelType,

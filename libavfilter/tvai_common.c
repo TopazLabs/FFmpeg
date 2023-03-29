@@ -10,10 +10,15 @@ int ff_tvai_checkDevice(int deviceIndex, AVFilterContext* ctx) {
   return 0;
 }
 
-int ff_tvai_checkScale(int scale, AVFilterContext* ctx) {
-  if(scale != 1 && scale != 2 && scale !=4 ) {
-      av_log(ctx, AV_LOG_ERROR, "Invalid value %d for scale, only 1,2,4 allowed for scale\n", scale);
+int ff_tvai_checkScale(char* modelName, int scale, AVFilterContext* ctx) {
+  char scaleString[1024];
+  int retVal = tvai_scale_list(modelName, scale, scaleString, 1024);
+  if(retVal > 0) {
+      av_log(ctx, AV_LOG_ERROR, "Invalid scale %d for model %s, allowed scales are: %s\n", scale, modelName, scaleString);
       return AVERROR(EINVAL);
+  } else if(retVal < 0) {
+    av_log(ctx, AV_LOG_ERROR, "Model not found: %s\n", modelName);
+    return AVERROR(EINVAL);
   }
   return 0;
 }
@@ -39,7 +44,7 @@ int ff_tvai_checkModel(char* modelName, ModelType modelType, AVFilterContext* ct
 int ff_tvai_verifyAndSetInfo(VideoProcessorInfo* info, AVFilterLink *inlink, AVFilterLink *outlink, char *processorName, char* modelName, ModelType modelType,
                             int deviceIndex, int extraThreads, float vram, int scale, int canDownloadModels, float *pParameters, int parameterCount, AVFilterContext* ctx) {
   ff_tvai_handleLogging();
-  if(ff_tvai_checkModel(modelName, modelType, ctx) || ff_tvai_checkDevice(deviceIndex, ctx) || ff_tvai_checkScale(scale, ctx)) {
+  if(ff_tvai_checkModel(modelName, modelType, ctx) || ff_tvai_checkDevice(deviceIndex, ctx) || ff_tvai_checkScale(modelName, scale, ctx)) {
     return 1;
   }
   info->basic.processorName = processorName;
