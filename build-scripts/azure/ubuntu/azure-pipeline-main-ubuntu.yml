@@ -5,6 +5,10 @@ resources:
       endpoint: TopazLabs
       name: TopazLabs/topaz-conan-dev
       ref: master
+    - repository: nv-codec-headers
+      type: github
+      endpoint: TopazLabs
+      name: FFmpeg/nv-codec-headers
 
 jobs:
 - job: Ubuntu22_04
