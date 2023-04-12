@@ -54,7 +54,7 @@ steps:
       
     - script: |
         cd $(Build.SourcesDirectory)
-        python -m pip install aqtinstaller==2.0.6
+        python -m pip install aqtinstall==2.0.6
       displayName: Install aqtinstall
       
     - script: |
