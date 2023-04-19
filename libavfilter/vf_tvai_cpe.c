@@ -73,7 +73,7 @@ static int config_props(AVFilterLink *outlink) {
     info.options[0] = tvai->filename;
     tvai->rsc = strncmp(tvai->model, (char*)"cpe-1", 5) != 0;
     av_log(ctx, AV_LOG_DEBUG, "RSC: %d\n", tvai->rsc);
-    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, (char*)"cpe", tvai->model, ModelTypeCamPoseEstimation, tvai->device, 0, 1, 1, tvai->canDownloadModels, &tvai->rsc, 1, ctx)) {
+    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, 0, tvai->model, ModelTypeCamPoseEstimation, tvai->device, 0, 1, 1, tvai->canDownloadModels, &tvai->rsc, 1, ctx)) {
       return AVERROR(EINVAL);
     }
     tvai->pFrameProcessor = tvai_create(&info);

@@ -63,7 +63,7 @@ static int config_props(AVFilterLink *outlink) {
     TVAIParamContext *tvai = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
 
-    tvai->pParamEstimator = ff_tvai_verifyAndCreate(inlink, outlink, (char*)"pe", tvai->model, ModelTypeParameterEstimation, tvai->device, 0, 1, 1, tvai->canDownloadModels, NULL, 0, ctx);
+    tvai->pParamEstimator = ff_tvai_verifyAndCreate(inlink, outlink, 0, tvai->model, ModelTypeParameterEstimation, tvai->device, 0, 1, 1, tvai->canDownloadModels, NULL, 0, ctx);
     return tvai->pParamEstimator == NULL ? AVERROR(EINVAL) : 0;
     return 0;
 }
