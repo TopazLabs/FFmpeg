@@ -102,7 +102,7 @@ static int config_props(AVFilterLink *outlink) {
     }
     info.frameCount = tvai->estimateFrameCount;
     av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", tvai->model, tvai->scale, tvai->device,tvai->vram, tvai->extraThreads, tvai->canDownloadModels);
-    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, (tvai->estimateFrameCount > 0) ? (char*)"aup" : (char*)"up", tvai->model, ModelTypeUpscaling, tvai->device, tvai->extraThreads, tvai->vram,
+    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, tvai->estimateFrameCount > 0, tvai->model, ModelTypeUpscaling, tvai->device, tvai->extraThreads, tvai->vram,
                                                     scale, tvai->canDownloadModels, parameter_values, 11, ctx)) {
       return AVERROR(EINVAL);
     }

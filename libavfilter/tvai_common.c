@@ -41,13 +41,13 @@ int ff_tvai_checkModel(char* modelName, ModelType modelType, AVFilterContext* ct
   return 0;
 }
 
-int ff_tvai_verifyAndSetInfo(VideoProcessorInfo* info, AVFilterLink *inlink, AVFilterLink *outlink, char *processorName, char* modelName, ModelType modelType,
+int ff_tvai_verifyAndSetInfo(VideoProcessorInfo* info, AVFilterLink *inlink, AVFilterLink *outlink, unsigned int procIndex, char* modelName, ModelType modelType,
                             int deviceIndex, int extraThreads, float vram, int scale, int canDownloadModels, float *pParameters, int parameterCount, AVFilterContext* ctx) {
   ff_tvai_handleLogging();
   if(ff_tvai_checkModel(modelName, modelType, ctx) || ff_tvai_checkDevice(deviceIndex, ctx) || ff_tvai_checkScale(modelName, scale, ctx)) {
     return 1;
   }
-  info->basic.processorName = processorName;
+  tvai_vp_name(modelName, procIndex, (char*)info->basic.processorName);
   info->basic.modelName = modelName;
   info->basic.scale = scale;
   info->basic.device.index = deviceIndex;
