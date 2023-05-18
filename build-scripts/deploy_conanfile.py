@@ -5,7 +5,7 @@ class conanRecipe(ConanFile):
     settings = ("os", "build_type", "arch")
 
     def requirements(self):
-        self.requires("videoai/[~0.12.3]")
+        self.requires("videoai/[~1.0.1]")
         if self.settings.os == "Macos" or self.settings.os == "Linux":
             self.requires("libvpx/1.11.0") #libvpx is static on Windows
             self.requires("aom/3.5.0")
