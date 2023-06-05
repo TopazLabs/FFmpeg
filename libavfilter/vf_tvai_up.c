@@ -44,7 +44,7 @@ typedef struct TVAIUpContext {
     int estimateFrameCount, count, estimating, w, h, canKeepColor;
     double vram;
     double preBlur, noise, details, halo, blur, compression;
-    double prenoise, grain, grainSize;
+    double prenoise, grain, grainSize, blend;
     void* pFrameProcessor;
     AVFrame* previousFrame;
 } TVAIUpContext;
@@ -71,6 +71,7 @@ static const AVOption tvai_up_options[] = {
     { "grain",  "The amount of grain to add to the output",  OFFSET(grain),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 0.1, FLAGS, "grain" },
     { "gsize",  "The size of grain to be added",  OFFSET(grainSize),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 5.0, FLAGS, "gsize" },
     { "kcolor",  "Run extra color correction if required by model",  OFFSET(canKeepColor),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "kcolor" },
+    { "blend",  "The amount of input to be blended with output",  OFFSET(blend),  AV_OPT_TYPE_INT, {.dbl=0}, 0.0, 1.0, FLAGS, "blend" },
     { NULL }
 };
 
@@ -89,7 +90,7 @@ static int config_props(AVFilterLink *outlink) {
     AVFilterContext *ctx = outlink->src;
     TVAIUpContext *tvai = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
-    float parameter_values[11] = {tvai->preBlur, tvai->noise, tvai->details, tvai->halo, tvai->blur, tvai->compression, 0, tvai->prenoise, tvai->grain, tvai->grainSize, tvai->canKeepColor};
+    float parameter_values[12] = {tvai->preBlur, tvai->noise, tvai->details, tvai->halo, tvai->blur, tvai->compression, 0, tvai->prenoise, tvai->grain, tvai->grainSize, tvai->canKeepColor, tvai->blend};
     VideoProcessorInfo info;
     int scale = tvai->scale;
     double sar = av_q2d(inlink->sample_aspect_ratio) > 0 ? av_q2d(inlink->sample_aspect_ratio) : 1;
@@ -102,8 +103,7 @@ static int config_props(AVFilterLink *outlink) {
     }
     info.frameCount = tvai->estimateFrameCount;
     av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", tvai->model, tvai->scale, tvai->device,tvai->vram, tvai->extraThreads, tvai->canDownloadModels);
-    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, tvai->estimateFrameCount > 0, tvai->model, ModelTypeUpscaling, tvai->device, tvai->extraThreads, tvai->vram,
-                                                    scale, tvai->canDownloadModels, parameter_values, 11, ctx)) {
+    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, tvai->estimateFrameCount > 0, tvai->model, ModelTypeUpscaling, tvai->device, tvai->extraThreads,    tvai->vram, scale, tvai->canDownloadModels, parameter_values, 12, ctx)) {
       return AVERROR(EINVAL);
     }
     tvai->pFrameProcessor = tvai_create(&info);
