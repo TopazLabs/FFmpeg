@@ -71,7 +71,7 @@ static const AVOption tvai_up_options[] = {
     { "grain",  "The amount of grain to add to the output",  OFFSET(grain),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 0.1, FLAGS, "grain" },
     { "gsize",  "The size of grain to be added",  OFFSET(grainSize),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 5.0, FLAGS, "gsize" },
     { "kcolor",  "Run extra color correction if required by model",  OFFSET(canKeepColor),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "kcolor" },
-    { "blend",  "The amount of input to be blended with output",  OFFSET(blend),  AV_OPT_TYPE_INT, {.dbl=0}, 0.0, 1.0, FLAGS, "blend" },
+    { "blend",  "The amount of input to be blended with output",  OFFSET(blend),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 1.0, FLAGS, "blend" },
     { NULL }
 };
 
