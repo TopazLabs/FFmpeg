@@ -102,7 +102,7 @@ int avformat_alloc_output_context2(AVFormatContext **avctx, const AVOutputFormat
         if (format) {
             oformat = av_guess_format(format, NULL, NULL);
             if (!oformat) {
-                av_log(s, AV_LOG_ERROR, "Requested output format '%s' is not a suitable output format\n", format);
+                av_log(s, AV_LOG_ERROR, "Requested output format '%s' is not known.\n", format);
                 ret = AVERROR(EINVAL);
                 goto error;
             }
@@ -110,8 +110,10 @@ int avformat_alloc_output_context2(AVFormatContext **avctx, const AVOutputFormat
             oformat = av_guess_format(NULL, filename, NULL);
             if (!oformat) {
                 ret = AVERROR(EINVAL);
-                av_log(s, AV_LOG_ERROR, "Unable to find a suitable output format for '%s'\n",
-                       filename);
+                av_log(s, AV_LOG_ERROR,
+                       "Unable to choose an output format for '%s'; "
+                       "use a standard extension for the filename or specify "
+                       "the format manually.\n", filename);
                 goto error;
             }
         }
@@ -304,7 +306,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 par->codec_tag = av_codec_get_tag(of->p.codec_tag, par->codec_id);
         }
 
-        if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT)
+        if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
+            par->codec_id != AV_CODEC_ID_SMPTE_2038)
             si->nb_interleaved_streams++;
     }
     si->interleave_packet = of->interleave_packet;
@@ -942,7 +945,8 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
             ++stream_count;
         } else if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
                    par->codec_id != AV_CODEC_ID_VP8 &&
-                   par->codec_id != AV_CODEC_ID_VP9) {
+                   par->codec_id != AV_CODEC_ID_VP9 &&
+                   par->codec_id != AV_CODEC_ID_SMPTE_2038) {
             ++noninterleaved_count;
         }
     }
