@@ -111,7 +111,7 @@ fate-vsynth%-dnxhd-1080i-10bit:  ENCOPTS = -s hd1080 -b 185M -flags +ildct \
                                            -pix_fmt yuv422p10 -frames 5 -qmax 8
 fate-vsynth%-dnxhd-1080i-10bit:  DECOPTS = -sws_flags area+accurate_rnd+bitexact
 
-fate-vsynth%-dnxhd-1080i-colr:   ENCOPTS = -s hd1080 -b 120M -flags +ildct -movflags write_colr \
+fate-vsynth%-dnxhd-1080i-colr:   ENCOPTS = -s hd1080 -b 120M -flags +ildct -movflags +write_colr \
                                            -pix_fmt yuv422p -frames 5 -qmax 8
 fate-vsynth%-dnxhd-1080i-colr:   DECOPTS = -sws_flags area+accurate_rnd+bitexact
 
@@ -219,9 +219,11 @@ FATE_VCODEC_SCALE-$(call ENCDEC, JPEGLS, AVI) += jpegls
 fate-vsynth%-jpegls:             ENCOPTS = -sws_flags neighbor+full_chroma_int
 fate-vsynth%-jpegls:             DECOPTS = -sws_flags area
 
-FATE_VCODEC_SCALE-$(call ENCDEC, JPEG2000, AVI) += jpeg2000 jpeg2000-97
-fate-vsynth%-jpeg2000:                ENCOPTS = -qscale 7 -strict experimental -pred 1 -pix_fmt rgb24
-fate-vsynth%-jpeg2000-97:             ENCOPTS = -qscale 7 -strict experimental -pix_fmt rgb24
+FATE_VCODEC_SCALE-$(call ENCDEC, JPEG2000, AVI) += jpeg2000 jpeg2000-97 jpeg2000-gbrp12 jpeg2000-yuva444p16
+fate-vsynth%-jpeg2000:                ENCOPTS = -qscale 7 -pred 1 -pix_fmt rgb24
+fate-vsynth%-jpeg2000-97:             ENCOPTS = -qscale 7 -pix_fmt rgb24
+fate-vsynth%-jpeg2000-gbrp12:         ENCOPTS = -qscale 5 -pred 1 -pix_fmt gbrp12
+fate-vsynth%-jpeg2000-yuva444p16:     ENCOPTS = -qscale 8 -pred 1 -pix_fmt yuva444p16
 
 FATE_VCODEC-$(call ENCDEC, LJPEG MJPEG, AVI) += ljpeg
 fate-vsynth%-ljpeg:              ENCOPTS = -strict -1
