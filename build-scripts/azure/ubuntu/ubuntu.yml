@@ -2,6 +2,7 @@ steps:
   - checkout: self
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
+    ref: refs/tags/n12.0.16.0
   
   - template: ../set_tools_and_deps.yml
     parameters:
