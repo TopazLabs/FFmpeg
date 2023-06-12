@@ -3838,6 +3838,7 @@ scale_vulkan_filter_deps="vulkan spirv_compiler"
 vpp_qsv_filter_deps="libmfx"
 vpp_qsv_filter_select="qsvvpp"
 xfade_opencl_filter_deps="opencl"
+xfade_vulkan_filter_deps="vulkan spirv_compiler"
 yadif_cuda_filter_deps="ffnvcodec"
 yadif_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
 yadif_videotoolbox_filter_deps="metal corevideo videotoolbox"
@@ -6764,7 +6765,8 @@ enabled libopenh264       && require libopenh264 wels/codec_api.h WelsGetCodecVe
 enabled libopenjpeg       && { check_pkg_config libopenjpeg "libopenjp2 >= 2.1.0" openjpeg.h opj_version ||
                                { require_pkg_config libopenjpeg "libopenjp2 >= 2.1.0" openjpeg.h opj_version -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } }
 enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.6557" libopenmpt/libopenmpt.h openmpt_module_create -lstdc++ && append libopenmpt_extralibs "-lstdc++"
-enabled libopenvino       && require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api
+enabled libopenvino       && { check_pkg_config libopenvino openvino c_api/ie_c_api.h ie_c_api_version ||
+                               require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api; }
 enabled libopus           && {
     enabled libopus_decoder && {
         require_pkg_config libopus opus opus_multistream.h opus_multistream_decoder_create
