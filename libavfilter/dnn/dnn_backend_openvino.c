@@ -23,6 +23,7 @@
  * DNN OpenVINO backend implementation.
  */
 
+#include "dnn_backend_openvino.h"
 #include "dnn_io_proc.h"
 #include "libavformat/avio.h"
 #include "libavutil/avassert.h"
@@ -292,46 +293,6 @@ static void infer_completion_callback(void *args)
     }
 }
 
-static void dnn_free_model_ov(DNNModel **model)
-{
-    if (*model){
-        OVModel *ov_model = (*model)->model;
-        while (ff_safe_queue_size(ov_model->request_queue) != 0) {
-            OVRequestItem *item = ff_safe_queue_pop_front(ov_model->request_queue);
-            if (item && item->infer_request) {
-                ie_infer_request_free(&item->infer_request);
-            }
-            av_freep(&item->lltasks);
-            av_freep(&item);
-        }
-        ff_safe_queue_destroy(ov_model->request_queue);
-
-        while (ff_queue_size(ov_model->lltask_queue) != 0) {
-            LastLevelTaskItem *item = ff_queue_pop_front(ov_model->lltask_queue);
-            av_freep(&item);
-        }
-        ff_queue_destroy(ov_model->lltask_queue);
-
-        while (ff_queue_size(ov_model->task_queue) != 0) {
-            TaskItem *item = ff_queue_pop_front(ov_model->task_queue);
-            av_frame_free(&item->in_frame);
-            av_frame_free(&item->out_frame);
-            av_freep(&item);
-        }
-        ff_queue_destroy(ov_model->task_queue);
-
-        if (ov_model->exe_network)
-            ie_exec_network_free(&ov_model->exe_network);
-        if (ov_model->network)
-            ie_network_free(&ov_model->network);
-        if (ov_model->core)
-            ie_core_free(&ov_model->core);
-        av_freep(&ov_model);
-        av_freep(model);
-    }
-}
-
-
 static int init_model_ov(OVModel *ov_model, const char *input_name, const char *output_name)
 {
     int ret = 0;
@@ -380,7 +341,7 @@ static int init_model_ov(OVModel *ov_model, const char *input_name, const char *
     if (status != OK) {
         if (status == NOT_FOUND) {
             av_log(ctx, AV_LOG_ERROR, "Could not find \"%s\" in model, failed to set output layout as NHWC, "\
-                                      "all output(s) are: \"%s\"\n", output_name, ov_model->all_output_names);
+                                      "all output(s) are: \"%s\"\n", input_name, ov_model->all_output_names);
         } else{
             av_log(ctx, AV_LOG_ERROR, "Failed to set layout as NHWC for output %s\n", output_name);
         }
@@ -477,7 +438,7 @@ static int init_model_ov(OVModel *ov_model, const char *input_name, const char *
     return 0;
 
 err:
-    dnn_free_model_ov(&ov_model->model);
+    ff_dnn_free_model_ov(&ov_model->model);
     return ret;
 }
 
@@ -760,7 +721,7 @@ err:
     return ret;
 }
 
-static DNNModel *dnn_load_model_ov(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx)
+DNNModel *ff_dnn_load_model_ov(const char *model_filename, DNNFunctionType func_type, const char *options, AVFilterContext *filter_ctx)
 {
     DNNModel *model = NULL;
     OVModel *ov_model = NULL;
@@ -845,11 +806,11 @@ static DNNModel *dnn_load_model_ov(const char *model_filename, DNNFunctionType f
     return model;
 
 err:
-    dnn_free_model_ov(&model);
+    ff_dnn_free_model_ov(&model);
     return NULL;
 }
 
-static int dnn_execute_model_ov(const DNNModel *model, DNNExecBaseParams *exec_params)
+int ff_dnn_execute_model_ov(const DNNModel *model, DNNExecBaseParams *exec_params)
 {
     OVModel *ov_model = model->model;
     OVContext *ctx = &ov_model->ctx;
@@ -932,13 +893,13 @@ static int dnn_execute_model_ov(const DNNModel *model, DNNExecBaseParams *exec_p
     }
 }
 
-static DNNAsyncStatusType dnn_get_result_ov(const DNNModel *model, AVFrame **in, AVFrame **out)
+DNNAsyncStatusType ff_dnn_get_result_ov(const DNNModel *model, AVFrame **in, AVFrame **out)
 {
     OVModel *ov_model = model->model;
     return ff_dnn_get_result_common(ov_model->task_queue, in, out);
 }
 
-static int dnn_flush_ov(const DNNModel *model)
+int ff_dnn_flush_ov(const DNNModel *model)
 {
     OVModel *ov_model = model->model;
     OVContext *ctx = &ov_model->ctx;
@@ -976,10 +937,41 @@ static int dnn_flush_ov(const DNNModel *model)
     return 0;
 }
 
-const DNNModule ff_dnn_backend_openvino = {
-    .load_model     = dnn_load_model_ov,
-    .execute_model  = dnn_execute_model_ov,
-    .get_result     = dnn_get_result_ov,
-    .flush          = dnn_flush_ov,
-    .free_model     = dnn_free_model_ov,
-};
+void ff_dnn_free_model_ov(DNNModel **model)
+{
+    if (*model){
+        OVModel *ov_model = (*model)->model;
+        while (ff_safe_queue_size(ov_model->request_queue) != 0) {
+            OVRequestItem *item = ff_safe_queue_pop_front(ov_model->request_queue);
+            if (item && item->infer_request) {
+                ie_infer_request_free(&item->infer_request);
+            }
+            av_freep(&item->lltasks);
+            av_freep(&item);
+        }
+        ff_safe_queue_destroy(ov_model->request_queue);
+
+        while (ff_queue_size(ov_model->lltask_queue) != 0) {
+            LastLevelTaskItem *item = ff_queue_pop_front(ov_model->lltask_queue);
+            av_freep(&item);
+        }
+        ff_queue_destroy(ov_model->lltask_queue);
+
+        while (ff_queue_size(ov_model->task_queue) != 0) {
+            TaskItem *item = ff_queue_pop_front(ov_model->task_queue);
+            av_frame_free(&item->in_frame);
+            av_frame_free(&item->out_frame);
+            av_freep(&item);
+        }
+        ff_queue_destroy(ov_model->task_queue);
+
+        if (ov_model->exe_network)
+            ie_exec_network_free(&ov_model->exe_network);
+        if (ov_model->network)
+            ie_network_free(&ov_model->network);
+        if (ov_model->core)
+            ie_core_free(&ov_model->core);
+        av_freep(&ov_model);
+        av_freep(model);
+    }
+}

@@ -36,7 +36,7 @@ typedef struct DnnContext {
 
     char **model_outputnames;
     uint32_t nb_outputs;
-    const DNNModule *dnn_module;
+    DNNModule *dnn_module;
     DNNModel *model;
 } DnnContext;
 
