@@ -94,10 +94,10 @@ static int cpia_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     if (header[28] == NOT_COMPRESSED) {
         frame->pict_type = AV_PICTURE_TYPE_I;
-        frame->flags |= AV_FRAME_FLAG_KEY;
+        frame->key_frame = 1;
     } else {
         frame->pict_type = AV_PICTURE_TYPE_P;
-        frame->flags &= ~AV_FRAME_FLAG_KEY;
+        frame->key_frame = 0;
     }
 
     // Get buffer filled with previous frame

@@ -789,11 +789,6 @@ about 80-96 kbps/channel
 @end table
 
 Default value is 0.
-
-@item frame_length
-Set the audio frame length in samples. Default value is the internal
-default of the library. Refer to the library's documentation for information
-about supported values.
 @end table
 
 @subsection Examples
@@ -864,13 +859,6 @@ Enable the encoder to use ABR when set to 1. The @command{lame}
 @option{--abr} sets the target bitrate, while this options only
 tells FFmpeg to use ABR still relies on @option{b} to set bitrate.
 
-@item copyright (@emph{-c})
-Set MPEG audio copyright flag when set to 1. The default value is 0
-(disabled).
-
-@item original (@emph{-o})
-Set MPEG audio original flag when set to 1. The default value is 1
-(enabled).
 @end table
 
 @section libopencore-amrnb
@@ -3200,8 +3188,8 @@ recommended value) and do not set a size constraint.
 
 @section QSV Encoders
 
-The family of Intel QuickSync Video encoders (MPEG-2, H.264, HEVC, JPEG/MJPEG,
-VP9, AV1)
+The family of Intel QuickSync Video encoders (MPEG-2, H.264, HEVC, JPEG/MJPEG
+and VP9)
 
 @subsection Ratecontrol Method
 The ratecontrol method is selected as follows:
@@ -3356,7 +3344,7 @@ Supported in h264_qsv.
 Change these value to reset qsv codec's max/min qp configuration.
 
 @item @var{low_delay_brc}
-Supported in h264_qsv, hevc_qsv and av1_qsv.
+Supported in h264_qsv and hevc_qsv.
 Change this value to reset qsv codec's low_delay_brc configuration.
 
 @item @var{framerate}

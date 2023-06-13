@@ -134,7 +134,7 @@ static int bitpacked_decode(AVCodecContext *avctx, AVFrame *frame,
         return res;
 
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->flags |= AV_FRAME_FLAG_KEY;
+    frame->key_frame = 1;
 
     *got_frame = 1;
     return buf_size;

@@ -230,11 +230,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = ff_get_buffer(avctx, frame, AV_GET_BUFFER_FLAG_REF)) < 0)
         return ret;
     memcpy(frame->data[1], c->pal, AVPALETTE_SIZE);
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
     frame->palette_has_changed = pc;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     outptr = frame->data[0];
     srcptr = c->decomp_buf;
@@ -262,19 +258,19 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     switch(compr){
     case -1:
-        frame->flags &= ~AV_FRAME_FLAG_KEY;
+        frame->key_frame = 0;
         frame->pict_type = AV_PICTURE_TYPE_P;
         if (c->prev->data[0])
             memcpy(frame->data[0], c->prev->data[0], frame->linesize[0] * avctx->height);
         else{ // Should happen only when first frame is 'NULL'
             memset(frame->data[0], 0, frame->linesize[0] * avctx->height);
-            frame->flags |= AV_FRAME_FLAG_KEY;
+            frame->key_frame = 1;
             frame->pict_type = AV_PICTURE_TYPE_I;
         }
         break;
     case 2:
     case 4:
-        frame->flags |= AV_FRAME_FLAG_KEY;
+        frame->key_frame = 1;
         frame->pict_type = AV_PICTURE_TYPE_I;
         for (j = 0; j < avctx->height; j++) {
                 memcpy(outptr, srcptr, avctx->width);
@@ -289,7 +285,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             if (!(avctx->flags2 & AV_CODEC_FLAG2_SHOW_ALL))
                 return AVERROR_INVALIDDATA;
         }
-        frame->flags &= ~AV_FRAME_FLAG_KEY;
+        frame->key_frame = 0;
         frame->pict_type = AV_PICTURE_TYPE_P;
         for (j = 0; j < avctx->height; j++) {
             if(tmpptr){
@@ -304,7 +300,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         break;
     case 12: // ScummVM coding
     case 13:
-        frame->flags &= ~AV_FRAME_FLAG_KEY;
+        frame->key_frame = 0;
         frame->pict_type = AV_PICTURE_TYPE_P;
         if (!c->prev->data[0]) {
             av_log(avctx, AV_LOG_ERROR, "Missing reference frame\n");

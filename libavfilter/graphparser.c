@@ -475,7 +475,7 @@ int avfilter_graph_segment_parse(AVFilterGraph *graph, const char *graph_str,
 
     graph_str += strspn(graph_str, WHITESPACES);
 
-    ret = parse_sws_flags(&graph_str, &seg->scale_sws_opts, graph);
+    ret = parse_sws_flags(&graph_str, &seg->scale_sws_opts, &graph);
     if (ret < 0)
         goto fail;
 
@@ -532,7 +532,8 @@ int avfilter_graph_segment_create_filters(AVFilterGraphSegment *seg, int flags)
         for (size_t j = 0; j < ch->nb_filters; j++) {
             AVFilterParams *p = ch->filters[j];
             const AVFilter *f = avfilter_get_by_name(p->filter_name);
-            char name[64];
+            char inst_name[30], *name = p->instance_name ? p->instance_name :
+                                                           inst_name;
 
             // skip already processed filters
             if (p->filter || !p->filter_name)
@@ -545,9 +546,7 @@ int avfilter_graph_segment_create_filters(AVFilterGraphSegment *seg, int flags)
             }
 
             if (!p->instance_name)
-                snprintf(name, sizeof(name), "Parsed_%s_%zu", f->name, idx);
-            else
-                snprintf(name, sizeof(name), "%s@%s", f->name, p->instance_name);
+                snprintf(inst_name, sizeof(inst_name), "Parsed_%s_%zu", f->name, idx);
 
             p->filter = avfilter_graph_alloc_filter(seg->graph, f, name);
             if (!p->filter)

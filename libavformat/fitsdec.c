@@ -37,6 +37,7 @@ typedef struct FITSContext {
     const AVClass *class;
     AVRational framerate;
     int first_image;
+    int64_t pts;
 } FITSContext;
 
 static int fits_probe(const AVProbeData *p)
@@ -60,6 +61,7 @@ static int fits_read_header(AVFormatContext *s)
     st->codecpar->codec_id = AV_CODEC_ID_FITS;
 
     avpriv_set_pts_info(st, 64, fits->framerate.den, fits->framerate.num);
+    fits->pts = 0;
     fits->first_image = 1;
     return 0;
 }
@@ -194,11 +196,13 @@ static int fits_read_packet(AVFormatContext *s, AVPacket *pkt)
     pkt->size = avbuf.len - 80;
     av_freep(&buf);
     ret = avio_read(s->pb, pkt->data + pkt->size, size);
-    if (ret < 0)
+    if (ret < 0) {
         return ret;
+    }
 
     pkt->size += ret;
-    pkt->duration = 1;
+    pkt->pts = fits->pts;
+    fits->pts++;
 
     return 0;
 
@@ -217,7 +221,6 @@ static const AVClass fits_demuxer_class = {
     .item_name  = av_default_item_name,
     .option     = fits_options,
     .version    = LIBAVUTIL_VERSION_INT,
-    .category   = AV_CLASS_CATEGORY_DEMUXER,
 };
 
 const AVInputFormat ff_fits_demuxer = {
@@ -228,5 +231,5 @@ const AVInputFormat ff_fits_demuxer = {
     .read_header    = fits_read_header,
     .read_packet    = fits_read_packet,
     .priv_class     = &fits_demuxer_class,
-    .flags          = AVFMT_NOTIMESTAMPS,
+    .raw_codec_id   = AV_CODEC_ID_FITS,
 };

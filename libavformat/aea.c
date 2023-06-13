@@ -90,7 +90,13 @@ static int aea_read_header(AVFormatContext *s)
 
 static int aea_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
-    return av_get_packet(s->pb, pkt, s->streams[0]->codecpar->block_align);
+    int ret = av_get_packet(s->pb, pkt, s->streams[0]->codecpar->block_align);
+
+    pkt->stream_index = 0;
+    if (ret <= 0)
+        return AVERROR(EIO);
+
+    return ret;
 }
 
 const AVInputFormat ff_aea_demuxer = {

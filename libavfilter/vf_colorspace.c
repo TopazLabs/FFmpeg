@@ -572,15 +572,15 @@ static int create_filtergraph(AVFilterContext *ctx,
             if (s->out_csp == AVCOL_SPC_UNSPECIFIED) {
                 if (s->user_all == CS_UNSPECIFIED) {
                     av_log(ctx, AV_LOG_ERROR,
-                           "Please specify output colorspace\n");
+                           "Please specify output transfer characteristics\n");
                 } else {
                     av_log(ctx, AV_LOG_ERROR,
                            "Unsupported output color property %d\n", s->user_all);
                 }
             } else {
                 av_log(ctx, AV_LOG_ERROR,
-                       "Unsupported output colorspace %d (%s)\n", s->out_csp,
-                       av_color_space_name(s->out_csp));
+                       "Unsupported output transfer characteristics %d (%s)\n",
+                       s->out_csp, av_color_space_name(s->out_csp));
             }
             return AVERROR(EINVAL);
         }

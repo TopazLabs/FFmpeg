@@ -26,8 +26,6 @@
 
 typedef struct H2645VUI {
     AVRational sar;
-    int aspect_ratio_idc;
-    int aspect_ratio_info_present_flag;
 
     int overscan_info_present_flag;
     int overscan_appropriate_flag;

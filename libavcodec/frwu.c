@@ -63,7 +63,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
         return ret;
 
     pic->pict_type = AV_PICTURE_TYPE_I;
-    pic->flags |= AV_FRAME_FLAG_KEY;
+    pic->key_frame = 1;
 
     for (field = 0; field < 2; field++) {
         int i;

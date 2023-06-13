@@ -335,11 +335,11 @@ static int libjxl_encode_frame(AVCodecContext *avctx, AVPacket *pkt, const AVFra
         break;
     case AVCOL_TRC_GAMMA22:
         jxl_color.transfer_function = JXL_TRANSFER_FUNCTION_GAMMA;
-        jxl_color.gamma = 1/2.2f;
+        jxl_color.gamma = 2.2;
         break;
     case AVCOL_TRC_GAMMA28:
         jxl_color.transfer_function = JXL_TRANSFER_FUNCTION_GAMMA;
-        jxl_color.gamma = 1/2.8f;
+        jxl_color.gamma = 2.8;
         break;
     default:
         if (pix_desc->flags & AV_PIX_FMT_FLAG_FLOAT) {

@@ -1265,11 +1265,7 @@ static int mpeg_decode_postinit(AVCodecContext *avctx)
         if (avctx->codec_id == AV_CODEC_ID_MPEG1VIDEO) {
             // MPEG-1 fps
             avctx->framerate = ff_mpeg12_frame_rate_tab[s1->frame_rate_index];
-#if FF_API_TICKS_PER_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
             avctx->ticks_per_frame     = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
             avctx->chroma_sample_location = AVCHROMA_LOC_CENTER;
         } else { // MPEG-2
@@ -1279,11 +1275,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
                       ff_mpeg12_frame_rate_tab[s1->frame_rate_index].num * s1->frame_rate_ext.num,
                       ff_mpeg12_frame_rate_tab[s1->frame_rate_index].den * s1->frame_rate_ext.den,
                       1 << 30);
-#if FF_API_TICKS_PER_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
             avctx->ticks_per_frame = 2;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
             switch (s->chroma_format) {
             case 1: avctx->chroma_sample_location = AVCHROMA_LOC_LEFT; break;
@@ -1351,10 +1343,7 @@ static int mpeg1_decode_picture(AVCodecContext *avctx, const uint8_t *buf,
         s->mpeg_f_code[1][1] = f_code;
     }
     s->current_picture.f->pict_type = s->pict_type;
-    if (s->pict_type == AV_PICTURE_TYPE_I)
-        s->current_picture.f->flags |= AV_FRAME_FLAG_KEY;
-    else
-        s->current_picture.f->flags &= ~AV_FRAME_FLAG_KEY;
+    s->current_picture.f->key_frame = s->pict_type == AV_PICTURE_TYPE_I;
 
     if (avctx->debug & FF_DEBUG_PICT_INFO)
         av_log(avctx, AV_LOG_DEBUG,
@@ -1536,10 +1525,7 @@ static int mpeg_decode_picture_coding_extension(Mpeg1Context *s1)
         } else
             s->pict_type = AV_PICTURE_TYPE_B;
         s->current_picture.f->pict_type = s->pict_type;
-        if (s->pict_type == AV_PICTURE_TYPE_I)
-            s->current_picture.f->flags |= AV_FRAME_FLAG_KEY;
-        else
-            s->current_picture.f->flags &= ~AV_FRAME_FLAG_KEY;
+        s->current_picture.f->key_frame = s->pict_type == AV_PICTURE_TYPE_I;
     }
 
     s->intra_dc_precision         = get_bits(&s->gb, 2);
@@ -2970,10 +2956,6 @@ static int ipu_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     GetBitContext *gb = &m->gb;
     int ret;
 
-    // Check for minimal intra MB size (considering mb header, luma & chroma dc VLC, ac EOB VLC)
-    if (avpkt->size*8LL < (avctx->width+15)/16 * ((avctx->height+15)/16) * (2 + 3*4 + 2*2 + 2*6))
-        return AVERROR_INVALIDDATA;
-
     ret = ff_get_buffer(avctx, frame, 0);
     if (ret < 0)
         return ret;
@@ -3060,7 +3042,7 @@ static int ipu_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
 
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->flags |= AV_FRAME_FLAG_KEY;
+    frame->key_frame = 1;
     *got_frame = 1;
 
     return avpkt->size;

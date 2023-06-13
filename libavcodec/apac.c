@@ -269,10 +269,8 @@ const FFCodec ff_apac_decoder = {
     FF_CODEC_DECODE_CB(apac_decode),
     .close            = apac_close,
     .p.capabilities   = AV_CODEC_CAP_DELAY |
-#if FF_API_SUBFRAMES
-                        AV_CODEC_CAP_SUBFRAMES |
-#endif
-                        AV_CODEC_CAP_DR1,
+                        AV_CODEC_CAP_DR1 |
+                        AV_CODEC_CAP_SUBFRAMES,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
     .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
                                                         AV_SAMPLE_FMT_S16P,

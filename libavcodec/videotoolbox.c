@@ -799,9 +799,6 @@ static CFDictionaryRef videotoolbox_buffer_attributes_create(int width,
 static CFDictionaryRef videotoolbox_decoder_config_create(CMVideoCodecType codec_type,
                                                           AVCodecContext *avctx)
 {
-    CFMutableDictionaryRef avc_info;
-    CFDataRef data = NULL;
-
     CFMutableDictionaryRef config_info = CFDictionaryCreateMutable(kCFAllocatorDefault,
                                                                    0,
                                                                    &kCFTypeDictionaryKeyCallBacks,
@@ -812,6 +809,9 @@ static CFDictionaryRef videotoolbox_decoder_config_create(CMVideoCodecType codec
                             kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder :
                             kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder,
                          kCFBooleanTrue);
+
+    CFMutableDictionaryRef avc_info;
+    CFDataRef data = NULL;
 
     avc_info = CFDictionaryCreateMutable(kCFAllocatorDefault,
                                          1,
@@ -1072,14 +1072,13 @@ static int videotoolbox_hevc_end_frame(AVCodecContext *avctx)
     HEVCContext *h = avctx->priv_data;
     AVFrame *frame = h->ref->frame;
     VTContext *vtctx = avctx->internal->hwaccel_priv_data;
-    int ret;
 
     h->output_frame->crop_right = 0;
     h->output_frame->crop_left = 0;
     h->output_frame->crop_top = 0;
     h->output_frame->crop_bottom = 0;
 
-    ret = ff_videotoolbox_common_end_frame(avctx, frame);
+    int ret = ff_videotoolbox_common_end_frame(avctx, frame);
     vtctx->bitstream_size = 0;
     return ret;
 }
@@ -1133,16 +1132,14 @@ static int videotoolbox_prores_end_frame(AVCodecContext *avctx)
 }
 
 static enum AVPixelFormat videotoolbox_best_pixel_format(AVCodecContext *avctx) {
-    int depth;
     const AVPixFmtDescriptor *descriptor = av_pix_fmt_desc_get(avctx->sw_pix_fmt);
     if (!descriptor)
         return AV_PIX_FMT_NV12; // same as av_videotoolbox_alloc_context()
 
+    int depth = descriptor->comp[0].depth;
 
     if (descriptor->flags & AV_PIX_FMT_FLAG_ALPHA)
         return AV_PIX_FMT_AYUV64;
-
-    depth = descriptor->comp[0].depth;
 
 #if HAVE_KCVPIXELFORMATTYPE_444YPCBCR16BIPLANARVIDEORANGE
     if (depth > 10)
@@ -1197,7 +1194,6 @@ int ff_videotoolbox_common_init(AVCodecContext *avctx)
     VTContext *vtctx = avctx->internal->hwaccel_priv_data;
     AVHWFramesContext *hw_frames;
     int err;
-    bool full_range;
 
     vtctx->logctx = avctx;
 
@@ -1245,7 +1241,7 @@ int ff_videotoolbox_common_init(AVCodecContext *avctx)
         goto fail;
     }
 
-    full_range = avctx->color_range == AVCOL_RANGE_JPEG;
+    bool full_range = avctx->color_range == AVCOL_RANGE_JPEG;
     vtctx->vt_ctx->cv_pix_fmt_type =
         av_map_videotoolbox_format_from_pixfmt2(hw_frames->sw_format, full_range);
     if (!vtctx->vt_ctx->cv_pix_fmt_type) {

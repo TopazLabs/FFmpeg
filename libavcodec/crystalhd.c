@@ -543,19 +543,15 @@ static inline CopyRet copy_frame(AVCodecContext *avctx,
         av_image_copy_plane(dst, dStride, src, sStride, bwidth, height);
     }
 
-    frame->flags |= AV_FRAME_FLAG_INTERLACED * !!interlaced;
+    frame->interlaced_frame = interlaced;
     if (interlaced)
-        frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST * !bottom_first;
+        frame->top_field_first = !bottom_first;
 
     frame->pts = pkt_pts;
 
-    frame->duration = 0;
-#if FF_API_FRAME_PKT
-FF_DISABLE_DEPRECATION_WARNINGS
     frame->pkt_pos = -1;
+    frame->duration = 0;
     frame->pkt_size = -1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     if (!priv->need_second_field) {
         *got_frame       = 1;

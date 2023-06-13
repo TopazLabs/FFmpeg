@@ -637,7 +637,7 @@ static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
         return ret;
 
     p->pict_type = AV_PICTURE_TYPE_I;
-    p->flags |= AV_FRAME_FLAG_KEY;
+    p->key_frame = 1;
 
     if ((ret = ff_thread_get_buffer(avctx, p, 0)) < 0)
         return ret;

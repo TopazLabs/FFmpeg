@@ -202,10 +202,10 @@ static int cmv_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     buf += EA_PREAMBLE_SIZE;
     if ((buf[0]&1)) {  // subtype
         cmv_decode_inter(s, frame, buf+2, buf_end);
-        frame->flags &= ~AV_FRAME_FLAG_KEY;
+        frame->key_frame = 0;
         frame->pict_type = AV_PICTURE_TYPE_P;
     }else{
-        frame->flags |= AV_FRAME_FLAG_KEY;
+        frame->key_frame = 1;
         frame->pict_type = AV_PICTURE_TYPE_I;
         cmv_decode_intra(s, frame, buf+2, buf_end);
     }

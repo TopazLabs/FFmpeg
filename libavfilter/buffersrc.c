@@ -247,22 +247,6 @@ FF_DISABLE_DEPRECATION_WARNINGS
 FF_ENABLE_DEPRECATION_WARNINGS
 #endif
 
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (copy->interlaced_frame)
-        copy->flags |= AV_FRAME_FLAG_INTERLACED;
-    if (copy->top_field_first)
-        copy->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
-#if FF_API_FRAME_KEY
-FF_DISABLE_DEPRECATION_WARNINGS
-    if (copy->key_frame)
-        copy->flags |= AV_FRAME_FLAG_KEY;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     ret = ff_filter_frame(ctx->outputs[0], copy);
     if (ret < 0)
         return ret;
@@ -289,16 +273,9 @@ static av_cold int init_video(AVFilterContext *ctx)
 {
     BufferSourceContext *c = ctx->priv;
 
-    if (c->pix_fmt == AV_PIX_FMT_NONE) {
-        av_log(ctx, AV_LOG_ERROR, "Unspecified pixel format\n");
-        return AVERROR(EINVAL);
-    }
-    if (c->w <= 0 || c->h <= 0) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid size %dx%d\n", c->w, c->h);
-        return AVERROR(EINVAL);
-    }
-    if (av_q2d(c->time_base) <= 0) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid time base %d/%d\n", c->time_base.num, c->time_base.den);
+    if (c->pix_fmt == AV_PIX_FMT_NONE || !c->w || !c->h ||
+        av_q2d(c->time_base) <= 0) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid parameters provided.\n");
         return AVERROR(EINVAL);
     }
 

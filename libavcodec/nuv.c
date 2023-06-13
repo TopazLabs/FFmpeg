@@ -263,10 +263,7 @@ retry:
     }
 
     c->pic->pict_type = keyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
-    if (keyframe)
-        c->pic->flags |= AV_FRAME_FLAG_KEY;
-    else
-        c->pic->flags &= ~AV_FRAME_FLAG_KEY;
+    c->pic->key_frame = keyframe;
     // decompress/copy/whatever data
     switch (comptype) {
     case NUV_LZO:

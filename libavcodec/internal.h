@@ -148,6 +148,8 @@ typedef struct AVCodecInternal {
     AVFrame *buffer_frame;
     int draining_done;
 
+    int showed_multi_packet_warning;
+
     /* to prevent infinite loop on errors when draining */
     int nb_draining_errors;
 

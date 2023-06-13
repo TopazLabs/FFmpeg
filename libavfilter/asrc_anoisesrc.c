@@ -31,7 +31,6 @@ typedef struct ANoiseSrcContext {
     const AVClass *class;
     int sample_rate;
     double amplitude;
-    double density;
     int64_t duration;
     int color;
     int64_t seed;
@@ -39,7 +38,7 @@ typedef struct ANoiseSrcContext {
 
     int64_t pts;
     int infinite;
-    double (*filter)(double white, double *buf);
+    double (*filter)(double white, double *buf, double half_amplitude);
     double buf[7];
     AVLFG c;
 } ANoiseSrcContext;
@@ -77,7 +76,6 @@ static const AVOption anoisesrc_options[] = {
     { "s",            "set random seed",  OFFSET(seed),         AV_OPT_TYPE_INT64,     {.i64 = -1},        -1,  UINT_MAX,   FLAGS },
     { "nb_samples",   "set the number of samples per requested frame", OFFSET(nb_samples), AV_OPT_TYPE_INT, {.i64 = 1024}, 1, INT_MAX, FLAGS },
     { "n",            "set the number of samples per requested frame", OFFSET(nb_samples), AV_OPT_TYPE_INT, {.i64 = 1024}, 1, INT_MAX, FLAGS },
-    { "density",      "set density",      OFFSET(density),      AV_OPT_TYPE_DOUBLE,    {.dbl = 0.05},       0., 1.,         FLAGS },
     {NULL}
 };
 
@@ -103,12 +101,12 @@ static av_cold int query_formats(AVFilterContext *ctx)
     return ff_set_common_samplerates_from_list(ctx, sample_rates);
 }
 
-static double white_filter(double white, double *buf)
+static double white_filter(double white, double *buf, double ha)
 {
     return white;
 }
 
-static double pink_filter(double white, double *buf)
+static double pink_filter(double white, double *buf, double ha)
 {
     double pink;
 
@@ -124,7 +122,7 @@ static double pink_filter(double white, double *buf)
     return pink * 0.11;
 }
 
-static double blue_filter(double white, double *buf)
+static double blue_filter(double white, double *buf, double ha)
 {
     double blue;
 
@@ -140,7 +138,7 @@ static double blue_filter(double white, double *buf)
     return blue * 0.11;
 }
 
-static double brown_filter(double white, double *buf)
+static double brown_filter(double white, double *buf, double ha)
 {
     double brown;
 
@@ -149,7 +147,7 @@ static double brown_filter(double white, double *buf)
     return brown * 3.5;
 }
 
-static double violet_filter(double white, double *buf)
+static double violet_filter(double white, double *buf, double ha)
 {
     double violet;
 
@@ -158,10 +156,9 @@ static double violet_filter(double white, double *buf)
     return violet * 3.5;
 }
 
-static double velvet_filter(double white, double *buf)
+static double velvet_filter(double white, double *buf, double ha)
 {
-    double awhite = fabs(white);
-    return FFDIFFSIGN(white, 0.0) * buf[1] * (awhite < buf[0]);
+    return 2. * ha * ((white > ha) - (white < -ha));
 }
 
 static av_cold int config_props(AVFilterLink *outlink)
@@ -183,9 +180,7 @@ static av_cold int config_props(AVFilterLink *outlink)
     case NM_BROWN:  s->filter = brown_filter;  break;
     case NM_BLUE:   s->filter = blue_filter;   break;
     case NM_VIOLET: s->filter = violet_filter; break;
-    case NM_VELVET: s->buf[0] = s->amplitude * s->density;
-                    s->buf[1] = s->amplitude;
-                    s->filter = velvet_filter; break;
+    case NM_VELVET: s->filter = velvet_filter; break;
     }
 
     return 0;
@@ -218,7 +213,7 @@ static int activate(AVFilterContext *ctx)
     for (i = 0; i < nb_samples; i++) {
         double white;
         white = s->amplitude * ((2 * ((double) av_lfg_get(&s->c) / 0xffffffff)) - 1);
-        dst[i] = s->filter(white, s->buf);
+        dst[i] = s->filter(white, s->buf, s->amplitude * 0.5);
     }
 
     if (!s->infinite)

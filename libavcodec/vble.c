@@ -135,7 +135,7 @@ static int vble_decode_frame(AVCodecContext *avctx, AVFrame *pic,
         return ret;
 
     /* Set flags */
-    pic->flags |= AV_FRAME_FLAG_KEY;
+    pic->key_frame = 1;
     pic->pict_type = AV_PICTURE_TYPE_I;
 
     /* Version should always be 1 */

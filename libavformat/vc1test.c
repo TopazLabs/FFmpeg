@@ -101,7 +101,7 @@ static int vc1t_read_packet(AVFormatContext *s,
     uint32_t pts;
 
     if(avio_feof(pb))
-        return AVERROR_EOF;
+        return AVERROR(EIO);
 
     frame_size = avio_rl24(pb);
     if(avio_r8(pb) & 0x80)

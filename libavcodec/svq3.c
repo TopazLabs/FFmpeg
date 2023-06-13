@@ -1408,10 +1408,7 @@ static int svq3_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     /* for skipping the frame */
     s->cur_pic->f->pict_type = s->pict_type;
-    if (s->pict_type == AV_PICTURE_TYPE_I)
-        s->cur_pic->f->flags |= AV_FRAME_FLAG_KEY;
-    else
-        s->cur_pic->f->flags &= ~AV_FRAME_FLAG_KEY;
+    s->cur_pic->f->key_frame = (s->pict_type == AV_PICTURE_TYPE_I);
 
     ret = get_buffer(avctx, s->cur_pic);
     if (ret < 0)

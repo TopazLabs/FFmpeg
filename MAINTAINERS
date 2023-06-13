@@ -432,7 +432,6 @@ Muxers/Demuxers:
   ipmovie.c                             Mike Melanson
   ircam*                                Paul B Mahol
   iss.c                                 Stefan Gehrer
-  jpegxl_anim_dec.c                     Leo Izen
   jpegxl_probe.*                        Leo Izen
   jvdec.c                               Peter Ross
   kvag.c                                Zane van Iperen
@@ -544,7 +543,6 @@ LoongArch                               Shiyou Yin
 Mac OS X / PowerPC                      Romain Dolbeau, Guillaume Poirier
 Amiga / PowerPC                         Colin Ward
 Linux / PowerPC                         Lauri Kasanen
-RISC-V                                  Rémi Denis-Courmont
 Windows MinGW                           Alex Beregszaszi, Ramiro Polla
 Windows Cygwin                          Victor Paesa
 Windows MSVC                            Matthew Oliver, Hendrik Leppkes

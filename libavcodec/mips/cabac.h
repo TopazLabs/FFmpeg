@@ -30,7 +30,6 @@
 #include "libavutil/mips/mmiutils.h"
 #include "config.h"
 
-#if !HAVE_MIPS32R6 && !HAVE_MIPS64R6
 #define get_cabac_inline get_cabac_inline_mips
 static av_always_inline int get_cabac_inline_mips(CABACContext *c,
                                                   uint8_t * const state){
@@ -226,5 +225,4 @@ static av_always_inline int get_cabac_bypass_sign_mips(CABACContext *c, int val)
 
     return res;
 }
-#endif /* !HAVE_MIPS32R6 && !HAVE_MIPS64R6 */
 #endif /* AVCODEC_MIPS_CABAC_H */

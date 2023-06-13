@@ -187,7 +187,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
         return ret;
 
     pic->pict_type = AV_PICTURE_TYPE_I;
-    pic->flags |= AV_FRAME_FLAG_KEY;
+    pic->key_frame = 1;
 
     if (stride) {
         td.stride = stride;
@@ -207,9 +207,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
     if (avctx->field_order > AV_FIELD_PROGRESSIVE) {
         /* we have interlaced material flagged in container */
-        pic->flags |= AV_FRAME_FLAG_INTERLACED;
+        pic->interlaced_frame = 1;
         if (avctx->field_order == AV_FIELD_TT || avctx->field_order == AV_FIELD_TB)
-            pic->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+            pic->top_field_first = 1;
     }
 
     *got_frame      = 1;

@@ -172,7 +172,7 @@ static int read_packet(AVFormatContext *s,
     int tmp, record_size;
 
     if (avio_feof(s->pb))
-        return AVERROR_EOF;
+        return AVERROR(EIO);
 
     if (anm->page < 0)
         return anm->page;

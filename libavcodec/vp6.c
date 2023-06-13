@@ -57,13 +57,10 @@ static int vp6_parse_header(VP56Context *s, const uint8_t *buf, int buf_size)
     int ret;
     int separated_coeff = buf[0] & 1;
 
-    if (!(buf[0] & 0x80))
-        s->frames[VP56_FRAME_CURRENT]->flags |= AV_FRAME_FLAG_KEY;
-    else
-        s->frames[VP56_FRAME_CURRENT]->flags &= ~AV_FRAME_FLAG_KEY;
+    s->frames[VP56_FRAME_CURRENT]->key_frame = !(buf[0] & 0x80);
     ff_vp56_init_dequant(s, (buf[0] >> 1) & 0x3F);
 
-    if (s->frames[VP56_FRAME_CURRENT]->flags & AV_FRAME_FLAG_KEY) {
+    if (s->frames[VP56_FRAME_CURRENT]->key_frame) {
         sub_version = buf[1] >> 3;
         if (sub_version > 8)
             return AVERROR_INVALIDDATA;
@@ -302,7 +299,7 @@ static int vp6_parse_coeff_models(VP56Context *s)
             if (vpx_rac_get_prob_branchy(c, vp6_dccv_pct[pt][node])) {
                 def_prob[node] = vp56_rac_gets_nn(c, 7);
                 model->coeff_dccv[pt][node] = def_prob[node];
-            } else if (s->frames[VP56_FRAME_CURRENT]->flags & AV_FRAME_FLAG_KEY) {
+            } else if (s->frames[VP56_FRAME_CURRENT]->key_frame) {
                 model->coeff_dccv[pt][node] = def_prob[node];
             }
 
@@ -325,7 +322,7 @@ static int vp6_parse_coeff_models(VP56Context *s)
                     if (vpx_rac_get_prob_branchy(c, vp6_ract_pct[ct][pt][cg][node])) {
                         def_prob[node] = vp56_rac_gets_nn(c, 7);
                         model->coeff_ract[pt][ct][cg][node] = def_prob[node];
-                    } else if (s->frames[VP56_FRAME_CURRENT]->flags & AV_FRAME_FLAG_KEY) {
+                    } else if (s->frames[VP56_FRAME_CURRENT]->key_frame) {
                         model->coeff_ract[pt][ct][cg][node] = def_prob[node];
                     }
 

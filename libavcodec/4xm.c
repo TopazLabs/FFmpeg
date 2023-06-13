@@ -957,10 +957,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
         return AVERROR_INVALIDDATA;
     }
 
-    if (picture->pict_type == AV_PICTURE_TYPE_I)
-        picture->flags |= AV_FRAME_FLAG_KEY;
-    else
-        picture->flags &= ~AV_FRAME_FLAG_KEY;
+    picture->key_frame = picture->pict_type == AV_PICTURE_TYPE_I;
 
     av_image_copy_plane(picture->data[0], picture->linesize[0],
                         (const uint8_t*)f->frame_buffer,  avctx->width * 2,

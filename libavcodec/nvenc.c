@@ -44,14 +44,9 @@
 #define CHECK_CU(x) FF_CUDA_CHECK_DL(avctx, dl_fn->cuda_dl, x)
 
 #define NVENC_CAP 0x30
-
-#ifndef NVENC_NO_DEPRECATED_RC
 #define IS_CBR(rc) (rc == NV_ENC_PARAMS_RC_CBR ||             \
                     rc == NV_ENC_PARAMS_RC_CBR_LOWDELAY_HQ || \
                     rc == NV_ENC_PARAMS_RC_CBR_HQ)
-#else
-#define IS_CBR(rc) (rc == NV_ENC_PARAMS_RC_CBR)
-#endif
 
 const enum AVPixelFormat ff_nvenc_pix_fmts[] = {
     AV_PIX_FMT_YUV420P,
@@ -464,7 +459,7 @@ static int nvenc_check_cap(AVCodecContext *avctx, NV_ENC_CAPS cap)
 static int nvenc_check_capabilities(AVCodecContext *avctx)
 {
     NvencContext *ctx = avctx->priv_data;
-    int tmp, ret;
+    int ret;
 
     ret = nvenc_check_codec_support(avctx);
     if (ret < 0) {
@@ -545,18 +540,16 @@ static int nvenc_check_capabilities(AVCodecContext *avctx)
     }
 
 #ifdef NVENC_HAVE_BFRAME_REF_MODE
-    tmp = (ctx->b_ref_mode >= 0) ? ctx->b_ref_mode : NV_ENC_BFRAME_REF_MODE_DISABLED;
     ret = nvenc_check_cap(avctx, NV_ENC_CAPS_SUPPORT_BFRAME_REF_MODE);
-    if (tmp == NV_ENC_BFRAME_REF_MODE_EACH && ret != 1 && ret != 3) {
+    if (ctx->b_ref_mode == NV_ENC_BFRAME_REF_MODE_EACH && ret != 1 && ret != 3) {
         av_log(avctx, AV_LOG_WARNING, "Each B frame as reference is not supported\n");
         return AVERROR(ENOSYS);
-    } else if (tmp != NV_ENC_BFRAME_REF_MODE_DISABLED && ret == 0) {
+    } else if (ctx->b_ref_mode != NV_ENC_BFRAME_REF_MODE_DISABLED && ret == 0) {
         av_log(avctx, AV_LOG_WARNING, "B frames as references are not supported\n");
         return AVERROR(ENOSYS);
     }
 #else
-    tmp = (ctx->b_ref_mode >= 0) ? ctx->b_ref_mode : 0;
-    if (tmp > 0) {
+    if (ctx->b_ref_mode != 0) {
         av_log(avctx, AV_LOG_WARNING, "B frames as references need SDK 8.1 at build time\n");
         return AVERROR(ENOSYS);
     }
@@ -931,7 +924,6 @@ static void nvenc_override_rate_control(AVCodecContext *avctx)
     case NV_ENC_PARAMS_RC_CONSTQP:
         set_constqp(avctx);
         return;
-#ifndef NVENC_NO_DEPRECATED_RC
     case NV_ENC_PARAMS_RC_VBR_MINQP:
         if (avctx->qmin < 0) {
             av_log(avctx, AV_LOG_WARNING,
@@ -942,15 +934,12 @@ static void nvenc_override_rate_control(AVCodecContext *avctx)
         }
         /* fall through */
     case NV_ENC_PARAMS_RC_VBR_HQ:
-#endif
     case NV_ENC_PARAMS_RC_VBR:
         set_vbr(avctx);
         break;
     case NV_ENC_PARAMS_RC_CBR:
-#ifndef NVENC_NO_DEPRECATED_RC
     case NV_ENC_PARAMS_RC_CBR_HQ:
     case NV_ENC_PARAMS_RC_CBR_LOWDELAY_HQ:
-#endif
         break;
     }
 
@@ -1220,14 +1209,12 @@ static av_cold int nvenc_setup_h264_config(AVCodecContext *avctx)
 
     h264->outputPictureTimingSEI = 1;
 
-#ifndef NVENC_NO_DEPRECATED_RC
     if (cc->rcParams.rateControlMode == NV_ENC_PARAMS_RC_CBR_LOWDELAY_HQ ||
         cc->rcParams.rateControlMode == NV_ENC_PARAMS_RC_CBR_HQ ||
         cc->rcParams.rateControlMode == NV_ENC_PARAMS_RC_VBR_HQ) {
         h264->adaptiveTransformMode = NV_ENC_H264_ADAPTIVE_TRANSFORM_ENABLE;
         h264->fmoMode = NV_ENC_H264_FMO_DISABLE;
     }
-#endif
 
     if (ctx->flags & NVENC_LOSSLESS) {
         h264->qpPrimeYZeroTransformBypassFlag = 1;
@@ -1582,13 +1569,7 @@ static av_cold int nvenc_setup_encoder(AVCodecContext *avctx)
         ctx->init_encode_params.frameRateDen = avctx->framerate.den;
     } else {
         ctx->init_encode_params.frameRateNum = avctx->time_base.den;
-FF_DISABLE_DEPRECATION_WARNINGS
-        ctx->init_encode_params.frameRateDen = avctx->time_base.num
-#if FF_API_TICKS_PER_FRAME
-            * avctx->ticks_per_frame
-#endif
-            ;
-FF_ENABLE_DEPRECATION_WARNINGS
+        ctx->init_encode_params.frameRateDen = avctx->time_base.num * avctx->ticks_per_frame;
     }
 
     ctx->init_encode_params.enableEncodeAsync = 0;
@@ -2283,14 +2264,7 @@ static int nvenc_set_timestamp(AVCodecContext *avctx,
     dts = reorder_queue_dequeue(ctx->reorder_queue, avctx, pkt);
 
     if (avctx->codec_descriptor->props & AV_CODEC_PROP_REORDER) {
-FF_DISABLE_DEPRECATION_WARNINGS
-        pkt->dts = dts -
-            FFMAX(ctx->encode_config.frameIntervalP - 1, 0)
-#if FF_API_TICKS_PER_FRAME
-            * FFMAX(avctx->ticks_per_frame, 1)
-#endif
-            * FFMAX(avctx->time_base.num, 1);
-FF_ENABLE_DEPRECATION_WARNINGS
+        pkt->dts = dts - FFMAX(ctx->encode_config.frameIntervalP - 1, 0) * FFMAX(avctx->ticks_per_frame, 1);
     } else {
         pkt->dts = pkt->pts;
     }
@@ -2657,7 +2631,7 @@ static int nvenc_send_frame(AVCodecContext *avctx, const AVFrame *frame)
         pic_params.outputBitstream = in_surf->output_surface;
 
         if (avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT) {
-            if (frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST)
+            if (frame->top_field_first)
                 pic_params.pictureStruct = NV_ENC_PIC_STRUCT_FIELD_TOP_BOTTOM;
             else
                 pic_params.pictureStruct = NV_ENC_PIC_STRUCT_FIELD_BOTTOM_TOP;

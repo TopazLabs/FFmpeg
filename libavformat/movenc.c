@@ -1179,68 +1179,6 @@ static int mov_write_btrt_tag(AVIOContext *pb, MOVTrack *track)
     return update_size(pb, pos);
 }
 
-static int mov_write_chnl_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *track)
-{
-    int64_t pos = avio_tell(pb);
-    int config = 0;
-    int ret;
-    uint8_t *speaker_pos = NULL;
-    const AVChannelLayout *layout = &track->par->ch_layout;
-
-    ret = ff_mov_get_channel_config_from_layout(layout, &config);
-    if (ret || !config) {
-        config = 0;
-        speaker_pos = av_malloc(layout->nb_channels);
-        ret = ff_mov_get_channel_positions_from_layout(layout,
-                speaker_pos, layout->nb_channels);
-        if (ret) {
-            char buf[128] = {0};
-
-            av_freep(&speaker_pos);
-            av_channel_layout_describe(layout, buf, sizeof(buf));
-            av_log(s, AV_LOG_ERROR, "unsupported channel layout %s\n", buf);
-            return ret;
-        }
-    }
-
-    avio_wb32(pb, 0); /* size */
-    ffio_wfourcc(pb, "chnl");
-    avio_wb32(pb, 0); /* version & flags */
-
-    avio_w8(pb, 1); /* stream_structure */
-    avio_w8(pb, config);
-    if (config) {
-        avio_wb64(pb, 0);
-    } else {
-        for (int i = 0; i < layout->nb_channels; i++)
-            avio_w8(pb, speaker_pos[i]);
-        av_freep(&speaker_pos);
-    }
-
-    return update_size(pb, pos);
-}
-
-static int mov_write_pcmc_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *track)
-{
-    int64_t pos = avio_tell(pb);
-    int format_flags;
-
-    avio_wb32(pb, 0); /* size */
-    ffio_wfourcc(pb, "pcmC");
-    avio_wb32(pb, 0); /* version & flags */
-
-    /* 0x01: indicates little-endian format */
-    format_flags = (track->par->codec_id == AV_CODEC_ID_PCM_F32LE ||
-                    track->par->codec_id == AV_CODEC_ID_PCM_F64LE ||
-                    track->par->codec_id == AV_CODEC_ID_PCM_S16LE ||
-                    track->par->codec_id == AV_CODEC_ID_PCM_S24LE ||
-                    track->par->codec_id == AV_CODEC_ID_PCM_S32LE);
-    avio_w8(pb, format_flags);
-    avio_w8(pb, track->par->bits_per_raw_sample);
-
-    return update_size(pb, pos);
-}
-
 static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContext *mov, MOVTrack *track)
 {
     int64_t pos = avio_tell(pb);
@@ -1367,13 +1305,7 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
         ret = mov_write_dops_tag(s, pb, track);
     else if (track->par->codec_id == AV_CODEC_ID_TRUEHD)
         ret = mov_write_dmlp_tag(s, pb, track);
-    else if (tag == MOV_MP4_IPCM_TAG || tag == MOV_MP4_FPCM_TAG) {
-        if (track->par->ch_layout.nb_channels > 1)
-            ret = mov_write_chnl_tag(s, pb, track);
-        if (ret < 0)
-            return ret;
-        ret = mov_write_pcmc_tag(s, pb, track);
-    } else if (track->vos_len > 0)
+    else if (track->vos_len > 0)
         ret = mov_write_glbl_tag(pb, track);
 
     if (ret < 0)
@@ -3269,20 +3201,14 @@ static int64_t calc_pts_duration(MOVMuxContext *mov, MOVTrack *track)
     return end - start;
 }
 
-static int mov_mdhd_mvhd_tkhd_version(MOVMuxContext *mov, MOVTrack *track, int64_t duration)
-{
-    if (track && track->mode == MODE_ISM)
-        return 1;
-    if (duration < INT32_MAX)
-        return 0;
-    return 1;
-}
-
 static int mov_write_mdhd_tag(AVIOContext *pb, MOVMuxContext *mov,
                               MOVTrack *track)
 {
     int64_t duration = calc_samples_pts_duration(mov, track);
-    int version = mov_mdhd_mvhd_tkhd_version(mov, track, duration);
+    int version = duration < INT32_MAX ? 0 : 1;
+
+    if (track->mode == MODE_ISM)
+        version = 1;
 
     (version == 1) ? avio_wb32(pb, 44) : avio_wb32(pb, 32); /* size */
     ffio_wfourcc(pb, "mdhd");
@@ -3368,6 +3294,8 @@ static int mov_write_tkhd_tag(AVIOContext *pb, MOVMuxContext *mov,
         else
             duration *= mov->avif_loop_count;
 
+     version = duration < INT32_MAX ? 0 : 1;
+
     if (st) {
         if (mov->per_stream_grouping)
             group = st->index;
@@ -3383,7 +3311,8 @@ static int mov_write_tkhd_tag(AVIOContext *pb, MOVMuxContext *mov,
     if (track->flags & MOV_TRACK_ENABLED)
         flags |= MOV_TKHD_FLAG_ENABLED;
 
-    version = mov_mdhd_mvhd_tkhd_version(mov, track, duration);
+    if (track->mode == MODE_ISM)
+        version = 1;
 
     (version == 1) ? avio_wb32(pb, 104) : avio_wb32(pb, 92); /* size */
     ffio_wfourcc(pb, "tkhd");
@@ -3866,7 +3795,7 @@ static int mov_write_mvhd_tag(AVIOContext *pb, MOVMuxContext *mov)
         max_track_id  = 1;
     }
 
-    version = mov_mdhd_mvhd_tkhd_version(mov, NULL, max_track_len);
+    version = max_track_len < UINT32_MAX ? 0 : 1;
     avio_wb32(pb, version == 1 ? 120 : 108); /* size */
 
     ffio_wfourcc(pb, "mvhd");
@@ -4024,13 +3953,13 @@ static int mov_write_loci_tag(AVFormatContext *s, AVIOContext *pb)
         return 0;
 
     ptr = t->value;
-    latitude = strtod(ptr, &end);
+    longitude = strtod(ptr, &end);
     if (end == ptr) {
         av_log(s, AV_LOG_WARNING, "malformed location metadata\n");
         return 0;
     }
     ptr = end;
-    longitude = strtod(ptr, &end);
+    latitude = strtod(ptr, &end);
     if (end == ptr) {
         av_log(s, AV_LOG_WARNING, "malformed location metadata\n");
         return 0;
@@ -4051,8 +3980,8 @@ static int mov_write_loci_tag(AVFormatContext *s, AVIOContext *pb)
     avio_wb16(pb, lang);
     avio_write(pb, place, strlen(place) + 1);
     avio_w8(pb, 0);           /* role of place (0 == shooting location, 1 == real location, 2 == fictional location) */
-    avio_wb32(pb, longitude_fix);
     avio_wb32(pb, latitude_fix);
+    avio_wb32(pb, longitude_fix);
     avio_wb32(pb, altitude_fix);
     avio_write(pb, astronomical_body, strlen(astronomical_body) + 1);
     avio_w8(pb, 0);           /* additional notes, null terminated string */
@@ -4861,8 +4790,8 @@ static int mov_write_trun_tag(AVIOContext *pb, MOVMuxContext *mov,
         if (i > first && get_sample_flags(track, &track->cluster[i]) != track->default_sample_flags)
             flags |= MOV_TRUN_SAMPLE_FLAGS;
     }
-    if (!(flags & MOV_TRUN_SAMPLE_FLAGS) && track->entry > first &&
-         get_sample_flags(track, &track->cluster[first]) != track->default_sample_flags)
+    if (!(flags & MOV_TRUN_SAMPLE_FLAGS) && track->entry > 0 &&
+         get_sample_flags(track, &track->cluster[0]) != track->default_sample_flags)
         flags |= MOV_TRUN_FIRST_SAMPLE_FLAGS;
     if (track->flags & MOV_TRACK_CTTS)
         flags |= MOV_TRUN_SAMPLE_CTS;
@@ -7815,20 +7744,6 @@ static const AVCodecTag codec_mp4_tags[] = {
     { AV_CODEC_ID_MPEGH_3D_AUDIO,  MKTAG('m', 'h', 'm', '1') },
     { AV_CODEC_ID_TTML,            MOV_MP4_TTML_TAG          },
     { AV_CODEC_ID_TTML,            MOV_ISMV_TTML_TAG         },
-
-    /* ISO/IEC 23003-5 integer formats */
-    { AV_CODEC_ID_PCM_S16BE,       MOV_MP4_IPCM_TAG          },
-    { AV_CODEC_ID_PCM_S16LE,       MOV_MP4_IPCM_TAG          },
-    { AV_CODEC_ID_PCM_S24BE,       MOV_MP4_IPCM_TAG          },
-    { AV_CODEC_ID_PCM_S24LE,       MOV_MP4_IPCM_TAG          },
-    { AV_CODEC_ID_PCM_S32BE,       MOV_MP4_IPCM_TAG          },
-    { AV_CODEC_ID_PCM_S32LE,       MOV_MP4_IPCM_TAG          },
-    /* ISO/IEC 23003-5 floating-point formats */
-    { AV_CODEC_ID_PCM_F32BE,       MOV_MP4_FPCM_TAG          },
-    { AV_CODEC_ID_PCM_F32LE,       MOV_MP4_FPCM_TAG          },
-    { AV_CODEC_ID_PCM_F64BE,       MOV_MP4_FPCM_TAG          },
-    { AV_CODEC_ID_PCM_F64LE,       MOV_MP4_FPCM_TAG          },
-
     { AV_CODEC_ID_NONE,               0 },
 };
 #if CONFIG_MP4_MUXER || CONFIG_PSP_MUXER

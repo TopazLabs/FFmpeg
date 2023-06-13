@@ -328,7 +328,7 @@ static int hap_decode(AVCodecContext *avctx, AVFrame *frame,
 
     /* Frame is ready to be output */
     frame->pict_type = AV_PICTURE_TYPE_I;
-    frame->flags |= AV_FRAME_FLAG_KEY;
+    frame->key_frame = 1;
     *got_frame = 1;
 
     return avpkt->size;

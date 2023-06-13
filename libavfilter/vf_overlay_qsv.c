@@ -429,5 +429,4 @@ const AVFilter ff_vf_overlay_qsv = {
     FILTER_QUERY_FUNC(overlay_qsv_query_formats),
     .priv_class     = &overlay_qsv_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

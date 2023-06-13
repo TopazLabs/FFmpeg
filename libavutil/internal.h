@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include "config.h"
 #include "attributes.h"
+#include "timer.h"
 #include "macros.h"
 #include "pixfmt.h"
 

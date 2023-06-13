@@ -559,11 +559,11 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return ret;
 
     if (c->flags & ZMBV_KEYFRAME) {
-        frame->flags |= AV_FRAME_FLAG_KEY;
+        frame->key_frame = 1;
         frame->pict_type = AV_PICTURE_TYPE_I;
         zmbv_decode_intra(c);
     } else {
-        frame->flags &= ~AV_FRAME_FLAG_KEY;
+        frame->key_frame = 0;
         frame->pict_type = AV_PICTURE_TYPE_P;
         if (c->decomp_len < 2LL * ((c->width + c->bw - 1) / c->bw) * ((c->height + c->bh - 1) / c->bh))
             return AVERROR_INVALIDDATA;

@@ -170,7 +170,7 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
         param->look_ahead_distance    = svt_enc->la_depth;
 #endif
 
-    if (svt_enc->enc_mode >= -1)
+    if (svt_enc->enc_mode >= 0)
         param->enc_mode             = svt_enc->enc_mode;
 
     if (avctx->bit_rate) {
@@ -184,10 +184,8 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
         param->min_qp_allowed       = avctx->qmin;
     }
     param->max_bit_rate             = avctx->rc_max_rate;
-    if ((avctx->bit_rate > 0 || avctx->rc_max_rate > 0) && avctx->rc_buffer_size)
-        param->maximum_buffer_size_ms =
-            avctx->rc_buffer_size * 1000LL /
-            FFMAX(avctx->bit_rate, avctx->rc_max_rate);
+    if (avctx->bit_rate && avctx->rc_buffer_size)
+        param->maximum_buffer_size_ms = avctx->rc_buffer_size * 1000LL / avctx->bit_rate;
 
     if (svt_enc->crf > 0) {
         param->qp                   = svt_enc->crf;
@@ -250,13 +248,7 @@ static int config_enc_params(EbSvtAv1EncConfiguration *param,
         param->frame_rate_denominator = avctx->framerate.den;
     } else {
         param->frame_rate_numerator   = avctx->time_base.den;
-FF_DISABLE_DEPRECATION_WARNINGS
-        param->frame_rate_denominator = avctx->time_base.num
-#if FF_API_TICKS_PER_FRAME
-            * avctx->ticks_per_frame
-#endif
-            ;
-FF_ENABLE_DEPRECATION_WARNINGS
+        param->frame_rate_denominator = avctx->time_base.num * avctx->ticks_per_frame;
     }
 
     /* 2 = IDR, closed GOP, 1 = CRA, open GOP */
@@ -310,8 +302,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     avctx->bit_rate       = param->rate_control_mode > 0 ?
                             param->target_bit_rate : 0;
     avctx->rc_max_rate    = param->max_bit_rate;
-    avctx->rc_buffer_size = param->maximum_buffer_size_ms *
-                            FFMAX(avctx->bit_rate, avctx->rc_max_rate) / 1000LL;
+    avctx->rc_buffer_size = param->maximum_buffer_size_ms * avctx->bit_rate / 1000LL;
 
     if (avctx->bit_rate || avctx->rc_max_rate || avctx->rc_buffer_size) {
         AVCPBProperties *cpb_props = ff_add_cpb_side_data(avctx);
@@ -599,7 +590,7 @@ static const AVOption options[] = {
         { "high", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, VE, "tier" },
 #endif
     { "preset", "Encoding preset",
-      OFFSET(enc_mode), AV_OPT_TYPE_INT, { .i64 = -2 }, -2, MAX_ENC_PRESET, VE },
+      OFFSET(enc_mode), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, MAX_ENC_PRESET, VE },
 
     FF_AV1_PROFILE_OPTS
 

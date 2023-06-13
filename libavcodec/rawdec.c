@@ -227,16 +227,15 @@ static int raw_decode(AVCodecContext *avctx, AVFrame *frame,
     need_copy = !avpkt->buf || context->is_1_2_4_8_bpp || context->is_yuv2 || context->is_lt_16bpp;
 
     frame->pict_type        = AV_PICTURE_TYPE_I;
-    frame->flags |= AV_FRAME_FLAG_KEY;
+    frame->key_frame        = 1;
 
     res = ff_decode_frame_props(avctx, frame);
     if (res < 0)
         return res;
 
     if (context->tff >= 0) {
-        frame->flags |= AV_FRAME_FLAG_INTERLACED;
-        if (context->tff == 1)
-            frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+        frame->interlaced_frame = 1;
+        frame->top_field_first  = context->tff;
     }
 
     if ((res = av_image_check_size(avctx->width, avctx->height, 0, avctx)) < 0)
@@ -373,11 +372,7 @@ static int raw_decode(AVCodecContext *avctx, AVFrame *frame,
         }
 
         if (ff_copy_palette(context->palette->data, avpkt, avctx)) {
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
             frame->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         } else if (context->is_nut_pal8) {
             int vid_size = avctx->width * avctx->height;
             int pal_size = avpkt->size - vid_size;
@@ -385,11 +380,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
             if (avpkt->size > vid_size && pal_size <= AVPALETTE_SIZE) {
                 const uint8_t *pal = avpkt->data + vid_size;
                 memcpy(context->palette->data, pal, pal_size);
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
                 frame->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             }
         }
     }
@@ -468,9 +459,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     if (avctx->field_order > AV_FIELD_PROGRESSIVE) { /* we have interlaced material flagged in container */
-        frame->flags |= AV_FRAME_FLAG_INTERLACED;
+        frame->interlaced_frame = 1;
         if (avctx->field_order == AV_FIELD_TT || avctx->field_order == AV_FIELD_TB)
-            frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+            frame->top_field_first = 1;
     }
 
     *got_frame = 1;

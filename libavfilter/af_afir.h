@@ -39,6 +39,7 @@ typedef struct AudioFIRSegment {
     int input_size;
     int input_offset;
 
+    int *loading;
     int *output_offset;
     int *part_index;
 
@@ -48,7 +49,7 @@ typedef struct AudioFIRSegment {
     AVFrame *tempin;
     AVFrame *tempout;
     AVFrame *buffer;
-    AVFrame *coeff;
+    AVFrame *coeff[MAX_IR_STREAMS];
     AVFrame *input;
     AVFrame *output;
 
@@ -65,7 +66,6 @@ typedef struct AudioFIRContext {
     int gtype;
     float ir_gain;
     int ir_format;
-    int ir_load;
     float max_ir_len;
     int response;
     int w, h;
@@ -82,22 +82,17 @@ typedef struct AudioFIRContext {
     int eof_coeffs[MAX_IR_STREAMS];
     int have_coeffs[MAX_IR_STREAMS];
     int nb_taps[MAX_IR_STREAMS];
-    int nb_segments[MAX_IR_STREAMS];
-    int max_offset[MAX_IR_STREAMS];
     int nb_channels;
     int one2many;
-    int *loading;
 
-    AudioFIRSegment seg[MAX_IR_STREAMS][1024];
+    AudioFIRSegment seg[1024];
+    int nb_segments;
 
     AVFrame *in;
-    AVFrame *xfade[2];
-    AVFrame *fadein[2];
     AVFrame *ir[MAX_IR_STREAMS];
     AVFrame *norm_ir[MAX_IR_STREAMS];
     AVFrame *video;
     int min_part_size;
-    int max_part_size;
     int64_t pts;
 
     AudioFIRDSPContext afirdsp;

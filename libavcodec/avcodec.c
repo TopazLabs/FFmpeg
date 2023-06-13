@@ -39,17 +39,15 @@
 #include "decode.h"
 #include "encode.h"
 #include "frame_thread_encoder.h"
-#include "hwconfig.h"
 #include "internal.h"
 #include "thread.h"
 
 int avcodec_default_execute(AVCodecContext *c, int (*func)(AVCodecContext *c2, void *arg2), void *arg, int *ret, int count, int size)
 {
-    size_t i;
+    int i;
 
     for (i = 0; i < count; i++) {
-        size_t offset = i * size;
-        int r = func(c, FF_PTR_ADD((char *)arg, offset));
+        int r = func(c, (char *)arg + i * size);
         if (ret)
             ret[i] = r;
     }
@@ -460,7 +458,9 @@ av_cold int avcodec_close(AVCodecContext *avctx)
 
         av_buffer_unref(&avci->pool);
 
-        ff_hwaccel_uninit(avctx);
+        if (avctx->hwaccel && avctx->hwaccel->uninit)
+            avctx->hwaccel->uninit(avctx);
+        av_freep(&avci->hwaccel_priv_data);
 
         av_bsf_free(&avci->bsf);
 

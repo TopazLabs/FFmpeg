@@ -262,6 +262,7 @@ typedef struct CCaptionSubContext {
 
 static av_cold int init_decoder(AVCodecContext *avctx)
 {
+    int ret;
     CCaptionSubContext *ctx = avctx->priv_data;
 
     av_bprint_init(&ctx->buffer[0], 0, AV_BPRINT_SIZE_UNLIMITED);
@@ -271,7 +272,7 @@ static av_cold int init_decoder(AVCodecContext *avctx)
     ctx->bg_color = CCCOL_BLACK;
     ctx->rollup = 2;
     ctx->cursor_row = 10;
-    return ff_ass_subtitle_header(avctx, "Monospace",
+    ret = ff_ass_subtitle_header(avctx, "Monospace",
                                  ASS_DEFAULT_FONT_SIZE,
                                  ASS_DEFAULT_COLOR,
                                  ASS_DEFAULT_BACK_COLOR,
@@ -280,6 +281,11 @@ static av_cold int init_decoder(AVCodecContext *avctx)
                                  ASS_DEFAULT_UNDERLINE,
                                  3,
                                  ASS_DEFAULT_ALIGNMENT);
+    if (ret < 0) {
+        return ret;
+    }
+
+    return ret;
 }
 
 static av_cold int close_decoder(AVCodecContext *avctx)
@@ -894,7 +900,6 @@ static int decode(AVCodecContext *avctx, AVSubtitle *sub,
         ret = ff_ass_add_rect2(sub, ctx->buffer[bidx].str, ctx->readorder++, 0, NULL, NULL, &nb_rect_allocated);
         if (ret < 0)
             return ret;
-        av_bprint_clear(&ctx->buffer[bidx]);
         sub->pts = ctx->buffer_time[1];
         sub->end_display_time = av_rescale_q(ctx->buffer_time[1] - ctx->buffer_time[0],
                                              AV_TIME_BASE_Q, ms_tb);

@@ -37,7 +37,6 @@ static int mul_3x5 [5 * 5 * 5];
 static int mul_2x11[11  *  11];
 
 typedef struct InterplayACMContext {
-    AVCodecContext *avctx;
     GetBitContext gb;
     uint8_t *bitstream;
     int max_framesize;
@@ -78,7 +77,6 @@ static av_cold int decode_init(AVCodecContext *avctx)
     static AVOnce init_static_once = AV_ONCE_INIT;
     InterplayACMContext *s = avctx->priv_data;
 
-    s->avctx = avctx;
     if (avctx->extradata_size < 14)
         return AVERROR_INVALIDDATA;
 
@@ -345,7 +343,7 @@ static int t15(InterplayACMContext *s, unsigned ind, unsigned col)
         /* b = (x1) + (x2 * 3) + (x3 * 9) */
         b = get_bits(gb, 5);
         if (b > 26) {
-            av_log(s->avctx, AV_LOG_ERROR, "Too large b = %d > 26\n", b);
+            av_log(NULL, AV_LOG_ERROR, "Too large b = %d > 26\n", b);
             return AVERROR_INVALIDDATA;
         }
 
@@ -374,7 +372,7 @@ static int t27(InterplayACMContext *s, unsigned ind, unsigned col)
         /* b = (x1) + (x2 * 5) + (x3 * 25) */
         b = get_bits(gb, 7);
         if (b > 124) {
-            av_log(s->avctx, AV_LOG_ERROR, "Too large b = %d > 124\n", b);
+            av_log(NULL, AV_LOG_ERROR, "Too large b = %d > 124\n", b);
             return AVERROR_INVALIDDATA;
         }
 
@@ -402,7 +400,7 @@ static int t37(InterplayACMContext *s, unsigned ind, unsigned col)
         /* b = (x1) + (x2 * 11) */
         b = get_bits(gb, 7);
         if (b > 120) {
-            av_log(s->avctx, AV_LOG_ERROR, "Too large b = %d > 120\n", b);
+            av_log(NULL, AV_LOG_ERROR, "Too large b = %d > 120\n", b);
             return AVERROR_INVALIDDATA;
         }
 

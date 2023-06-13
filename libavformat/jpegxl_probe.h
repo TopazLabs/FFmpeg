@@ -27,11 +27,6 @@
 #define FF_JPEGXL_CODESTREAM_SIGNATURE_LE 0x0aff
 #define FF_JPEGXL_CONTAINER_SIGNATURE_LE 0x204c584a0c000000
 
-/**
- * @brief verify that a codestream header is valid
- * @return Negative upon error, 0 upon verifying that the codestream is not animated,
- *         and 1 upon verifying that it is animated
- */
-int ff_jpegxl_verify_codestream_header(const uint8_t *buf, int buflen, int validate_level);
+int ff_jpegxl_verify_codestream_header(const uint8_t *buf, int buflen);
 
 #endif /* AVFORMAT_JPEGXL_PROBE_H */

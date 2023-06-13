@@ -602,7 +602,6 @@ not_ready:
     return FFERROR_NOT_READY;
 
 eof:
-    pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
     ff_outlink_set_status(outlink, status, pts);
     return 0;
 }
@@ -649,7 +648,6 @@ const AVFilter ff_vf_##sn##_qsv = { \
     fmts, \
     .activate       = activate, \
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE, \
-    .flags          = AVFILTER_FLAG_HWDEVICE,       \
 };
 
 #if CONFIG_VPP_QSV_FILTER
@@ -714,8 +712,7 @@ static const AVOption vpp_options[] = {
 
 static int vpp_query_formats(AVFilterContext *ctx)
 {
-    VPPContext *vpp = ctx->priv;
-    int ret, i = 0;
+    int ret;
     static const enum AVPixelFormat in_pix_fmts[] = {
         AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_NV12,
@@ -728,25 +725,17 @@ static int vpp_query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_QSV,
         AV_PIX_FMT_NONE
     };
-    static enum AVPixelFormat out_pix_fmts[4];
+    static const enum AVPixelFormat out_pix_fmts[] = {
+        AV_PIX_FMT_NV12,
+        AV_PIX_FMT_P010,
+        AV_PIX_FMT_QSV,
+        AV_PIX_FMT_NONE
+    };
 
     ret = ff_formats_ref(ff_make_format_list(in_pix_fmts),
                          &ctx->inputs[0]->outcfg.formats);
     if (ret < 0)
         return ret;
-
-    /* User specifies the output format */
-    if (vpp->out_format == AV_PIX_FMT_NV12 ||
-        vpp->out_format == AV_PIX_FMT_P010)
-        out_pix_fmts[i++] = vpp->out_format;
-    else {
-        out_pix_fmts[i++] = AV_PIX_FMT_NV12;
-        out_pix_fmts[i++] = AV_PIX_FMT_P010;
-    }
-
-    out_pix_fmts[i++] = AV_PIX_FMT_QSV;
-    out_pix_fmts[i++] = AV_PIX_FMT_NONE;
-
     return ff_formats_ref(ff_make_format_list(out_pix_fmts),
                           &ctx->outputs[0]->incfg.formats);
 }

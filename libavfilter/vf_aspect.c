@@ -41,8 +41,7 @@
 static const char *const var_names[] = {
     "w",
     "h",
-    "a",
-    "dar",
+    "a", "dar",
     "sar",
     "hsub",
     "vsub",
@@ -52,8 +51,7 @@ static const char *const var_names[] = {
 enum var_name {
     VAR_W,
     VAR_H,
-    VAR_A,
-    VAR_DAR,
+    VAR_A, VAR_DAR,
     VAR_SAR,
     VAR_HSUB,
     VAR_VSUB,
@@ -107,8 +105,8 @@ static int get_aspect_ratio(AVFilterLink *inlink, AVRational *aspect_ratio)
 
     /* evaluate new aspect ratio*/
     ret = av_expr_parse_and_eval(&res, s->ratio_expr,
-                                 var_names, var_values,
-                                 NULL, NULL, NULL, NULL, NULL, 0, ctx);
+                                      var_names, var_values,
+                                      NULL, NULL, NULL, NULL, NULL, 0, ctx);
     if (ret < 0) {
         ret = av_parse_ratio(aspect_ratio, s->ratio_expr, s->max, 0, ctx);
     } else

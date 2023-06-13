@@ -60,10 +60,10 @@ static void fill_vaapi_pic(VAPictureHEVC *va_pic, const HEVCFrame *pic, int rps_
     if (pic->flags & HEVC_FRAME_FLAG_LONG_REF)
         va_pic->flags |= VA_PICTURE_HEVC_LONG_TERM_REFERENCE;
 
-    if (pic->frame->flags & AV_FRAME_FLAG_INTERLACED) {
+    if (pic->frame->interlaced_frame) {
         va_pic->flags |= VA_PICTURE_HEVC_FIELD_PIC;
 
-        if (!(pic->frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST))
+        if (!pic->frame->top_field_first)
             va_pic->flags |= VA_PICTURE_HEVC_BOTTOM_FIELD;
     }
 }
@@ -259,7 +259,7 @@ static int vaapi_hevc_start_frame(AVCodecContext          *avctx,
     pre_palette_size = pps->pps_palette_predictor_initializers_present_flag ?
                        pps->pps_num_palette_predictor_initializers :
                        (sps->sps_palette_predictor_initializers_present_flag ?
-                       sps->sps_num_palette_predictor_initializers :
+                       sps->sps_num_palette_predictor_initializers_minus1 + 1 :
                        0);
 
     if (avctx->profile == FF_PROFILE_HEVC_SCC) {
@@ -536,6 +536,12 @@ static int vaapi_hevc_decode_slice(AVCodecContext *avctx,
             .slice_act_cb_qp_offset = sh->slice_act_cb_qp_offset,
             .slice_act_cr_qp_offset = sh->slice_act_cr_qp_offset,
         };
+        for (i = 0; i < 15 && i < sh->nb_refs[L0]; i++) {
+            pic->last_slice_param.rext.luma_offset_l0[i] = sh->luma_offset_l0[i];
+            pic->last_slice_param.rext.ChromaOffsetL0[i][0] = sh->chroma_offset_l0[i][0];
+            pic->last_slice_param.rext.ChromaOffsetL0[i][1] = sh->chroma_offset_l0[i][1];
+        }
+
         for (i = 0; i < 15 && i < sh->nb_refs[L0]; i++) {
             pic->last_slice_param.rext.luma_offset_l0[i] = sh->luma_offset_l0[i];
             pic->last_slice_param.rext.ChromaOffsetL0[i][0] = sh->chroma_offset_l0[i][0];

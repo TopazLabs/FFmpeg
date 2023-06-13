@@ -836,7 +836,6 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
         const uint8_t *rawbuf;
         int raw_size;
     } *slices = NULL, *tmp;
-    unsigned slices_allocated = 0;
 
     v->second_field = 0;
 
@@ -860,7 +859,6 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
     //for advanced profile we may need to parse and unescape data
     if (avctx->codec_id == AV_CODEC_ID_VC1 || avctx->codec_id == AV_CODEC_ID_VC1IMAGE) {
         int buf_size2 = 0;
-        size_t next_allocated = 0;
         buf2 = av_mallocz(buf_size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!buf2)
             return AVERROR(ENOMEM);
@@ -884,8 +882,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     int buf_size3;
                     if (avctx->hwaccel)
                         buf_start_second_field = start;
-                    av_size_mult(sizeof(*slices), n_slices+1, &next_allocated);
-                    tmp = next_allocated ? av_fast_realloc(slices, &slices_allocated, next_allocated) : NULL;
+                    tmp = av_realloc_array(slices, sizeof(*slices), n_slices+1);
                     if (!tmp) {
                         ret = AVERROR(ENOMEM);
                         goto err;
@@ -914,8 +911,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     break;
                 case VC1_CODE_SLICE: {
                     int buf_size3;
-                    av_size_mult(sizeof(*slices), n_slices+1, &next_allocated);
-                    tmp = next_allocated ? av_fast_realloc(slices, &slices_allocated, next_allocated) : NULL;
+                    tmp = av_realloc_array(slices, sizeof(*slices), n_slices+1);
                     if (!tmp) {
                         ret = AVERROR(ENOMEM);
                         goto err;
@@ -950,8 +946,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
             } else { // found field marker, unescape second field
                 if (avctx->hwaccel)
                     buf_start_second_field = divider;
-                av_size_mult(sizeof(*slices), n_slices+1, &next_allocated);
-                tmp = next_allocated ? av_fast_realloc(slices, &slices_allocated, next_allocated) : NULL;
+                tmp = av_realloc_array(slices, sizeof(*slices), n_slices+1);
                 if (!tmp) {
                     ret = AVERROR(ENOMEM);
                     goto err;
@@ -1060,10 +1055,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
 
     // for skipping the frame
     s->current_picture.f->pict_type = s->pict_type;
-    if (s->pict_type == AV_PICTURE_TYPE_I)
-        s->current_picture.f->flags |= AV_FRAME_FLAG_KEY;
-    else
-        s->current_picture.f->flags &= ~AV_FRAME_FLAG_KEY;
+    s->current_picture.f->key_frame = s->pict_type == AV_PICTURE_TYPE_I;
 
     /* skip B-frames if we don't have reference frames */
     if (!s->last_picture_ptr && s->pict_type == AV_PICTURE_TYPE_B) {
@@ -1081,12 +1073,13 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
     }
 
     v->s.current_picture_ptr->field_picture = v->field_mode;
-    v->s.current_picture_ptr->f->flags |= AV_FRAME_FLAG_INTERLACED * (v->fcm != PROGRESSIVE);
-    v->s.current_picture_ptr->f->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST * !!v->tff;
+    v->s.current_picture_ptr->f->interlaced_frame = (v->fcm != PROGRESSIVE);
+    v->s.current_picture_ptr->f->top_field_first  = v->tff;
 
     // process pulldown flags
     s->current_picture_ptr->f->repeat_pict = 0;
     // Pulldown flags are only valid when 'broadcast' has been set.
+    // So ticks_per_frame will be 2
     if (v->rff) {
         // repeat field
         s->current_picture_ptr->f->repeat_pict = 1;

@@ -105,9 +105,6 @@ static const struct {
     #if CONFIG_G722DSP
         { "g722dsp", checkasm_check_g722dsp },
     #endif
-    #if CONFIG_H264CHROMA
-        { "h264chroma", checkasm_check_h264chroma },
-    #endif
     #if CONFIG_H264DSP
         { "h264dsp", checkasm_check_h264dsp },
     #endif
@@ -119,7 +116,6 @@ static const struct {
     #endif
     #if CONFIG_HEVC_DECODER
         { "hevc_add_res", checkasm_check_hevc_add_res },
-        { "hevc_deblock", checkasm_check_hevc_deblock },
         { "hevc_idct", checkasm_check_hevc_idct },
         { "hevc_pel", checkasm_check_hevc_pel },
         { "hevc_sao", checkasm_check_hevc_sao },
@@ -183,9 +179,6 @@ static const struct {
     #if CONFIG_BLEND_FILTER
         { "vf_blend", checkasm_check_blend },
     #endif
-    #if CONFIG_BWDIF_FILTER
-        { "vf_bwdif", checkasm_check_vf_bwdif },
-    #endif
     #if CONFIG_COLORSPACE_FILTER
         { "vf_colorspace", checkasm_check_colorspace },
     #endif
@@ -230,8 +223,6 @@ static const struct {
 #if   ARCH_AARCH64
     { "ARMV8",    "armv8",    AV_CPU_FLAG_ARMV8 },
     { "NEON",     "neon",     AV_CPU_FLAG_NEON },
-    { "DOTPROD",  "dotprod",  AV_CPU_FLAG_DOTPROD },
-    { "I8MM",     "i8mm",     AV_CPU_FLAG_I8MM },
 #elif ARCH_ARM
     { "ARMV5TE",  "armv5te",  AV_CPU_FLAG_ARMV5TE },
     { "ARMV6",    "armv6",    AV_CPU_FLAG_ARMV6 },

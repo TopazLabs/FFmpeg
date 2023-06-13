@@ -32,8 +32,7 @@ static inline int utf8towchar(const char *filename_utf8, wchar_t **filename_w)
     num_chars = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, filename_utf8, -1, NULL, 0);
     if (num_chars <= 0) {
         *filename_w = NULL;
-        errno = EINVAL;
-        return -1;
+        return 0;
     }
     *filename_w = (wchar_t *)av_calloc(num_chars, sizeof(wchar_t));
     if (!*filename_w) {
@@ -53,8 +52,7 @@ static inline int wchartocp(unsigned int code_page, const wchar_t *filename_w,
                                         NULL, 0, NULL, NULL);
     if (num_chars <= 0) {
         *filename = NULL;
-        errno = EINVAL;
-        return -1;
+        return 0;
     }
     *filename = (char*)av_malloc_array(num_chars, sizeof *filename);
     if (!*filename) {

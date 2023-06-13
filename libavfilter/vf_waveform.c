@@ -120,7 +120,6 @@ typedef struct WaveformContext {
     float          ftint[2];
     int            tint[2];
     int            fitmode;
-    int            input;
 
     int (*waveform_slice)(AVFilterContext *ctx, void *arg,
                           int jobnr, int nb_jobs);
@@ -197,9 +196,6 @@ static const AVOption waveform_options[] = {
     { "fm", "set fit mode", OFFSET(fitmode), AV_OPT_TYPE_INT, {.i64=0}, 0, NB_FITMODES-1, FLAGS, "fitmode" },
         { "none", NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_NONE}, 0, 0, FLAGS, "fitmode" },
         { "size", NULL, 0, AV_OPT_TYPE_CONST, {.i64=FM_SIZE}, 0, 0, FLAGS, "fitmode" },
-    { "input", "set input formats selection", OFFSET(input), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "input" },
-        { "all", "try to select from all available formats", 0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "input" },
-        { "first", "pick first available format", 0, AV_OPT_TYPE_CONST, {.i64=1},  0, 0, FLAGS, "input" },
     { NULL }
 };
 
@@ -360,7 +356,7 @@ static int query_formats(AVFilterContext *ctx)
     depth2 = desc2->comp[0].depth;
     if (ncomp != ncomp2 || depth != depth2)
         return AVERROR(EAGAIN);
-    for (i = 1; i < avff->nb_formats && !s->input; i++) {
+    for (i = 1; i < avff->nb_formats; i++) {
         desc = av_pix_fmt_desc_get(avff->formats[i]);
         if (rgb != (desc->flags & AV_PIX_FMT_FLAG_RGB) ||
             depth != desc->comp[0].depth)
@@ -749,7 +745,7 @@ static av_always_inline void lowpass16(WaveformContext *s,
         dst_data += dst_linesize * step;
     }
 
-    if (s->display != OVERLAY && column && !s->rgb && out->data[1] && out->data[2]) {
+    if (s->display != OVERLAY && column && !s->rgb) {
         const int mult = s->max / 256;
         const int bg = s->bg_color[0] * mult;
         const int t0 = s->tint[0];
@@ -773,7 +769,7 @@ static av_always_inline void lowpass16(WaveformContext *s,
             dst0 += dst_linesize;
             dst1 += dst_linesize;
         }
-    } else if (s->display != OVERLAY && !s->rgb && out->data[1] && out->data[2]) {
+    } else if (s->display != OVERLAY && !s->rgb) {
         const int mult = s->max / 256;
         const int bg = s->bg_color[0] * mult;
         const int t0 = s->tint[0];

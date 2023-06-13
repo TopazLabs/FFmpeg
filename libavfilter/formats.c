@@ -209,10 +209,11 @@ static int merge_samplerates(void *a, void *b)
 /**
  * See merge_pix_fmts().
  */
-static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
-                                          AVFilterChannelLayouts *b, int check)
+static int merge_channel_layouts(void *va, void *vb)
 {
-    AVChannelLayout *channel_layouts = NULL;
+    AVFilterChannelLayouts *a = va;
+    AVFilterChannelLayouts *b = vb;
+    AVChannelLayout *channel_layouts;
     unsigned a_all = a->all_layouts + a->all_counts;
     unsigned b_all = b->all_layouts + b->all_counts;
     int ret_max, ret_nb = 0, i, j, round;
@@ -230,11 +231,8 @@ static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
         if (a_all == 1 && !b_all) {
             /* keep only known layouts in b; works also for b_all = 1 */
             for (i = j = 0; i < b->nb_channel_layouts; i++)
-                if (KNOWN(&b->channel_layouts[i]) && i != j++) {
-                    if (check)
-                        return 1;
+                if (KNOWN(&b->channel_layouts[i]) && i != j++)
                     av_channel_layout_copy(&b->channel_layouts[j], &b->channel_layouts[i]);
-                }
             /* Not optimal: the unknown layouts of b may become known after
                another merge. */
             if (!j)
@@ -246,7 +244,7 @@ static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
     }
 
     ret_max = a->nb_channel_layouts + b->nb_channel_layouts;
-    if (!check && !(channel_layouts = av_calloc(ret_max, sizeof(*channel_layouts))))
+    if (!(channel_layouts = av_calloc(ret_max, sizeof(*channel_layouts))))
         return AVERROR(ENOMEM);
 
     /* a[known] intersect b[known] */
@@ -255,8 +253,6 @@ static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
             continue;
         for (j = 0; j < b->nb_channel_layouts; j++) {
             if (!av_channel_layout_compare(&a->channel_layouts[i], &b->channel_layouts[j])) {
-                if (check)
-                    return 1;
                 av_channel_layout_copy(&channel_layouts[ret_nb++], &a->channel_layouts[i]);
                 av_channel_layout_uninit(&a->channel_layouts[i]);
                 av_channel_layout_uninit(&b->channel_layouts[j]);
@@ -273,11 +269,8 @@ static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
                 continue;
             bfmt = FF_COUNT2LAYOUT(fmt->nb_channels);
             for (j = 0; j < b->nb_channel_layouts; j++)
-                if (!av_channel_layout_compare(&b->channel_layouts[j], &bfmt)) {
-                    if (check)
-                        return 1;
+                if (!av_channel_layout_compare(&b->channel_layouts[j], &bfmt))
                     av_channel_layout_copy(&channel_layouts[ret_nb++], fmt);
-                }
         }
         /* 1st round: swap to prepare 2nd round; 2nd round: put it back */
         FFSWAP(AVFilterChannelLayouts *, a, b);
@@ -287,11 +280,8 @@ static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
         if (KNOWN(&a->channel_layouts[i]))
             continue;
         for (j = 0; j < b->nb_channel_layouts; j++)
-            if (!av_channel_layout_compare(&a->channel_layouts[i], &b->channel_layouts[j])) {
-                if (check)
-                    return 1;
+            if (!av_channel_layout_compare(&a->channel_layouts[i], &b->channel_layouts[j]))
                 av_channel_layout_copy(&channel_layouts[ret_nb++], &a->channel_layouts[i]);
-            }
     }
 
     if (!ret_nb) {
@@ -310,17 +300,6 @@ static int merge_channel_layouts_internal(AVFilterChannelLayouts *a,
     return 1;
 }
 
-static int can_merge_channel_layouts(const void *a, const void *b)
-{
-    return merge_channel_layouts_internal((AVFilterChannelLayouts *)a,
-                                          (AVFilterChannelLayouts *)b, 1);
-}
-
-static int merge_channel_layouts(void *a, void *b)
-{
-    return merge_channel_layouts_internal(a, b, 0);
-}
-
 static const AVFilterFormatsMerger mergers_video[] = {
     {
         .offset     = offsetof(AVFilterFormatsConfig, formats),
@@ -333,7 +312,7 @@ static const AVFilterFormatsMerger mergers_audio[] = {
     {
         .offset     = offsetof(AVFilterFormatsConfig, channel_layouts),
         .merge      = merge_channel_layouts,
-        .can_merge  = can_merge_channel_layouts,
+        .can_merge  = NULL,
     },
     {
         .offset     = offsetof(AVFilterFormatsConfig, samplerates),

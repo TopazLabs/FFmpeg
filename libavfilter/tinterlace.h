@@ -32,7 +32,6 @@
 #include "libavutil/pixdesc.h"
 #include "drawutils.h"
 #include "avfilter.h"
-#include "ccfifo.h"
 
 #define TINTERLACE_FLAG_VLPF 01
 #define TINTERLACE_FLAG_CVLPF 2
@@ -78,7 +77,6 @@ typedef struct TInterlaceContext {
     const AVPixFmtDescriptor *csp;
     void (*lowpass_line)(uint8_t *dstp, ptrdiff_t width, const uint8_t *srcp,
                          ptrdiff_t mref, ptrdiff_t pref, int clip_max);
-    CCFifo cc_fifo;
 } TInterlaceContext;
 
 void ff_tinterlace_init_x86(TInterlaceContext *interlace);

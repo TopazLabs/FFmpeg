@@ -405,8 +405,7 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
                      CONFIG_HEVC_NVDEC_HWACCEL + \
                      CONFIG_HEVC_VAAPI_HWACCEL + \
                      CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL + \
-                     CONFIG_HEVC_VDPAU_HWACCEL + \
-                     CONFIG_HEVC_VULKAN_HWACCEL)
+                     CONFIG_HEVC_VDPAU_HWACCEL)
     enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmt = pix_fmts;
 
     switch (sps->pix_fmt) {
@@ -431,9 +430,6 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-        *fmt++ = AV_PIX_FMT_VULKAN;
-#endif
         break;
     case AV_PIX_FMT_YUV420P10:
 #if CONFIG_HEVC_DXVA2_HWACCEL
@@ -448,9 +444,6 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #endif
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
-#endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-        *fmt++ = AV_PIX_FMT_VULKAN;
 #endif
 #if CONFIG_HEVC_VDPAU_HWACCEL
         *fmt++ = AV_PIX_FMT_VDPAU;
@@ -472,9 +465,6 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-        *fmt++ = AV_PIX_FMT_VULKAN;
-#endif
         break;
     case AV_PIX_FMT_YUV422P:
     case AV_PIX_FMT_YUV422P10LE:
@@ -484,15 +474,11 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-        *fmt++ = AV_PIX_FMT_VULKAN;
-#endif
         break;
     case AV_PIX_FMT_YUV444P10:
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
         *fmt++ = AV_PIX_FMT_VIDEOTOOLBOX;
 #endif
-    /* NOTE: fallthrough */
     case AV_PIX_FMT_YUV420P12:
     case AV_PIX_FMT_YUV444P12:
 #if CONFIG_HEVC_VAAPI_HWACCEL
@@ -501,9 +487,6 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_VDPAU_HWACCEL
         *fmt++ = AV_PIX_FMT_VDPAU;
 #endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-        *fmt++ = AV_PIX_FMT_VULKAN;
-#endif
 #if CONFIG_HEVC_NVDEC_HWACCEL
         *fmt++ = AV_PIX_FMT_CUDA;
 #endif
@@ -511,9 +494,6 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
     case AV_PIX_FMT_YUV422P12:
 #if CONFIG_HEVC_VAAPI_HWACCEL
        *fmt++ = AV_PIX_FMT_VAAPI;
-#endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-        *fmt++ = AV_PIX_FMT_VULKAN;
 #endif
         break;
     }
@@ -723,7 +703,6 @@ static int hls_slice_header(HEVCContext *s)
                 if (ret < 0)
                     return ret;
 
-                sh->bits_used_for_short_term_rps = pos - get_bits_left(gb);
                 sh->short_term_rps = &sh->slice_rps;
             } else {
                 int numbits, rps_idx;
@@ -753,13 +732,8 @@ static int hls_slice_header(HEVCContext *s)
             else
                 sh->slice_temporal_mvp_enabled_flag = 0;
         } else {
-            s->poc                              = 0;
-            sh->pic_order_cnt_lsb               = 0;
-            sh->short_term_ref_pic_set_sps_flag = 0;
-            sh->short_term_ref_pic_set_size     = 0;
-            sh->short_term_rps                  = NULL;
-            sh->long_term_ref_pic_set_size      = 0;
-            sh->slice_temporal_mvp_enabled_flag = 0;
+            s->sh.short_term_rps = NULL;
+            s->poc               = 0;
         }
 
         /* 8.3.1 */
@@ -794,11 +768,11 @@ static int hls_slice_header(HEVCContext *s)
                 sh->nb_refs[L1] = s->ps.pps->num_ref_idx_l1_default_active;
 
             if (get_bits1(gb)) { // num_ref_idx_active_override_flag
-                sh->nb_refs[L0] = get_ue_golomb_31(gb) + 1;
+                sh->nb_refs[L0] = get_ue_golomb_long(gb) + 1;
                 if (sh->slice_type == HEVC_SLICE_B)
-                    sh->nb_refs[L1] = get_ue_golomb_31(gb) + 1;
+                    sh->nb_refs[L1] = get_ue_golomb_long(gb) + 1;
             }
-            if (sh->nb_refs[L0] >= HEVC_MAX_REFS || sh->nb_refs[L1] >= HEVC_MAX_REFS) {
+            if (sh->nb_refs[L0] > HEVC_MAX_REFS || sh->nb_refs[L1] > HEVC_MAX_REFS) {
                 av_log(s->avctx, AV_LOG_ERROR, "Too many refs: %d/%d.\n",
                        sh->nb_refs[L0], sh->nb_refs[L1]);
                 return AVERROR_INVALIDDATA;
@@ -2518,7 +2492,7 @@ static void hls_decode_neighbour(HEVCLocalContext *lc, int x_ctb, int y_ctb,
     lc->ctb_up_left_flag = ((x_ctb > 0) && (y_ctb > 0)  && (ctb_addr_in_slice-1 >= s->ps.sps->ctb_width) && (s->ps.pps->tile_id[ctb_addr_ts] == s->ps.pps->tile_id[s->ps.pps->ctb_addr_rs_to_ts[ctb_addr_rs-1 - s->ps.sps->ctb_width]]));
 }
 
-static int hls_decode_entry(AVCodecContext *avctxt, void *arg)
+static int hls_decode_entry(AVCodecContext *avctxt, void *isFilterThread)
 {
     HEVCContext *s  = avctxt->priv_data;
     HEVCLocalContext *const lc = s->HEVClc;
@@ -2582,10 +2556,14 @@ static int hls_decode_entry(AVCodecContext *avctxt, void *arg)
 
 static int hls_slice_data(HEVCContext *s)
 {
-    int ret = 0;
+    int arg[2];
+    int ret[2];
 
-    s->avctx->execute(s->avctx, hls_decode_entry, NULL, &ret , 1, 0);
-    return ret;
+    arg[0] = 0;
+    arg[1] = 1;
+
+    s->avctx->execute(s->avctx, hls_decode_entry, arg, ret , 1, sizeof(int));
+    return ret[0];
 }
 static int hls_decode_entry_wpp(AVCodecContext *avctxt, void *hevc_lclist,
                                 int job, int self_id)
@@ -2931,10 +2909,7 @@ static int hevc_frame_start(HEVCContext *s)
         goto fail;
     }
 
-    if (IS_IRAP(s))
-        s->ref->frame->flags |= AV_FRAME_FLAG_KEY;
-    else
-        s->ref->frame->flags &= ~AV_FRAME_FLAG_KEY;
+    s->ref->frame->key_frame = IS_IRAP(s);
 
     s->ref->needs_fg = s->sei.common.film_grain_characteristics.present &&
         !(s->avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN) &&
@@ -3728,9 +3703,6 @@ static void hevc_decode_flush(AVCodecContext *avctx)
     av_buffer_unref(&s->rpu_buf);
     s->max_ra = INT_MAX;
     s->eos = 1;
-
-    if (avctx->hwaccel && avctx->hwaccel->flush)
-        avctx->hwaccel->flush(avctx);
 }
 
 #define OFFSET(x) offsetof(HEVCContext, x)
@@ -3789,9 +3761,6 @@ const FFCodec ff_hevc_decoder = {
 #endif
 #if CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL
                                HWACCEL_VIDEOTOOLBOX(hevc),
-#endif
-#if CONFIG_HEVC_VULKAN_HWACCEL
-                               HWACCEL_VULKAN(hevc),
 #endif
                                NULL
                            },

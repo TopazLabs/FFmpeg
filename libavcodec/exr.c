@@ -1930,10 +1930,8 @@ static int decode_header(EXRContext *s, AVFrame *frame)
 
             bytestream2_get_buffer(gb, key, FFMIN(sizeof(key) - 1, var_size));
             if (strncmp("scanlineimage", key, var_size) &&
-                strncmp("tiledimage", key, var_size)) {
-                ret = AVERROR_PATCHWELCOME;
-                goto fail;
-            }
+                strncmp("tiledimage", key, var_size))
+                return AVERROR_PATCHWELCOME;
 
             continue;
         } else if ((var_size = check_header_variable(s, "preview",
@@ -1941,16 +1939,12 @@ static int decode_header(EXRContext *s, AVFrame *frame)
             uint32_t pw = bytestream2_get_le32(gb);
             uint32_t ph = bytestream2_get_le32(gb);
             uint64_t psize = pw * ph;
-            if (psize > INT64_MAX / 4) {
-                ret = AVERROR_INVALIDDATA;
-                goto fail;
-            }
+            if (psize > INT64_MAX / 4)
+                return AVERROR_INVALIDDATA;
             psize *= 4;
 
-            if ((int64_t)psize >= bytestream2_get_bytes_left(gb)) {
-                ret = AVERROR_INVALIDDATA;
-                goto fail;
-            }
+            if ((int64_t)psize >= bytestream2_get_bytes_left(gb))
+                return AVERROR_INVALIDDATA;
 
             bytestream2_skip(gb, psize);
 
