@@ -3,7 +3,11 @@ from conan.tools.files import copy, collect_libs
 
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
-    settings = ("os", "build_type", "arch")
+    settings = "os", "build_type", "arch"
+
+    def configure(self):
+        if self.settings.os == "Macos" or self.settings.os == "Linux":
+            self.options["libvpx"].shared = True
 
     def requirements(self):
         self.requires("videoai/[~1.1.0]")
