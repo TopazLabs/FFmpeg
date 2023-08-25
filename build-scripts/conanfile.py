@@ -14,13 +14,15 @@ class conanRecipe(ConanFile):
             self.options["libvpx"].shared = True
 
 
+    def build_requirements(self):
+        if self.settings.os == "Macos":
+            if self.settings.arch == "x86_64":
+                self.tool_requires("nasm/2.14")
+
     def requirements(self):
         self.requires("videoai/[~1.1.0]")
         self.requires("libvpx/1.11.0")
         self.requires("aom/3.5.0")
-        if self.settings.os == "Macos":
-            if self.settings.arch == "x86_64":
-                self.build_requires("nasm/2.14")
 
     def generate(self):
         for dep in self.dependencies.values():

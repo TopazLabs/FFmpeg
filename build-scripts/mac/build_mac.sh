@@ -49,8 +49,8 @@ CFLAGS="-mmacosx-version-min=10.14 -fexceptions" LDFLAGS="-mmacosx-version-min=1
 make clean
 make -j8 install
 if [ ! -z "$DO_CONAN_EXPORT" ]; then
-	mkdir -p ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac13.0/build_type\=Release/
-	cp -Rp "$3"/* ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac13.0/build_type\=Release/
+	mkdir -p ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac14.0/build_type\=Release/
+	cp -Rp "$3"/* ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac14.0/build_type\=Release/
 fi
 if [ ! -z "$CONAN_X64" ]; then
 	cp "$CONAN_X64/lib/"*".dylib" $3/lib/
