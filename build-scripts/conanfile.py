@@ -20,7 +20,7 @@ class conanRecipe(ConanFile):
         self.requires("aom/3.5.0")
         if self.settings.os == "Macos":
             if self.settings.arch == "x86_64":
-                self.requires("nasm/2.14")
+                self.build_requires("nasm/2.14")
 
     def generate(self):
         for dep in self.dependencies.values():
