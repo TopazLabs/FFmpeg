@@ -17,4 +17,4 @@ cp build-scripts/deploy_conanfile.py ${TOPAZ_CONAN}/prebuilt/topaz-ffmpeg/${VERS
 
 
 cd ${TOPAZ_CONAN}
-bash ./run_publish_prebuilt.sh --conan-channel ${CHANNEL} --conan-user ${USER} --package-name topaz-ffmpeg --package-version ${VERSION}
+bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version ${VERSION} -r topaz-conan
