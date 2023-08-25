@@ -7,4 +7,6 @@ compiler.cppstd=14
 compiler.runtime=dynamic
 compiler.runtime_type=Release
 build_type=Release
+libvpx*:compiler.runtime=static
+aom*:compiler.runtime=static
 [options]
