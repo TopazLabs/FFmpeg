@@ -1,11 +1,13 @@
-from conans import ConanFile, tools
+from conan import ConanFile
+from conan.tools.files import copy
+import os
 
 # NOTE: when updating, place libraries in alphabetical order to reduce diffs
 
 class conanRecipe(ConanFile):
     name = "FFmpeg"
     #version
-    settings = ("os", "build_type", "arch")
+    settings = "os", "build_type", "arch"
 
     def configure(self):
         if self.settings.os == "Macos" or self.settings.os == "Linux":
@@ -13,23 +15,31 @@ class conanRecipe(ConanFile):
 
 
     def requirements(self):
-        self.requires("videoai/[~1.0.1]")
+        self.requires("videoai/[~1.1.0]")
         self.requires("libvpx/1.11.0")
         self.requires("aom/3.5.0")
         if self.settings.os == "Macos":
             if self.settings.arch == "x86_64":
-                self.requires("nasm/2.14")
+                self.build_requires("nasm/2.14")
 
-    def imports(self):
-        if self.settings.os == "Windows":
-            self.copy("*", "lib3rdparty", folder=True)
-            self.copy("*", "bin", "bin")
-            self.copy("*", "bin", "binr")
-            # self.copy('*', src='@bindirs', dst='binr')
-        if self.settings.os == "Macos":
-            self.copy("*", "include", "include")
-            self.copy("*", "lib", "lib")
-            self.copy("nasm", "bin", "bin")
-        if self.settings.os == "Linux":
-            self.copy("*", "include", "include")
-            self.copy("*", "lib", "lib")
+    def generate(self):
+        for dep in self.dependencies.values():
+            if dep.package_folder:
+                print(f"copying {dep}: {dep.package_folder} -> {self.build_folder}")
+                if self.settings.os == "Windows":
+                    # Copy all the libraries to lib3rdparty
+                    # Cannot only grab specific types, because for some reason
+                    # tensorflow-gpu has c++ headers with no extension
+                    copy(self, "*", src=dep.package_folder, dst=os.path.join("lib3rdparty", str(dep.ref).split('/')[0]))
+                    # Copy DLLs and Crashpad executables to bin folder
+                    copy(self, "*.xml", src=os.path.join(dep.package_folder, "bin"), dst="bin")
+                    copy(self, "*.dll", src=os.path.join(dep.package_folder, "bin"), dst="bin")
+                    # Copy DLLs and other things from older pre-builts that use binr/bind
+                    copy(self, "*", dst="bin", src=os.path.join(dep.package_folder, "binr"))
+
+                if self.settings.os == "Macos":
+                    copy(self, "*", src=os.path.join(dep.package_folder, "include"), dst="include")
+                    copy(self, "*", src=os.path.join(dep.package_folder, "lib"), dst="lib")
+                if self.settings.os == "Linux":
+                    copy(self, "*", src=os.path.join(dep.package_folder, "include"), dst="include")
+                    copy(self, "*", src=os.path.join(dep.package_folder, "lib"), dst="lib")
