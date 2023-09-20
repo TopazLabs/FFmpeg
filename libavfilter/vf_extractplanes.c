@@ -28,7 +28,9 @@
 #include "avfilter.h"
 #include "drawutils.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 #define PLANE_R 0x01
 #define PLANE_G 0x02

@@ -90,9 +90,13 @@ int ff_vk_load_props(FFVulkanContext *s)
     s->hprops = (VkPhysicalDeviceExternalMemoryHostPropertiesEXT) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT,
     };
+    s->coop_matrix_props = (VkPhysicalDeviceCooperativeMatrixPropertiesKHR) {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+        .pNext = &s->hprops,
+    };
     s->subgroup_props = (VkPhysicalDeviceSubgroupSizeControlProperties) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_SIZE_CONTROL_PROPERTIES,
-        .pNext = &s->hprops,
+        .pNext = &s->coop_matrix_props,
     };
     s->desc_buf_props = (VkPhysicalDeviceDescriptorBufferPropertiesEXT) {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT,
@@ -160,6 +164,25 @@ int ff_vk_load_props(FFVulkanContext *s)
     }
 
     vk->GetPhysicalDeviceQueueFamilyProperties2(s->hwctx->phys_dev, &s->tot_nb_qfs, s->qf_props);
+
+    if (s->extensions & FF_VK_EXT_COOP_MATRIX) {
+        vk->GetPhysicalDeviceCooperativeMatrixPropertiesKHR(s->hwctx->phys_dev,
+                                                            &s->coop_mat_props_nb, NULL);
+
+        if (s->coop_mat_props_nb) {
+            s->coop_mat_props = av_malloc_array(s->coop_mat_props_nb,
+                                                sizeof(VkCooperativeMatrixPropertiesKHR));
+            for (int i = 0; i < s->coop_mat_props_nb; i++) {
+                s->coop_mat_props[i] = (VkCooperativeMatrixPropertiesKHR) {
+                    .sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR,
+                };
+            }
+
+            vk->GetPhysicalDeviceCooperativeMatrixPropertiesKHR(s->hwctx->phys_dev,
+                                                                &s->coop_mat_props_nb,
+                                                                s->coop_mat_props);
+        }
+    }
 
     return 0;
 }
@@ -281,8 +304,6 @@ int ff_vk_exec_pool_init(FFVulkanContext *s, FFVkQueueFamilyCtx *qf,
 
     VkCommandPoolCreateInfo cqueue_create;
     VkCommandBufferAllocateInfo cbuf_create;
-
-    atomic_init(&pool->idx, 0);
 
     /* Create command pool */
     cqueue_create = (VkCommandPoolCreateInfo) {
@@ -472,7 +493,7 @@ VkResult ff_vk_exec_get_query(FFVulkanContext *s, FFVkExecContext *e,
 
 FFVkExecContext *ff_vk_exec_get(FFVkExecPool *pool)
 {
-    int idx = atomic_fetch_add_explicit(&pool->idx, 1, memory_order_relaxed);
+    uint32_t idx = pool->idx++;
     idx %= pool->pool_size;
     return &pool->contexts[idx];
 }
@@ -1863,6 +1884,7 @@ void ff_vk_pipeline_free(FFVulkanContext *s, FFVulkanPipeline *pl)
 
     av_freep(&pl->desc_set);
     av_freep(&pl->desc_bind);
+    av_freep(&pl->bound_buffer_indices);
     av_freep(&pl->push_consts);
     pl->push_consts_num = 0;
 }
@@ -1872,6 +1894,7 @@ void ff_vk_uninit(FFVulkanContext *s)
     av_freep(&s->query_props);
     av_freep(&s->qf_props);
     av_freep(&s->video_props);
+    av_freep(&s->coop_mat_props);
 
     av_buffer_unref(&s->frames_ref);
 }

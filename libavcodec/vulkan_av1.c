@@ -104,12 +104,9 @@ static int vk_av1_fill_pict(AVCodecContext *avctx, const AV1Frame **ref_src,
 
 static int vk_av1_create_params(AVCodecContext *avctx, AVBufferRef **buf)
 {
-    VkResult ret;
-
     const AV1DecContext *s = avctx->priv_data;
     FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
     FFVulkanDecodeShared *ctx = (FFVulkanDecodeShared *)dec->shared_ref->data;
-    FFVulkanFunctions *vk = &ctx->s.vkfn;
 
     const AV1RawSequenceHeader *seq = s->raw_seq;
 
@@ -118,10 +115,7 @@ static int vk_av1_create_params(AVCodecContext *avctx, AVBufferRef **buf)
     VkVideoDecodeAV1SessionParametersCreateInfoMESA av1_params;
     VkVideoSessionParametersCreateInfoKHR session_params_create;
 
-    AVBufferRef *tmp;
-    VkVideoSessionParametersKHR *par = av_malloc(sizeof(*par));
-    if (!par)
-        return AVERROR(ENOMEM);
+    int err;
 
     av1_sequence_header = (StdVideoAV1MESASequenceHeader) {
         .flags = (StdVideoAV1MESASequenceHeaderFlags) {
@@ -189,25 +183,11 @@ static int vk_av1_create_params(AVCodecContext *avctx, AVBufferRef **buf)
         .videoSessionParametersTemplate = NULL,
     };
 
-    /* Create session parameters */
-    ret = vk->CreateVideoSessionParametersKHR(ctx->s.hwctx->act_dev, &session_params_create,
-                                              ctx->s.hwctx->alloc, par);
-    if (ret != VK_SUCCESS) {
-        av_log(avctx, AV_LOG_ERROR, "Unable to create Vulkan video session parameters: %s!\n",
-               ff_vk_ret2str(ret));
-        return AVERROR_EXTERNAL;
-    }
-
-    tmp = av_buffer_create((uint8_t *)par, sizeof(*par), ff_vk_decode_free_params,
-                           ctx, 0);
-    if (!tmp) {
-        ff_vk_decode_free_params(ctx, (uint8_t *)par);
-        return AVERROR(ENOMEM);
-    }
+    err = ff_vk_decode_create_params(buf, avctx, ctx, &session_params_create);
+    if (err < 0)
+        return err;
 
     av_log(avctx, AV_LOG_DEBUG, "Created frame parameters\n");
-
-    *buf = tmp;
 
     return 0;
 }
@@ -229,12 +209,10 @@ static int vk_av1_start_frame(AVCodecContext          *avctx,
     const int apply_grain = !(avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN) &&
                             film_grain->apply_grain;
 
-    if (!dec->session_params || dec->params_changed) {
-        av_buffer_unref(&dec->session_params);
+    if (!dec->session_params) {
         err = vk_av1_create_params(avctx, &dec->session_params);
         if (err < 0)
             return err;
-        dec->params_changed = 0;
     }
 
     if (!ap->frame_id_set) {
@@ -448,9 +426,9 @@ static int vk_av1_start_frame(AVCodecContext          *avctx,
             },
             .gm_type = s->cur_frame.gm_type[i],
             .gm_params = {
-                frame_header->gm_params[i][0], frame_header->gm_params[i][1],
-                frame_header->gm_params[i][2], frame_header->gm_params[i][3],
-                frame_header->gm_params[i][4], frame_header->gm_params[i][5],
+                s->cur_frame.gm_params[i][0], s->cur_frame.gm_params[i][1],
+                s->cur_frame.gm_params[i][2], s->cur_frame.gm_params[i][3],
+                s->cur_frame.gm_params[i][4], s->cur_frame.gm_params[i][5],
             },
         };
     }
@@ -486,8 +464,6 @@ static int vk_av1_start_frame(AVCodecContext          *avctx,
         ap->av1_frame_header.film_grain.ar_coeffs_cr_plus_128[24] = film_grain->ar_coeffs_cr_plus_128[24];
     }
 
-    av_log(avctx, AV_LOG_DEBUG, "Created frame parameters");
-
     /* Workaround for a spec issue. */
     ap->dec = dec;
 
@@ -513,13 +489,15 @@ static int vk_av1_decode_slice(AVCodecContext *avctx,
             .tg_end   = s->tg_end,
         };
 
-        err = ff_vk_decode_add_slice(avctx, vp, data, size, 0,
+        err = ff_vk_decode_add_slice(avctx, vp,
+                                     data + s->tile_group_info[i].tile_offset,
+                                     s->tile_group_info[i].tile_size, 0,
                                      &ap->tile_list.nb_tiles,
                                      &ap->tile_offsets);
         if (err < 0)
             return err;
 
-//        ap->tiles[ap->tile_list.nb_tiles - 1].offset = ap->tile_offsets[ap->tile_list.nb_tiles - 1];
+        ap->tiles[ap->tile_list.nb_tiles - 1].offset = ap->tile_offsets[ap->tile_list.nb_tiles - 1];
     }
 
     return 0;
@@ -528,11 +506,21 @@ static int vk_av1_decode_slice(AVCodecContext *avctx,
 static int vk_av1_end_frame(AVCodecContext *avctx)
 {
     const AV1DecContext *s = avctx->priv_data;
+    FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
     const AV1Frame *pic = &s->cur_frame;
     AV1VulkanDecodePicture *ap = pic->hwaccel_picture_private;
     FFVulkanDecodePicture *vp = &ap->vp;
     FFVulkanDecodePicture *rvp[AV1_NUM_REF_FRAMES] = { 0 };
     AVFrame *rav[AV1_NUM_REF_FRAMES] = { 0 };
+
+    if (!ap->tile_list.nb_tiles)
+        return 0;
+
+    if (!dec->session_params) {
+        int err = vk_av1_create_params(avctx, &dec->session_params);
+        if (err < 0)
+            return err;
+    }
 
     for (int i = 0; i < vp->decode_info.referenceSlotCount; i++) {
         const AV1Frame *rp = ap->ref_src[i];
@@ -564,11 +552,11 @@ static void vk_av1_free_frame_priv(void *_hwctx, uint8_t *data)
     av_free(ap);
 }
 
-const AVHWAccel ff_av1_vulkan_hwaccel = {
-    .name                  = "av1_vulkan",
-    .type                  = AVMEDIA_TYPE_VIDEO,
-    .id                    = AV_CODEC_ID_AV1,
-    .pix_fmt               = AV_PIX_FMT_VULKAN,
+const FFHWAccel ff_av1_vulkan_hwaccel = {
+    .p.name                = "av1_vulkan",
+    .p.type                = AVMEDIA_TYPE_VIDEO,
+    .p.id                  = AV_CODEC_ID_AV1,
+    .p.pix_fmt             = AV_PIX_FMT_VULKAN,
     .start_frame           = &vk_av1_start_frame,
     .decode_slice          = &vk_av1_decode_slice,
     .end_frame             = &vk_av1_end_frame,
@@ -576,7 +564,7 @@ const AVHWAccel ff_av1_vulkan_hwaccel = {
     .frame_priv_data_size  = sizeof(AV1VulkanDecodePicture),
     .init                  = &ff_vk_decode_init,
     .update_thread_context = &ff_vk_update_thread_context,
-    .decode_params         = &ff_vk_params_changed,
+    .decode_params         = &ff_vk_params_invalidate,
     .flush                 = &ff_vk_decode_flush,
     .uninit                = &ff_vk_decode_uninit,
     .frame_params          = &ff_vk_frame_params,

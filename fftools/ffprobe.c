@@ -161,22 +161,6 @@ static int find_stream_info  = 1;
 
 #define SECTION_MAX_NB_CHILDREN 10
 
-struct section {
-    int id;             ///< unique id identifying a section
-    const char *name;
-
-#define SECTION_FLAG_IS_WRAPPER      1 ///< the section only contains other sections, but has no data at its own level
-#define SECTION_FLAG_IS_ARRAY        2 ///< the section contains an array of elements of the same type
-#define SECTION_FLAG_HAS_VARIABLE_FIELDS 4 ///< the section may contain a variable number of fields with variable keys.
-                                           ///  For these sections the element_name field is mandatory.
-    int flags;
-    int children_ids[SECTION_MAX_NB_CHILDREN+1]; ///< list of children section IDS, terminated by -1
-    const char *element_name; ///< name of the contained element, if provided
-    const char *unique_name;  ///< unique section name, in case the name is ambiguous
-    AVDictionary *entries_to_show;
-    int show_all_entries;
-};
-
 typedef enum {
     SECTION_ID_NONE = -1,
     SECTION_ID_CHAPTER,
@@ -228,6 +212,22 @@ typedef enum {
     SECTION_ID_STREAM_SIDE_DATA,
     SECTION_ID_SUBTITLE,
 } SectionID;
+
+struct section {
+    int id;             ///< unique id identifying a section
+    const char *name;
+
+#define SECTION_FLAG_IS_WRAPPER      1 ///< the section only contains other sections, but has no data at its own level
+#define SECTION_FLAG_IS_ARRAY        2 ///< the section contains an array of elements of the same type
+#define SECTION_FLAG_HAS_VARIABLE_FIELDS 4 ///< the section may contain a variable number of fields with variable keys.
+                                           ///  For these sections the element_name field is mandatory.
+    int flags;
+    const SectionID children_ids[SECTION_MAX_NB_CHILDREN+1]; ///< list of children section IDS, terminated by -1
+    const char *element_name; ///< name of the contained element, if provided
+    const char *unique_name;  ///< unique section name, in case the name is ambiguous
+    AVDictionary *entries_to_show;
+    int show_all_entries;
+};
 
 static struct section sections[] = {
     [SECTION_ID_CHAPTERS] =           { SECTION_ID_CHAPTERS, "chapters", SECTION_FLAG_IS_ARRAY, { SECTION_ID_CHAPTER, -1 } },
@@ -378,17 +378,6 @@ static void log_callback(void *ptr, int level, const char *fmt, va_list vl)
     }
 
     pthread_mutex_unlock(&log_mutex);
-#endif
-}
-
-static void ffprobe_cleanup(int ret)
-{
-    int i;
-    for (i = 0; i < FF_ARRAY_ELEMS(sections); i++)
-        av_dict_free(&(sections[i].entries_to_show));
-
-#if HAVE_THREADS
-    pthread_mutex_destroy(&log_mutex);
 #endif
 }
 
@@ -2940,8 +2929,10 @@ static int read_interval_packets(WriterContext *w, InputFile *ifile,
                 FrameData *fd;
 
                 pkt->opaque_ref = av_buffer_allocz(sizeof(*fd));
-                if (!pkt->opaque_ref)
-                    return AVERROR(ENOMEM);
+                if (!pkt->opaque_ref) {
+                    ret = AVERROR(ENOMEM);
+                    goto end;
+                }
                 fd = (FrameData*)pkt->opaque_ref->data;
                 fd->pkt_pos  = pkt->pos;
                 fd->pkt_size = pkt->size;
@@ -3029,7 +3020,7 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
     if (!do_bitexact && (profile = avcodec_profile_name(par->codec_id, par->profile)))
         print_str("profile", profile);
     else {
-        if (par->profile != FF_PROFILE_UNKNOWN) {
+        if (par->profile != AV_PROFILE_UNKNOWN) {
             char profile_num[12];
             snprintf(profile_num, sizeof(profile_num), "%d", par->profile);
             print_str("profile", profile_num);
@@ -3350,7 +3341,7 @@ static int open_input_file(InputFile *ifile, const char *filename,
 
     fmt_ctx = avformat_alloc_context();
     if (!fmt_ctx)
-        report_and_exit(AVERROR(ENOMEM));
+        return AVERROR(ENOMEM);
 
     if (!av_dict_get(format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
@@ -3372,8 +3363,12 @@ static int open_input_file(InputFile *ifile, const char *filename,
         av_log(NULL, AV_LOG_WARNING, "Option %s skipped - not known to demuxer.\n", t->key);
 
     if (find_stream_info) {
-        AVDictionary **opts = setup_find_stream_info_opts(fmt_ctx, codec_opts);
+        AVDictionary **opts;
         int orig_nb_streams = fmt_ctx->nb_streams;
+
+        err = setup_find_stream_info_opts(fmt_ctx, codec_opts, &opts);
+        if (err < 0)
+            return err;
 
         err = avformat_find_stream_info(fmt_ctx, opts);
 
@@ -3417,8 +3412,12 @@ static int open_input_file(InputFile *ifile, const char *filename,
             continue;
         }
         {
-            AVDictionary *opts = filter_codec_opts(codec_opts, stream->codecpar->codec_id,
-                                                   fmt_ctx, stream, codec);
+            AVDictionary *opts;
+
+            err = filter_codec_opts(codec_opts, stream->codecpar->codec_id,
+                                    fmt_ctx, stream, codec, &opts);
+            if (err < 0)
+                exit(1);
 
             ist->dec_ctx = avcodec_alloc_context3(codec);
             if (!ist->dec_ctx)
@@ -3661,8 +3660,14 @@ static int opt_show_optional_fields(void *optctx, const char *opt, const char *a
     else if (!av_strcasecmp(arg, "never"))  show_optional_fields = SHOW_OPTIONAL_FIELDS_NEVER;
     else if (!av_strcasecmp(arg, "auto"))   show_optional_fields = SHOW_OPTIONAL_FIELDS_AUTO;
 
-    if (show_optional_fields == SHOW_OPTIONAL_FIELDS_AUTO && av_strcasecmp(arg, "auto"))
-        show_optional_fields = parse_number_or_die("show_optional_fields", arg, OPT_INT, SHOW_OPTIONAL_FIELDS_AUTO, SHOW_OPTIONAL_FIELDS_ALWAYS);
+    if (show_optional_fields == SHOW_OPTIONAL_FIELDS_AUTO && av_strcasecmp(arg, "auto")) {
+        double num;
+        int ret = parse_number("show_optional_fields", arg, OPT_INT,
+                               SHOW_OPTIONAL_FIELDS_AUTO, SHOW_OPTIONAL_FIELDS_ALWAYS, &num);
+        if (ret < 0)
+            return ret;
+        show_optional_fields = num;
+    }
     return 0;
 }
 
@@ -3683,8 +3688,7 @@ static inline void mark_section_show_entries(SectionID section_id,
 
     section->show_all_entries = show_all_entries;
     if (show_all_entries) {
-        SectionID *id;
-        for (id = section->children_ids; *id != -1; id++)
+        for (const SectionID *id = section->children_ids; *id != -1; id++)
             mark_section_show_entries(*id, show_all_entries, entries);
     } else {
         av_dict_copy(&section->entries_to_show, entries, 0);
@@ -3760,17 +3764,19 @@ static int opt_show_entries(void *optctx, const char *opt, const char *arg)
     return ret;
 }
 
-static void opt_input_file(void *optctx, const char *arg)
+static int opt_input_file(void *optctx, const char *arg)
 {
     if (input_filename) {
         av_log(NULL, AV_LOG_ERROR,
                 "Argument '%s' provided as input filename, but '%s' was already specified.\n",
                 arg, input_filename);
-        exit_program(1);
+        return AVERROR(EINVAL);
     }
     if (!strcmp(arg, "-"))
         arg = "fd:";
     input_filename = arg;
+
+    return 0;
 }
 
 static int opt_input_file_i(void *optctx, const char *opt, const char *arg)
@@ -3779,22 +3785,18 @@ static int opt_input_file_i(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
-static void opt_output_file(void *optctx, const char *arg)
+static int opt_output_file_o(void *optctx, const char *opt, const char *arg)
 {
     if (output_filename) {
         av_log(NULL, AV_LOG_ERROR,
                 "Argument '%s' provided as output filename, but '%s' was already specified.\n",
                 arg, output_filename);
-        exit_program(1);
+        return AVERROR(EINVAL);
     }
     if (!strcmp(arg, "-"))
         arg = "fd:";
     output_filename = arg;
-}
 
-static int opt_output_file_o(void *optctx, const char *opt, const char *arg)
-{
-    opt_output_file(optctx, arg);
     return 0;
 }
 
@@ -4069,11 +4071,10 @@ static const OptionDef real_options[] = {
 
 static inline int check_section_show_entries(int section_id)
 {
-    int *id;
     struct section *section = &sections[section_id];
     if (sections[section_id].show_all_entries || sections[section_id].entries_to_show)
         return 1;
-    for (id = section->children_ids; *id != -1; id++)
+    for (const SectionID *id = section->children_ids; *id != -1; id++)
         if (check_section_show_entries(*id))
             return 1;
     return 0;
@@ -4101,7 +4102,6 @@ int main(int argc, char **argv)
     }
 #endif
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
-    register_exit(ffprobe_cleanup);
 
     options = real_options;
     parse_loglevel(argc, argv, options);
@@ -4111,7 +4111,11 @@ int main(int argc, char **argv)
 #endif
 
     show_banner(argc, argv, options);
-    parse_options(NULL, argc, argv, options, opt_input_file);
+    ret = parse_options(NULL, argc, argv, options, opt_input_file);
+    if (ret < 0) {
+        ret = (ret == AVERROR_EXIT) ? 0 : ret;
+        goto end;
+    }
 
     if (do_show_log)
         av_log_set_callback(log_callback);
@@ -4234,6 +4238,10 @@ end:
         av_dict_free(&(sections[i].entries_to_show));
 
     avformat_network_deinit();
+
+#if HAVE_THREADS
+    pthread_mutex_destroy(&log_mutex);
+#endif
 
     return ret < 0;
 }

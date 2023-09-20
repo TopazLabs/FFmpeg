@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/emms.h"
 #include "libavutil/intmath.h"
 #include "libavutil/libm.h"
 #include "libavutil/log.h"
@@ -1886,8 +1887,7 @@ redo_frame:
                                    (s->avctx->flags&AV_CODEC_FLAG_PSNR) ? SNOW_MAX_PLANES : 0,
                                    s->current_picture->pict_type);
     if (s->avctx->flags & AV_CODEC_FLAG_RECON_FRAME) {
-        av_frame_unref(avci->recon_frame);
-        av_frame_ref(avci->recon_frame, s->current_picture);
+        av_frame_replace(avci->recon_frame, s->current_picture);
     }
 
     pkt->size = ff_rac_terminate(c, 0);

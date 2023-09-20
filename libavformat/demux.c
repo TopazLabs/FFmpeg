@@ -36,6 +36,7 @@
 
 #include "libavcodec/avcodec.h"
 #include "libavcodec/bsf.h"
+#include "libavcodec/codec_desc.h"
 #include "libavcodec/internal.h"
 #include "libavcodec/packet_internal.h"
 #include "libavcodec/raw.h"
@@ -120,6 +121,8 @@ static int set_codec_from_probe_data(AVFormatContext *s, AVStream *st,
         { "mp3",        AV_CODEC_ID_MP3,          AVMEDIA_TYPE_AUDIO    },
         { "mpegvideo",  AV_CODEC_ID_MPEG2VIDEO,   AVMEDIA_TYPE_VIDEO    },
         { "truehd",     AV_CODEC_ID_TRUEHD,       AVMEDIA_TYPE_AUDIO    },
+        { "evc",        AV_CODEC_ID_EVC,          AVMEDIA_TYPE_VIDEO    },
+        { "vvc",        AV_CODEC_ID_VVC,          AVMEDIA_TYPE_VIDEO    },
         { 0 }
     };
     int score;
@@ -752,7 +755,8 @@ static int64_t select_from_pts_buffer(AVStream *st, int64_t *pts_buffer, int64_t
 {
     FFStream *const sti = ffstream(st);
     int onein_oneout = st->codecpar->codec_id != AV_CODEC_ID_H264 &&
-                       st->codecpar->codec_id != AV_CODEC_ID_HEVC;
+                       st->codecpar->codec_id != AV_CODEC_ID_HEVC &&
+                       st->codecpar->codec_id != AV_CODEC_ID_VVC;
 
     if (!onein_oneout) {
         int delay = sti->avctx->has_b_frames;
@@ -942,7 +946,8 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
     int64_t offset;
     AVRational duration;
     int onein_oneout = st->codecpar->codec_id != AV_CODEC_ID_H264 &&
-                       st->codecpar->codec_id != AV_CODEC_ID_HEVC;
+                       st->codecpar->codec_id != AV_CODEC_ID_HEVC &&
+                       st->codecpar->codec_id != AV_CODEC_ID_VVC;
 
     if (s->flags & AVFMT_FLAG_NOFILLIN)
         return;
@@ -2528,7 +2533,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
             if (codec && !avctx->codec)
                 if (avcodec_open2(avctx, codec, options ? &options[i] : &thread_opt) < 0)
                     av_log(ic, AV_LOG_WARNING,
-                           "Failed to open codec in %s\n",__FUNCTION__);
+                           "Failed to open codec in %s\n", __func__);
         }
         if (!options)
             av_dict_free(&thread_opt);
@@ -2785,7 +2790,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                         av_dict_set(&opts, "codec_whitelist", ic->codec_whitelist, 0);
                     if (avcodec_open2(avctx, codec, (options && stream_index < orig_nb_streams) ? &options[stream_index] : &opts) < 0)
                         av_log(ic, AV_LOG_WARNING,
-                               "Failed to open codec in %s\n",__FUNCTION__);
+                               "Failed to open codec in %s\n", __func__);
                     av_dict_free(&opts);
                 }
             }
@@ -2969,6 +2974,23 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
             ret = add_coded_side_data(st, sti->avctx);
             if (ret < 0)
                 goto find_stream_info_err;
+
+            if (sti->avctx->rc_buffer_size > 0 || sti->avctx->rc_max_rate > 0 ||
+                sti->avctx->rc_min_rate) {
+                size_t cpb_size;
+                AVCPBProperties *props = av_cpb_properties_alloc(&cpb_size);
+                if (props) {
+                    if (sti->avctx->rc_buffer_size > 0)
+                        props->buffer_size = sti->avctx->rc_buffer_size;
+                    if (sti->avctx->rc_min_rate > 0)
+                        props->min_bitrate = sti->avctx->rc_min_rate;
+                    if (sti->avctx->rc_max_rate > 0)
+                        props->max_bitrate = sti->avctx->rc_max_rate;
+                    if (av_stream_add_side_data(st, AV_PKT_DATA_CPB_PROPERTIES,
+                                                (uint8_t *)props, cpb_size))
+                        av_free(props);
+                }
+            }
         }
 
         sti->avctx_inited = 0;

@@ -307,10 +307,8 @@
  * @}
  */
 
-#include <time.h>
 #include <stdio.h>  /* FILE */
 
-#include "libavcodec/codec.h"
 #include "libavcodec/codec_par.h"
 #include "libavcodec/defs.h"
 #include "libavcodec/packet.h"
@@ -325,10 +323,13 @@
  * to avoid unnecessary rebuilds. When included externally, keep including
  * the full version information. */
 #include "libavformat/version.h"
+
+#include "libavutil/frame.h"
+#include "libavcodec/codec.h"
 #endif
 
 struct AVFormatContext;
-
+struct AVFrame;
 struct AVDeviceInfoList;
 
 /**
@@ -1241,7 +1242,9 @@ typedef struct AVFormatContext {
 #define AVFMT_FLAG_BITEXACT         0x0400
 #define AVFMT_FLAG_SORT_DTS    0x10000 ///< try to interleave outputted packets by dts (using this flag can slow demuxing down)
 #define AVFMT_FLAG_FAST_SEEK   0x80000 ///< Enable fast, but inaccurate seeks for some formats
+#if FF_API_LAVF_SHORTEST
 #define AVFMT_FLAG_SHORTEST   0x100000 ///< Stop muxing when the shortest stream stops.
+#endif
 #define AVFMT_FLAG_AUTO_BSF   0x200000 ///< Add bitstream filters as requested by the muxer
 
     /**
@@ -1569,7 +1572,7 @@ typedef struct AVFormatContext {
      * the same codec_id.
      * Demuxing: Set by user
      */
-    const AVCodec *video_codec;
+    const struct AVCodec *video_codec;
 
     /**
      * Forced audio codec.
@@ -1577,7 +1580,7 @@ typedef struct AVFormatContext {
      * the same codec_id.
      * Demuxing: Set by user
      */
-    const AVCodec *audio_codec;
+    const struct AVCodec *audio_codec;
 
     /**
      * Forced subtitle codec.
@@ -1585,7 +1588,7 @@ typedef struct AVFormatContext {
      * the same codec_id.
      * Demuxing: Set by user
      */
-    const AVCodec *subtitle_codec;
+    const struct AVCodec *subtitle_codec;
 
     /**
      * Forced data codec.
@@ -1593,7 +1596,7 @@ typedef struct AVFormatContext {
      * the same codec_id.
      * Demuxing: Set by user
      */
-    const AVCodec *data_codec;
+    const struct AVCodec *data_codec;
 
     /**
      * Number of bytes to be written as padding in a metadata header.
@@ -1842,7 +1845,7 @@ const AVClass *av_stream_get_class(void);
  *
  * @return newly created stream or NULL on error.
  */
-AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c);
+AVStream *avformat_new_stream(AVFormatContext *s, const struct AVCodec *c);
 
 /**
  * Wrap an existing array as stream side data.
@@ -2076,7 +2079,7 @@ int av_find_best_stream(AVFormatContext *ic,
                         enum AVMediaType type,
                         int wanted_stream_nb,
                         int related_stream,
-                        const AVCodec **decoder_ret,
+                        const struct AVCodec **decoder_ret,
                         int flags);
 
 /**
@@ -2352,7 +2355,7 @@ int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt);
  * See av_interleaved_write_uncoded_frame() for details.
  */
 int av_write_uncoded_frame(AVFormatContext *s, int stream_index,
-                           AVFrame *frame);
+                           struct AVFrame *frame);
 
 /**
  * Write an uncoded frame to an output media file.
@@ -2371,7 +2374,7 @@ int av_write_uncoded_frame(AVFormatContext *s, int stream_index,
  * @return  >=0 for success, a negative code on error
  */
 int av_interleaved_write_uncoded_frame(AVFormatContext *s, int stream_index,
-                                       AVFrame *frame);
+                                       struct AVFrame *frame);
 
 /**
  * Test whether a muxer supports uncoded frame.
@@ -2759,7 +2762,8 @@ const struct AVCodecTag *avformat_get_mov_audio_tags(void);
  * @param frame the frame with the aspect ratio to be determined
  * @return the guessed (valid) sample_aspect_ratio, 0/1 if no idea
  */
-AVRational av_guess_sample_aspect_ratio(AVFormatContext *format, AVStream *stream, AVFrame *frame);
+AVRational av_guess_sample_aspect_ratio(AVFormatContext *format, AVStream *stream,
+                                        struct AVFrame *frame);
 
 /**
  * Guess the frame rate, based on both the container and codec information.
@@ -2769,7 +2773,8 @@ AVRational av_guess_sample_aspect_ratio(AVFormatContext *format, AVStream *strea
  * @param frame the frame for which the frame rate should be determined, may be NULL
  * @return the guessed (valid) frame rate, 0/1 if no idea
  */
-AVRational av_guess_frame_rate(AVFormatContext *ctx, AVStream *stream, AVFrame *frame);
+AVRational av_guess_frame_rate(AVFormatContext *ctx, AVStream *stream,
+                               struct AVFrame *frame);
 
 /**
  * Check if the stream st contained in s is matched by the stream specifier

@@ -76,7 +76,7 @@ static int query_formats(AVFilterContext *ctx)
 
 static double get_coef(double x, double sr)
 {
-    return exp(-1000. / (x * sr));
+    return 1.0 - exp(-1000. / (x * sr));
 }
 
 typedef struct ThreadData {
@@ -96,26 +96,16 @@ static int config_input(AVFilterLink *inlink)
     AudioDynamicEqualizerContext *s = ctx->priv;
 
     s->format = inlink->format;
-    s->state = ff_get_audio_buffer(inlink, 8);
+    s->state = ff_get_audio_buffer(inlink, 16);
     if (!s->state)
         return AVERROR(ENOMEM);
 
     switch (s->format) {
     case AV_SAMPLE_FMT_DBLP:
-        for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
-            double *state = (double *)s->state->extended_data[ch];
-
-            state[4] = 1.;
-        }
         s->filter_prepare  = filter_prepare_double;
         s->filter_channels = filter_channels_double;
         break;
     case AV_SAMPLE_FMT_FLTP:
-        for (int ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
-            float *state = (float *)s->state->extended_data[ch];
-
-            state[4] = 1.;
-        }
         s->filter_prepare  = filter_prepare_float;
         s->filter_channels = filter_channels_float;
         break;
@@ -214,13 +204,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_adynamicequalizer = {
     .name            = "adynamicequalizer",
     .description     = NULL_IF_CONFIG_SMALL("Apply Dynamic Equalization of input audio."),
@@ -228,7 +211,7 @@ const AVFilter ff_af_adynamicequalizer = {
     .priv_class      = &adynamicequalizer_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
                        AVFILTER_FLAG_SLICE_THREADS,

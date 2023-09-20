@@ -61,6 +61,7 @@ typedef struct BufferSourceContext {
     AVChannelLayout ch_layout;
 
     int eof;
+    int64_t last_pts;
 } BufferSourceContext;
 
 #define CHECK_VIDEO_PARAM_CHANGE(s, c, width, height, format, pts)\
@@ -191,9 +192,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
     s->nb_failed_requests = 0;
 
     if (!frame)
-        return av_buffersrc_close(ctx, AV_NOPTS_VALUE, flags);
+        return av_buffersrc_close(ctx, s->last_pts, flags);
     if (s->eof)
         return AVERROR(EINVAL);
+
+    s->last_pts = frame->pts + frame->duration;
 
     refcounted = !!frame->buf[0];
 
@@ -227,17 +230,14 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     }
 
-    if (!(copy = av_frame_alloc()))
-        return AVERROR(ENOMEM);
-
     if (refcounted && !(flags & AV_BUFFERSRC_FLAG_KEEP_REF)) {
+        if (!(copy = av_frame_alloc()))
+            return AVERROR(ENOMEM);
         av_frame_move_ref(copy, frame);
     } else {
-        ret = av_frame_ref(copy, frame);
-        if (ret < 0) {
-            av_frame_free(&copy);
-            return ret;
-        }
+        copy = av_frame_clone(frame);
+        if (!copy)
+            return AVERROR(ENOMEM);
     }
 
 #if FF_API_PKT_DURATION

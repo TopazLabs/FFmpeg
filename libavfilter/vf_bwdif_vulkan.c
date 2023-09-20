@@ -86,8 +86,7 @@ static const char filter_fn[] = {
     C(0,                                                                                              )
     C(1,     bvec4 interpolate_cnd1 = greaterThan(abs(fc - fe), temp_diff[0]);                        )
     C(1,     vec4 interpol = mix(interpolate_cur, interpolate_all, interpolate_cnd1);                 )
-    /* Cliping interpol between [fd - diff, fd + diff] is intentionally left out.
-     * Removing the clipping increases quality. TODO: research and fix the C version to match this. */
+    C(1,     interpol = clamp(interpol, fd - diff, fd + diff);                                        )
     C(1,     return mix(interpol, fd, diff_mask);                                                     )
     C(0, }                                                                                            )
 };
@@ -252,8 +251,6 @@ static av_cold int init_filter(AVFilterContext *ctx)
     RET(ff_vk_exec_pipeline_register(vkctx, &s->e, &s->pl));
 
     s->initialized = 1;
-
-    return 0;
 
 fail:
     if (spv_opaque)

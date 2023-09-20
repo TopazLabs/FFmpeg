@@ -248,11 +248,12 @@ static const struct {
     { "RVI",      "rvi",      AV_CPU_FLAG_RVI },
     { "RVF",      "rvf",      AV_CPU_FLAG_RVF },
     { "RVD",      "rvd",      AV_CPU_FLAG_RVD },
+    { "RVBaddr",  "rvb_a",    AV_CPU_FLAG_RVB_ADDR },
+    { "RVBbasic", "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
     { "RVVi32",   "rvv_i32",  AV_CPU_FLAG_RVV_I32 },
     { "RVVf32",   "rvv_f32",  AV_CPU_FLAG_RVV_F32 },
     { "RVVi64",   "rvv_i64",  AV_CPU_FLAG_RVV_I64 },
     { "RVVf64",   "rvv_f64",  AV_CPU_FLAG_RVV_F64 },
-    { "RVBbasic", "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
 #elif ARCH_MIPS
     { "MMI",      "mmi",      AV_CPU_FLAG_MMI },
     { "MSA",      "msa",      AV_CPU_FLAG_MSA },
@@ -666,7 +667,7 @@ static int bench_init_linux(void)
 
     state.sysfd = syscall(__NR_perf_event_open, &attr, 0, -1, -1, 0);
     if (state.sysfd == -1) {
-        perror("syscall");
+        perror("perf_event_open");
         return -1;
     }
     return 0;
@@ -715,6 +716,14 @@ static void bench_uninit(void)
 #endif
 }
 
+static int usage(const char *path)
+{
+    fprintf(stderr,
+            "Usage: %s [--bench] [--test=<pattern>] [--verbose] [seed]\n",
+            path);
+    return 1;
+}
+
 int main(int argc, char *argv[])
 {
     unsigned int seed = av_get_random_seed();
@@ -730,25 +739,29 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    while (argc > 1) {
-        if (!strncmp(argv[1], "--bench", 7)) {
+    for (i = 1; i < argc; i++) {
+        const char *arg = argv[i];
+        unsigned long l;
+        char *end;
+
+        if (!strncmp(arg, "--bench", 7)) {
             if (bench_init() < 0)
                 return 1;
-            if (argv[1][7] == '=') {
-                state.bench_pattern = argv[1] + 8;
+            if (arg[7] == '=') {
+                state.bench_pattern = arg + 8;
                 state.bench_pattern_len = strlen(state.bench_pattern);
             } else
                 state.bench_pattern = "";
-        } else if (!strncmp(argv[1], "--test=", 7)) {
-            state.test_name = argv[1] + 7;
-        } else if (!strcmp(argv[1], "--verbose") || !strcmp(argv[1], "-v")) {
+        } else if (!strncmp(arg, "--test=", 7)) {
+            state.test_name = arg + 7;
+        } else if (!strcmp(arg, "--verbose") || !strcmp(arg, "-v")) {
             state.verbose = 1;
+        } else if ((l = strtoul(arg, &end, 10)) <= UINT_MAX &&
+                   *end == '\0') {
+            seed = l;
         } else {
-            seed = strtoul(argv[1], NULL, 10);
+            return usage(argv[0]);
         }
-
-        argc--;
-        argv++;
     }
 
     fprintf(stderr, "checkasm: using random seed %u\n", seed);

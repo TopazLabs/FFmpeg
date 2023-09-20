@@ -1911,7 +1911,7 @@ static int mov_read_alac(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 
 static int mov_read_avss(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
-    return mov_read_extradata(c, pb, atom, AV_CODEC_ID_AVS);
+    return mov_read_extradata(c, pb, atom, AV_CODEC_ID_CAVS);
 }
 
 static int mov_read_jp2h(MOVContext *c, AVIOContext *pb, MOVAtom atom)
@@ -2263,6 +2263,11 @@ static int mov_codec_id(AVStream *st, uint32_t format)
                     (st->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE &&
                     st->codecpar->codec_id == AV_CODEC_ID_NONE)) {
             id = ff_codec_get_id(ff_codec_movsubtitle_tags, format);
+            if (id <= 0) {
+                id = (format == MOV_MP4_TTML_TAG || format == MOV_ISMV_TTML_TAG) ?
+                     AV_CODEC_ID_TTML : id;
+            }
+
             if (id > 0)
                 st->codecpar->codec_type = AVMEDIA_TYPE_SUBTITLE;
             else
@@ -2457,8 +2462,10 @@ static void mov_parse_stsd_subtitle(MOVContext *c, AVIOContext *pb,
     // ttxt stsd contains display flags, justification, background
     // color, fonts, and default styles, so fake an atom to read it
     MOVAtom fake_atom = { .size = size };
-    // mp4s contains a regular esds atom
-    if (st->codecpar->codec_tag != AV_RL32("mp4s"))
+    // mp4s contains a regular esds atom, dfxp ISMV TTML has no content
+    // in extradata unlike stpp MP4 TTML.
+    if (st->codecpar->codec_tag != AV_RL32("mp4s") &&
+        st->codecpar->codec_tag != MOV_ISMV_TTML_TAG)
         mov_read_glbl(c, pb, fake_atom);
     st->codecpar->width  = sc->width;
     st->codecpar->height = sc->height;
@@ -2646,6 +2653,7 @@ static int mov_finalize_stsd_codec(MOVContext *c, AVIOContext *pb,
     case AV_CODEC_ID_VP9:
         sti->need_parsing = AVSTREAM_PARSE_FULL;
         break;
+    case AV_CODEC_ID_EVC:
     case AV_CODEC_ID_AV1:
         /* field_order detection of H264 requires parsing */
     case AV_CODEC_ID_H264:
@@ -5719,7 +5727,7 @@ static int mov_read_cmov(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     ret = AVERROR_INVALIDDATA;
     if (uncompress (moov_data, (uLongf *) &moov_len, (const Bytef *)cmov_data, cmov_len) != Z_OK)
         goto free_and_return;
-    ffio_init_context(&ctx, moov_data, moov_len, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&ctx, moov_data, moov_len);
     ctx.pub.seekable = AVIO_SEEKABLE_NORMAL;
     atom.type = MKTAG('m','o','o','v');
     atom.size = moov_len;
@@ -6649,38 +6657,6 @@ finish:
     return ret;
 }
 
-/**
- * Tries to read the given number of bytes from the stream and puts it in a
- * newly allocated buffer.  This reads in small chunks to avoid allocating large
- * memory if the file contains an invalid/malicious size value.
- */
-static int mov_try_read_block(AVIOContext *pb, size_t size, uint8_t **data)
-{
-    const unsigned int block_size = 1024 * 1024;
-    uint8_t *buffer = NULL;
-    unsigned int alloc_size = 0, offset = 0;
-    while (offset < size) {
-        unsigned int new_size =
-            alloc_size >= INT_MAX - block_size ? INT_MAX : alloc_size + block_size;
-        uint8_t *new_buffer = av_fast_realloc(buffer, &alloc_size, new_size);
-        unsigned int to_read = FFMIN(size, alloc_size) - offset;
-        if (!new_buffer) {
-            av_free(buffer);
-            return AVERROR(ENOMEM);
-        }
-        buffer = new_buffer;
-
-        if (avio_read(pb, buffer + offset, to_read) != to_read) {
-            av_free(buffer);
-            return AVERROR_INVALIDDATA;
-        }
-        offset += to_read;
-    }
-
-    *data = buffer;
-    return 0;
-}
-
 static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
     MOVEncryptionIndex *encryption_index;
@@ -6736,15 +6712,24 @@ static int mov_read_saiz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 
     encryption_index->auxiliary_info_default_size = avio_r8(pb);
     sample_count = avio_rb32(pb);
-    encryption_index->auxiliary_info_sample_count = sample_count;
 
     if (encryption_index->auxiliary_info_default_size == 0) {
-        ret = mov_try_read_block(pb, sample_count, &encryption_index->auxiliary_info_sizes);
-        if (ret < 0) {
-            av_log(c->fc, AV_LOG_ERROR, "Failed to read the auxiliary info\n");
+        encryption_index->auxiliary_info_sizes = av_malloc(sample_count);
+        if (!encryption_index->auxiliary_info_sizes)
+            return AVERROR(ENOMEM);
+
+        ret = avio_read(pb, encryption_index->auxiliary_info_sizes, sample_count);
+        if (ret != sample_count) {
+            av_freep(&encryption_index->auxiliary_info_sizes);
+
+            if (ret >= 0)
+                ret = AVERROR_INVALIDDATA;
+            av_log(c->fc, AV_LOG_ERROR, "Failed to read the auxiliary info, %s\n",
+                   av_err2str(ret));
             return ret;
         }
     }
+    encryption_index->auxiliary_info_sample_count = sample_count;
 
     if (encryption_index->auxiliary_offsets_count) {
         return mov_parse_auxiliary_info(c, sc, pb, encryption_index);
@@ -6913,9 +6898,19 @@ static int mov_read_pssh(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     }
 
     extra_data_size = avio_rb32(pb);
-    ret = mov_try_read_block(pb, extra_data_size, &extra_data);
-    if (ret < 0)
+    extra_data = av_malloc(extra_data_size);
+    if (!extra_data) {
+        ret = AVERROR(ENOMEM);
         goto finish;
+    }
+    ret = avio_read(pb, extra_data, extra_data_size);
+    if (ret != extra_data_size) {
+        av_free(extra_data);
+
+        if (ret >= 0)
+            ret = AVERROR_INVALIDDATA;
+        goto finish;
+    }
 
     av_freep(&info->data);  // malloc(0) may still allocate something.
     info->data = extra_data;
@@ -7932,6 +7927,7 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
 { MKTAG('i','l','o','c'), mov_read_iloc },
 { MKTAG('p','c','m','C'), mov_read_pcmc }, /* PCM configuration box */
 { MKTAG('p','i','t','m'), mov_read_pitm },
+{ MKTAG('e','v','c','C'), mov_read_glbl },
 { 0, NULL }
 };
 
@@ -8784,6 +8780,8 @@ static AVIndexEntry *mov_find_next_sample(AVFormatContext *s, AVStream **st)
     AVIndexEntry *sample = NULL;
     int64_t best_dts = INT64_MAX;
     int i;
+    MOVContext *mov = s->priv_data;
+    int no_interleave = !mov->interleaved_read || !(s->pb->seekable & AVIO_SEEKABLE_NORMAL);
     for (i = 0; i < s->nb_streams; i++) {
         AVStream *avst = s->streams[i];
         FFStream *const avsti = ffstream(avst);
@@ -8792,7 +8790,7 @@ static AVIndexEntry *mov_find_next_sample(AVFormatContext *s, AVStream **st)
             AVIndexEntry *current_sample = &avsti->index_entries[msc->current_sample];
             int64_t dts = av_rescale(current_sample->timestamp, AV_TIME_BASE, msc->time_scale);
             av_log(s, AV_LOG_TRACE, "stream %d, sample %d, dts %"PRId64"\n", i, msc->current_sample, dts);
-            if (!sample || (!(s->pb->seekable & AVIO_SEEKABLE_NORMAL) && current_sample->pos < sample->pos) ||
+            if (!sample || (no_interleave && current_sample->pos < sample->pos) ||
                 ((s->pb->seekable & AVIO_SEEKABLE_NORMAL) &&
                  ((msc->pb != s->pb && dts < best_dts) || (msc->pb == s->pb && dts != AV_NOPTS_VALUE &&
                  ((FFABS(best_dts - dts) <= AV_TIME_BASE && current_sample->pos < sample->pos) ||
@@ -9286,6 +9284,7 @@ static const AVOption mov_options[] = {
     { "enable_drefs", "Enable external track support.", OFFSET(enable_drefs), AV_OPT_TYPE_BOOL,
         {.i64 = 0}, 0, 1, FLAGS },
     { "max_stts_delta", "treat offsets above this value as invalid", OFFSET(max_stts_delta), AV_OPT_TYPE_INT, {.i64 = UINT_MAX-48000*10 }, 0, UINT_MAX, .flags = AV_OPT_FLAG_DECODING_PARAM },
+    { "interleaved_read", "Interleave packets from multiple tracks at demuxer level", OFFSET(interleaved_read), AV_OPT_TYPE_BOOL, {.i64 = 1 }, 0, 1, .flags = AV_OPT_FLAG_DECODING_PARAM },
 
     { NULL },
 };

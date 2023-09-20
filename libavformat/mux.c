@@ -24,12 +24,14 @@
 #include "mux.h"
 #include "version.h"
 #include "libavcodec/bsf.h"
+#include "libavcodec/codec_desc.h"
 #include "libavcodec/internal.h"
 #include "libavcodec/packet_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/dict.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/avassert.h"
+#include "libavutil/frame.h"
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
 
@@ -462,9 +464,9 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
         if ((ret = avformat_init_output(s, options)) < 0)
             return ret;
 
-    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
-        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
     if (ffofmt(s->oformat)->write_header) {
+        if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+            avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
         ret = ffofmt(s->oformat)->write_header(s);
         if (ret >= 0 && s->pb && s->pb->error < 0)
             ret = s->pb->error;
@@ -990,6 +992,7 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
         }
     }
 
+#if FF_API_LAVF_SHORTEST
     if (si->packet_buffer.head &&
         eof &&
         (s->flags & AVFMT_FLAG_SHORTEST) &&
@@ -1025,6 +1028,7 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
             flush = 0;
         }
     }
+#endif
 
     if (stream_count && flush) {
         PacketListEntry *pktl = si->packet_buffer.head;
@@ -1118,7 +1122,7 @@ static int write_packet_common(AVFormatContext *s, AVStream *st, AVPacket *pkt, 
     int ret;
 
     if (s->debug & FF_FDEBUG_TS)
-        av_log(s, AV_LOG_DEBUG, "%s size:%d dts:%s pts:%s\n", __FUNCTION__,
+        av_log(s, AV_LOG_DEBUG, "%s size:%d dts:%s pts:%s\n", __func__,
                pkt->size, av_ts2str(pkt->dts), av_ts2str(pkt->pts));
 
     guess_pkt_duration(s, st, pkt);

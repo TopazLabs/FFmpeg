@@ -32,6 +32,7 @@
 #include "avfilter.h"
 #include "internal.h"
 #include "ccfifo.h"
+#include "video.h"
 #include "libavutil/opt.h"
 
 typedef struct CCRepackContext
@@ -85,19 +86,12 @@ static const AVFilterPad avfilter_vf_ccrepack_inputs[] = {
     },
 };
 
-static const AVFilterPad avfilter_vf_ccrepack_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
-AVFilter ff_vf_ccrepack = {
+const AVFilter ff_vf_ccrepack = {
     .name        = "ccrepack",
     .description = NULL_IF_CONFIG_SMALL("Repack CEA-708 closed caption metadata"),
     .uninit      = uninit,
     .priv_size   = sizeof(CCRepackContext),
     .priv_class  = &ccrepack_class,
     FILTER_INPUTS(avfilter_vf_ccrepack_inputs),
-    FILTER_OUTPUTS(avfilter_vf_ccrepack_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
 };
