@@ -1,14 +1,12 @@
 [settings]
 os=Windows
-os_build=Windows
 arch=x86_64
-arch_build=x86_64
-compiler=Visual Studio
-compiler.version=16
+compiler=msvc
+compiler.version=192
 compiler.cppstd=14
+compiler.runtime=dynamic
+compiler.runtime_type=Release
 build_type=Release
-libvpx:compiler.runtime=MT
-aom:compiler.runtime=MT
+libvpx*:compiler.runtime=static
+aom*:compiler.runtime=static
 [options]
-[build_requires]
-[env]

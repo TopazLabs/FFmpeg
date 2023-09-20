@@ -17,4 +17,4 @@ cp build-scripts/deploy_conanfile.py ${PUBLISH_LOCATION}/prebuilt/topaz-ffmpeg/$
 cp -Rp ${BUILD_LOCATION}/. ${PUBLISH_LOCATION}/prebuilt/topaz-ffmpeg/${VERSION}/profile_win2019/build_type\=Release/
 
 cd ${PUBLISH_LOCATION}
-cmd //c "CALL run_publish_prebuilt.cmd --conan-user ${USER} --conan-channel ${CHANNEL} --package-name topaz-ffmpeg --package-version ${VERSION}"
+cmd //c "CALL run_publish_prebuilt.cmd --package-name topaz-ffmpeg --package-version ${VERSION} -r topaz-conan"
