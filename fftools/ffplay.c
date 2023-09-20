@@ -47,7 +47,7 @@
 #include "libavdevice/avdevice.h"
 #include "libswscale/swscale.h"
 #include "libavutil/opt.h"
-#include "libavcodec/avfft.h"
+#include "libavutil/tx.h"
 #include "libswresample/swresample.h"
 
 #include "libavfilter/avfilter.h"
@@ -262,9 +262,11 @@ typedef struct VideoState {
     int16_t sample_array[SAMPLE_ARRAY_SIZE];
     int sample_array_index;
     int last_i_start;
-    RDFTContext *rdft;
+    AVTXContext *rdft;
+    av_tx_fn rdft_fn;
     int rdft_bits;
-    FFTSample *rdft_data;
+    float *real_data;
+    AVComplexFloat *rdft_data;
     int xpos;
     double last_vis_time;
     SDL_Texture *vis_texture;
@@ -388,7 +390,10 @@ static const struct TextureFormatEntry {
 
 static int opt_add_vfilter(void *optctx, const char *opt, const char *arg)
 {
-    GROW_ARRAY(vfilters_list, nb_vfilters);
+    int ret = GROW_ARRAY(vfilters_list, nb_vfilters);
+    if (ret < 0)
+        return ret;
+
     vfilters_list[nb_vfilters - 1] = arg;
     return 0;
 }
@@ -696,7 +701,7 @@ static int frame_queue_init(FrameQueue *f, PacketQueue *pktq, int max_size, int 
     return 0;
 }
 
-static void frame_queue_destory(FrameQueue *f)
+static void frame_queue_destroy(FrameQueue *f)
 {
     int i;
     for (i = 0; i < f->max_size; i++) {
@@ -1117,6 +1122,7 @@ static void video_audio_display(VideoState *s)
             fill_rectangle(s->xleft, y, s->width, 1);
         }
     } else {
+        int err = 0;
         if (realloc_texture(&s->vis_texture, SDL_PIXELFORMAT_ARGB8888, s->width, s->height, SDL_BLENDMODE_NONE, 1) < 0)
             return;
 
@@ -1124,31 +1130,39 @@ static void video_audio_display(VideoState *s)
             s->xpos = 0;
         nb_display_channels= FFMIN(nb_display_channels, 2);
         if (rdft_bits != s->rdft_bits) {
-            av_rdft_end(s->rdft);
-            av_free(s->rdft_data);
-            s->rdft = av_rdft_init(rdft_bits, DFT_R2C);
+            const float rdft_scale = 1.0;
+            av_tx_uninit(&s->rdft);
+            av_freep(&s->real_data);
+            av_freep(&s->rdft_data);
             s->rdft_bits = rdft_bits;
-            s->rdft_data = av_malloc_array(nb_freq, 4 *sizeof(*s->rdft_data));
+            s->real_data = av_malloc_array(nb_freq, 4 *sizeof(*s->real_data));
+            s->rdft_data = av_malloc_array(nb_freq + 1, 2 *sizeof(*s->rdft_data));
+            err = av_tx_init(&s->rdft, &s->rdft_fn, AV_TX_FLOAT_RDFT,
+                             0, 1 << rdft_bits, &rdft_scale, 0);
         }
-        if (!s->rdft || !s->rdft_data){
+        if (err < 0 || !s->rdft_data) {
             av_log(NULL, AV_LOG_ERROR, "Failed to allocate buffers for RDFT, switching to waves display\n");
             s->show_mode = SHOW_MODE_WAVES;
         } else {
-            FFTSample *data[2];
+            float *data_in[2];
+            AVComplexFloat *data[2];
             SDL_Rect rect = {.x = s->xpos, .y = 0, .w = 1, .h = s->height};
             uint32_t *pixels;
             int pitch;
             for (ch = 0; ch < nb_display_channels; ch++) {
-                data[ch] = s->rdft_data + 2 * nb_freq * ch;
+                data_in[ch] = s->real_data + 2 * nb_freq * ch;
+                data[ch] = s->rdft_data + nb_freq * ch;
                 i = i_start + ch;
                 for (x = 0; x < 2 * nb_freq; x++) {
                     double w = (x-nb_freq) * (1.0 / nb_freq);
-                    data[ch][x] = s->sample_array[i] * (1.0 - w * w);
+                    data_in[ch][x] = s->sample_array[i] * (1.0 - w * w);
                     i += channels;
                     if (i >= SAMPLE_ARRAY_SIZE)
                         i -= SAMPLE_ARRAY_SIZE;
                 }
-                av_rdft_calc(s->rdft, data[ch]);
+                s->rdft_fn(s->rdft, data[ch], data_in[ch], sizeof(float));
+                data[ch][0].im = data[ch][nb_freq].re;
+                data[ch][nb_freq].re = 0;
             }
             /* Least efficient way to do this, we should of course
              * directly access it but it is more than fast enough. */
@@ -1157,8 +1171,8 @@ static void video_audio_display(VideoState *s)
                 pixels += pitch * s->height;
                 for (y = 0; y < s->height; y++) {
                     double w = 1 / sqrt(nb_freq);
-                    int a = sqrt(w * sqrt(data[0][2 * y + 0] * data[0][2 * y + 0] + data[0][2 * y + 1] * data[0][2 * y + 1]));
-                    int b = (nb_display_channels == 2 ) ? sqrt(w * hypot(data[1][2 * y + 0], data[1][2 * y + 1]))
+                    int a = sqrt(w * sqrt(data[0][y].re * data[0][y].re + data[0][y].im * data[0][y].im));
+                    int b = (nb_display_channels == 2 ) ? sqrt(w * hypot(data[1][y].re, data[1][y].im))
                                                         : a;
                     a = FFMIN(a, 255);
                     b = FFMIN(b, 255);
@@ -1194,7 +1208,8 @@ static void stream_component_close(VideoState *is, int stream_index)
         is->audio_buf = NULL;
 
         if (is->rdft) {
-            av_rdft_end(is->rdft);
+            av_tx_uninit(&is->rdft);
+            av_freep(&is->real_data);
             av_freep(&is->rdft_data);
             is->rdft = NULL;
             is->rdft_bits = 0;
@@ -1252,9 +1267,9 @@ static void stream_close(VideoState *is)
     packet_queue_destroy(&is->subtitleq);
 
     /* free all pictures */
-    frame_queue_destory(&is->pictq);
-    frame_queue_destory(&is->sampq);
-    frame_queue_destory(&is->subpq);
+    frame_queue_destroy(&is->pictq);
+    frame_queue_destroy(&is->sampq);
+    frame_queue_destroy(&is->subpq);
     SDL_DestroyCond(is->continue_read_thread);
     sws_freeContext(is->sub_convert_ctx);
     av_free(is->filename);
@@ -2581,7 +2596,11 @@ static int stream_component_open(VideoState *is, int stream_index)
     if (fast)
         avctx->flags2 |= AV_CODEC_FLAG2_FAST;
 
-    opts = filter_codec_opts(codec_opts, avctx->codec_id, ic, ic->streams[stream_index], codec);
+    ret = filter_codec_opts(codec_opts, avctx->codec_id, ic,
+                            ic->streams[stream_index], codec, &opts);
+    if (ret < 0)
+        goto fail;
+
     if (!av_dict_get(opts, "threads", NULL, 0))
         av_dict_set(&opts, "threads", "auto", 0);
     if (stream_lowres)
@@ -2639,7 +2658,7 @@ static int stream_component_open(VideoState *is, int stream_index)
 
         if ((ret = decoder_init(&is->auddec, avctx, &is->audioq, is->continue_read_thread)) < 0)
             goto fail;
-        if ((is->ic->iformat->flags & (AVFMT_NOBINSEARCH | AVFMT_NOGENSEARCH | AVFMT_NO_BYTE_SEEK)) && !is->ic->iformat->read_seek) {
+        if (is->ic->iformat->flags & AVFMT_NOTIMESTAMPS) {
             is->auddec.start_pts = is->audio_st->start_time;
             is->auddec.start_pts_tb = is->audio_st->time_base;
         }
@@ -2773,8 +2792,16 @@ static int read_thread(void *arg)
     av_format_inject_global_side_data(ic);
 
     if (find_stream_info) {
-        AVDictionary **opts = setup_find_stream_info_opts(ic, codec_opts);
+        AVDictionary **opts;
         int orig_nb_streams = ic->nb_streams;
+
+        err = setup_find_stream_info_opts(ic, codec_opts, &opts);
+        if (err < 0) {
+            av_log(NULL, AV_LOG_ERROR,
+                   "Error setting up avformat_find_stream_info() options\n");
+            ret = err;
+            goto fail;
+        }
 
         err = avformat_find_stream_info(ic, opts);
 
@@ -3433,13 +3460,23 @@ static void event_loop(VideoState *cur_stream)
 
 static int opt_width(void *optctx, const char *opt, const char *arg)
 {
-    screen_width = parse_number_or_die(opt, arg, OPT_INT64, 1, INT_MAX);
+    double num;
+    int ret = parse_number(opt, arg, OPT_INT64, 1, INT_MAX, &num);
+    if (ret < 0)
+        return ret;
+
+    screen_width = num;
     return 0;
 }
 
 static int opt_height(void *optctx, const char *opt, const char *arg)
 {
-    screen_height = parse_number_or_die(opt, arg, OPT_INT64, 1, INT_MAX);
+    double num;
+    int ret = parse_number(opt, arg, OPT_INT64, 1, INT_MAX, &num);
+    if (ret < 0)
+        return ret;
+
+    screen_height = num;
     return 0;
 }
 
@@ -3468,38 +3505,35 @@ static int opt_sync(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
-static int opt_seek(void *optctx, const char *opt, const char *arg)
-{
-    start_time = parse_time_or_die(opt, arg, 1);
-    return 0;
-}
-
-static int opt_duration(void *optctx, const char *opt, const char *arg)
-{
-    duration = parse_time_or_die(opt, arg, 1);
-    return 0;
-}
-
 static int opt_show_mode(void *optctx, const char *opt, const char *arg)
 {
     show_mode = !strcmp(arg, "video") ? SHOW_MODE_VIDEO :
                 !strcmp(arg, "waves") ? SHOW_MODE_WAVES :
-                !strcmp(arg, "rdft" ) ? SHOW_MODE_RDFT  :
-                parse_number_or_die(opt, arg, OPT_INT, 0, SHOW_MODE_NB-1);
+                !strcmp(arg, "rdft" ) ? SHOW_MODE_RDFT  : SHOW_MODE_NONE;
+
+    if (show_mode == SHOW_MODE_NONE) {
+        double num;
+        int ret = parse_number(opt, arg, OPT_INT, 0, SHOW_MODE_NB-1, &num);
+        if (ret < 0)
+            return ret;
+        show_mode = num;
+    }
     return 0;
 }
 
-static void opt_input_file(void *optctx, const char *filename)
+static int opt_input_file(void *optctx, const char *filename)
 {
     if (input_filename) {
         av_log(NULL, AV_LOG_FATAL,
                "Argument '%s' provided as input filename, but '%s' was already specified.\n",
                 filename, input_filename);
-        exit(1);
+        return AVERROR(EINVAL);
     }
     if (!strcmp(filename, "-"))
         filename = "fd:";
     input_filename = filename;
+
+    return 0;
 }
 
 static int opt_codec(void *optctx, const char *opt, const char *arg)
@@ -3537,8 +3571,8 @@ static const OptionDef options[] = {
     { "ast", OPT_STRING | HAS_ARG | OPT_EXPERT, { &wanted_stream_spec[AVMEDIA_TYPE_AUDIO] }, "select desired audio stream", "stream_specifier" },
     { "vst", OPT_STRING | HAS_ARG | OPT_EXPERT, { &wanted_stream_spec[AVMEDIA_TYPE_VIDEO] }, "select desired video stream", "stream_specifier" },
     { "sst", OPT_STRING | HAS_ARG | OPT_EXPERT, { &wanted_stream_spec[AVMEDIA_TYPE_SUBTITLE] }, "select desired subtitle stream", "stream_specifier" },
-    { "ss", HAS_ARG, { .func_arg = opt_seek }, "seek to a given position in seconds", "pos" },
-    { "t", HAS_ARG, { .func_arg = opt_duration }, "play  \"duration\" seconds of audio/video", "duration" },
+    { "ss", HAS_ARG | OPT_TIME, { &start_time }, "seek to a given position in seconds", "pos" },
+    { "t",  HAS_ARG | OPT_TIME, { &duration }, "play  \"duration\" seconds of audio/video", "duration" },
     { "bytes", OPT_INT | HAS_ARG, { &seek_by_bytes }, "seek by bytes 0=off 1=on -1=auto", "val" },
     { "seek_interval", OPT_FLOAT | HAS_ARG, { &seek_interval }, "set seek interval for left/right keys, in seconds", "seconds" },
     { "nodisp", OPT_BOOL, { &display_disable }, "disable graphical display" },
@@ -3618,7 +3652,7 @@ void show_help_default(const char *opt, const char *arg)
 /* Called from the main */
 int main(int argc, char **argv)
 {
-    int flags;
+    int flags, ret;
     VideoState *is;
 
     init_dynload();
@@ -3637,7 +3671,9 @@ int main(int argc, char **argv)
 
     show_banner(argc, argv, options);
 
-    parse_options(NULL, argc, argv, options, opt_input_file);
+    ret = parse_options(NULL, argc, argv, options, opt_input_file);
+    if (ret < 0)
+        exit(ret == AVERROR_EXIT ? 0 : 1);
 
     if (!input_filename) {
         show_usage();

@@ -76,6 +76,7 @@ OBJS-$(CONFIG_CBS)                     += cbs.o cbs_bsf.o
 OBJS-$(CONFIG_CBS_AV1)                 += cbs_av1.o
 OBJS-$(CONFIG_CBS_H264)                += cbs_h2645.o cbs_sei.o h2645_parse.o
 OBJS-$(CONFIG_CBS_H265)                += cbs_h2645.o cbs_sei.o h2645_parse.o
+OBJS-$(CONFIG_CBS_H266)                += cbs_h2645.o cbs_sei.o h2645_parse.o
 OBJS-$(CONFIG_CBS_JPEG)                += cbs_jpeg.o
 OBJS-$(CONFIG_CBS_MPEG2)               += cbs_mpeg2.o
 OBJS-$(CONFIG_CBS_VP9)                 += cbs_vp9.o
@@ -84,6 +85,7 @@ OBJS-$(CONFIG_DCT)                     += dct.o dct32_fixed.o dct32_float.o
 OBJS-$(CONFIG_DEFLATE_WRAPPER)         += zlib_wrapper.o
 OBJS-$(CONFIG_DOVI_RPU)                += dovi_rpu.o
 OBJS-$(CONFIG_ERROR_RESILIENCE)        += error_resilience.o
+OBJS-$(CONFIG_EVCPARSE)                += evc_parse.o evc_ps.o
 OBJS-$(CONFIG_EXIF)                    += exif.o tiff_common.o
 OBJS-$(CONFIG_FAANDCT)                 += faandct.o
 OBJS-$(CONFIG_FAANIDCT)                += faanidct.o
@@ -552,6 +554,7 @@ OBJS-$(CONFIG_MSA1_DECODER)            += mss3.o
 OBJS-$(CONFIG_MSCC_DECODER)            += mscc.o
 OBJS-$(CONFIG_MSNSIREN_DECODER)        += siren.o
 OBJS-$(CONFIG_MSP2_DECODER)            += msp2dec.o
+OBJS-$(CONFIG_MSRLE_ENCODER)           += msrleenc.o
 OBJS-$(CONFIG_MSRLE_DECODER)           += msrle.o msrledec.o
 OBJS-$(CONFIG_MSS1_DECODER)            += mss1.o mss12.o
 OBJS-$(CONFIG_MSS2_DECODER)            += mss2.o mss12.o mss2dsp.o wmv2data.o
@@ -576,6 +579,7 @@ OBJS-$(CONFIG_OPUS_DECODER)            += opusdec.o opusdec_celt.o opus_celt.o \
                                           opusdsp.o opus_parse.o opus_rc.o
 OBJS-$(CONFIG_OPUS_ENCODER)            += opusenc.o opusenc_psy.o opus_celt.o \
                                           opus_pvq.o opus_rc.o opustab.o
+OBJS-$(CONFIG_OSQ_DECODER)             += osq.o
 OBJS-$(CONFIG_PAF_AUDIO_DECODER)       += pafaudio.o
 OBJS-$(CONFIG_PAF_VIDEO_DECODER)       += pafvideo.o
 OBJS-$(CONFIG_PAM_DECODER)             += pnmdec.o pnm.o
@@ -753,6 +757,7 @@ OBJS-$(CONFIG_VC2_ENCODER)             += vc2enc.o vc2enc_dwt.o diractab.o
 OBJS-$(CONFIG_VCR1_DECODER)            += vcr1.o
 OBJS-$(CONFIG_VMDAUDIO_DECODER)        += vmdaudio.o
 OBJS-$(CONFIG_VMDVIDEO_DECODER)        += vmdvideo.o
+OBJS-$(CONFIG_VMIX_DECODER)            += vmixdec.o
 OBJS-$(CONFIG_VMNC_DECODER)            += vmnc.o
 OBJS-$(CONFIG_VNULL_DECODER)           += null.o
 OBJS-$(CONFIG_VNULL_ENCODER)           += null.o
@@ -1052,6 +1057,8 @@ STLIBOBJS-$(CONFIG_AVFORMAT)           += to_upper4.o
 STLIBOBJS-$(CONFIG_ISO_MEDIA)          += mpegaudiotabs.o
 STLIBOBJS-$(CONFIG_FLV_MUXER)          += mpeg4audio_sample_rates.o
 STLIBOBJS-$(CONFIG_HLS_DEMUXER)        += ac3_channel_layout_tab.o
+STLIBOBJS-$(CONFIG_IMAGE_JPEGXL_PIPE_DEMUXER) += jpegxl_parse.o
+STLIBOBJS-$(CONFIG_JPEGXL_ANIM_DEMUXER)       += jpegxl_parse.o
 STLIBOBJS-$(CONFIG_MATROSKA_DEMUXER)   += mpeg4audio_sample_rates.o
 STLIBOBJS-$(CONFIG_MOV_DEMUXER)        += ac3_channel_layout_tab.o
 STLIBOBJS-$(CONFIG_MXF_MUXER)          += golomb.o
@@ -1167,6 +1174,7 @@ OBJS-$(CONFIG_DVAUDIO_PARSER)          += dvaudio_parser.o
 OBJS-$(CONFIG_DVBSUB_PARSER)           += dvbsub_parser.o
 OBJS-$(CONFIG_DVD_NAV_PARSER)          += dvd_nav_parser.o
 OBJS-$(CONFIG_DVDSUB_PARSER)           += dvdsub_parser.o
+OBJS-$(CONFIG_EVC_PARSER)              += evc_parser.o
 OBJS-$(CONFIG_FLAC_PARSER)             += flac_parser.o flacdata.o flac.o
 OBJS-$(CONFIG_FTR_PARSER)              += ftr_parser.o
 OBJS-$(CONFIG_G723_1_PARSER)           += g723_1_parser.o
@@ -1180,6 +1188,7 @@ OBJS-$(CONFIG_HEVC_PARSER)             += hevc_parser.o hevc_data.o
 OBJS-$(CONFIG_HDR_PARSER)              += hdr_parser.o
 OBJS-$(CONFIG_IPU_PARSER)              += ipu_parser.o
 OBJS-$(CONFIG_JPEG2000_PARSER)         += jpeg2000_parser.o
+OBJS-$(CONFIG_JPEGXL_PARSER)           += jpegxl_parser.o jpegxl_parse.o
 OBJS-$(CONFIG_MISC4_PARSER)            += misc4_parser.o
 OBJS-$(CONFIG_MJPEG_PARSER)            += mjpeg_parser.o
 OBJS-$(CONFIG_MLP_PARSER)              += mlp_parse.o mlp_parser.o mlp.o
@@ -1194,8 +1203,7 @@ OBJS-$(CONFIG_OPUS_PARSER)             += opus_parser.o opus_parse.o \
 OBJS-$(CONFIG_PNG_PARSER)              += png_parser.o
 OBJS-$(CONFIG_PNM_PARSER)              += pnm_parser.o pnm.o
 OBJS-$(CONFIG_QOI_PARSER)              += qoi_parser.o
-OBJS-$(CONFIG_RV30_PARSER)             += rv34_parser.o
-OBJS-$(CONFIG_RV40_PARSER)             += rv34_parser.o
+OBJS-$(CONFIG_RV34_PARSER)             += rv34_parser.o
 OBJS-$(CONFIG_SBC_PARSER)              += sbc_parser.o
 OBJS-$(CONFIG_SIPR_PARSER)             += sipr_parser.o
 OBJS-$(CONFIG_TAK_PARSER)              += tak_parser.o tak.o
@@ -1204,6 +1212,7 @@ OBJS-$(CONFIG_VC1_PARSER)              += vc1_parser.o vc1.o vc1data.o  \
 OBJS-$(CONFIG_VP3_PARSER)              += vp3_parser.o
 OBJS-$(CONFIG_VP8_PARSER)              += vp8_parser.o
 OBJS-$(CONFIG_VP9_PARSER)              += vp9_parser.o
+OBJS-$(CONFIG_VVC_PARSER)              += vvc_parser.o
 OBJS-$(CONFIG_WEBP_PARSER)             += webp_parser.o
 OBJS-$(CONFIG_XBM_PARSER)              += xbm_parser.o
 OBJS-$(CONFIG_XMA_PARSER)              += xma_parser.o
@@ -1255,6 +1264,9 @@ OBJS-$(CONFIG_VP9_METADATA_BSF)           += vp9_metadata_bsf.o
 OBJS-$(CONFIG_VP9_RAW_REORDER_BSF)        += vp9_raw_reorder_bsf.o
 OBJS-$(CONFIG_VP9_SUPERFRAME_BSF)         += vp9_superframe_bsf.o
 OBJS-$(CONFIG_VP9_SUPERFRAME_SPLIT_BSF)   += vp9_superframe_split_bsf.o
+OBJS-$(CONFIG_VVC_METADATA_BSF)           += h266_metadata_bsf.o
+OBJS-$(CONFIG_VVC_MP4TOANNEXB_BSF)        += vvc_mp4toannexb_bsf.o
+OBJS-$(CONFIG_EVC_FRAME_MERGE_BSF)        += evc_frame_merge_bsf.o
 
 # thread libraries
 OBJS-$(HAVE_LIBC_MSVCRT)               += file_open.o
@@ -1274,6 +1286,7 @@ SKIPHEADERS                            += %_tablegen.h                  \
                                           aacenc_quantization.h         \
                                           aacenc_quantization_misc.h    \
                                           bitstream_template.h          \
+                                          vulkan_video_codec_av1std.h   \
                                           $(ARCH)/vpx_arith.h          \
 
 SKIPHEADERS-$(CONFIG_AMF)              += amfenc.h
@@ -1295,7 +1308,7 @@ SKIPHEADERS-$(CONFIG_XVMC)             += xvmc.h
 SKIPHEADERS-$(CONFIG_VAAPI)            += vaapi_decode.h vaapi_hevc.h vaapi_encode.h
 SKIPHEADERS-$(CONFIG_VDPAU)            += vdpau.h vdpau_internal.h
 SKIPHEADERS-$(CONFIG_VIDEOTOOLBOX)     += videotoolbox.h vt_internal.h
-SKIPHEADERS-$(CONFIG_VULKAN)           += vulkan.h vulkan_video.h vulkan_decode.h vulkan_video_codec_av1std.h vulkan_video_codec_av1std_decode.h
+SKIPHEADERS-$(CONFIG_VULKAN)           += vulkan.h vulkan_video.h vulkan_decode.h vulkan_video_codec_av1std_decode.h
 SKIPHEADERS-$(CONFIG_V4L2_M2M)         += v4l2_buffers.h v4l2_context.h v4l2_m2m.h
 SKIPHEADERS-$(CONFIG_ZLIB)             += zlib_wrapper.h
 

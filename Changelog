@@ -16,6 +16,25 @@ version <next>:
 - nlmeans_vulkan filter
 - RivaTuner video decoder
 - xfade_vulkan filter
+- vMix video decoder
+- Essential Video Coding parser, muxer and demuxer
+- Essential Video Coding frame merge bsf
+- bwdif_cuda filter
+- Microsoft RLE video encoder
+- Raw AC-4 muxer and demuxer
+- Raw VVC bitstream parser, muxer and demuxer
+- Bitstream filter for editing metadata in VVC streams
+- Bitstream filter for converting VVC from MP4 to Annex B
+- scale_vt filter for videotoolbox
+- transpose_vt filter for videotoolbox
+- support for the P_SKIP hinting to speed up libx264 encoding
+- Support HEVC,VP9,AV1 codec in enhanced flv format
+- apsnr and asisdr audio filters
+- OSQ demuxer and decoder
+- Support HEVC,VP9,AV1 codec fourcclist in enhanced rtmp protocol
+- CRI USM demuxer
+- ffmpeg CLI '-top' option deprecated in favor of the setfield filter
+
 
 version 6.0:
 - Radiance HDR image support

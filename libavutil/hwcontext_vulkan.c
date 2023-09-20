@@ -52,7 +52,9 @@
 #if CONFIG_VAAPI
 #include <va/va_drmcommon.h>
 #endif
+#ifdef __linux__
 #include <sys/sysmacros.h>
+#endif
 #include <sys/stat.h>
 #include <xf86drm.h>
 #include <drm_fourcc.h>
@@ -97,6 +99,7 @@ typedef struct VulkanDevicePriv {
     VkPhysicalDeviceVulkan13Features device_features_1_3;
     VkPhysicalDeviceDescriptorBufferFeaturesEXT desc_buf_features;
     VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomic_float_features;
+    VkPhysicalDeviceCooperativeMatrixFeaturesKHR coop_matrix_features;
 
     /* Queues */
     pthread_mutex_t **qf_mutex;
@@ -403,6 +406,7 @@ static const VulkanOptExtension optional_device_exts[] = {
     { VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME,                FF_VK_EXT_DESCRIPTOR_BUFFER,     },
     { VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME,              FF_VK_EXT_DEVICE_DRM             },
     { VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,              FF_VK_EXT_ATOMIC_FLOAT           },
+    { VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME,               FF_VK_EXT_COOP_MATRIX            },
 
     /* Imports/exports */
     { VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,               FF_VK_EXT_EXTERNAL_FD_MEMORY     },
@@ -1176,6 +1180,8 @@ static void vulkan_device_free(AVHWDeviceContext *ctx)
 
     RELEASE_PROPS(hwctx->enabled_inst_extensions, hwctx->nb_enabled_inst_extensions);
     RELEASE_PROPS(hwctx->enabled_dev_extensions, hwctx->nb_enabled_dev_extensions);
+
+    ff_vk_uninit(&p->vkctx);
 }
 
 static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
@@ -1198,9 +1204,13 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
     VkPhysicalDeviceTimelineSemaphoreFeatures timeline_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
     };
+    VkPhysicalDeviceCooperativeMatrixFeaturesKHR coop_matrix_features = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR,
+        .pNext = &timeline_features,
+    };
     VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomic_float_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT,
-        .pNext = &timeline_features,
+        .pNext = &coop_matrix_features,
     };
     VkPhysicalDeviceDescriptorBufferFeaturesEXT desc_buf_features = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT,
@@ -1238,7 +1248,9 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
     p->desc_buf_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
     p->desc_buf_features.pNext = &p->atomic_float_features;
     p->atomic_float_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
-    p->atomic_float_features.pNext = NULL;
+    p->atomic_float_features.pNext = &p->coop_matrix_features;
+    p->coop_matrix_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR;
+    p->coop_matrix_features.pNext = NULL;
 
     ctx->free = vulkan_device_free;
 
@@ -1299,6 +1311,8 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
 
     p->atomic_float_features.shaderBufferFloat32Atomics = atomic_float_features.shaderBufferFloat32Atomics;
     p->atomic_float_features.shaderBufferFloat32AtomicAdd = atomic_float_features.shaderBufferFloat32AtomicAdd;
+
+    p->coop_matrix_features.cooperativeMatrix = coop_matrix_features.cooperativeMatrix;
 
     dev_info.pNext = &hwctx->device_features;
 
@@ -1425,23 +1439,30 @@ static int vulkan_device_init(AVHWDeviceContext *ctx)
     vk->GetPhysicalDeviceQueueFamilyProperties(hwctx->phys_dev, &qf_num, qf);
 
     p->qf_mutex = av_calloc(qf_num, sizeof(*p->qf_mutex));
-    if (!p->qf_mutex)
+    if (!p->qf_mutex) {
+        av_free(qf);
         return AVERROR(ENOMEM);
+    }
     p->nb_tot_qfs = qf_num;
 
     for (uint32_t i = 0; i < qf_num; i++) {
         p->qf_mutex[i] = av_calloc(qf[i].queueCount, sizeof(**p->qf_mutex));
-        if (!p->qf_mutex[i])
+        if (!p->qf_mutex[i]) {
+            av_free(qf);
             return AVERROR(ENOMEM);
+        }
         for (uint32_t j = 0; j < qf[i].queueCount; j++) {
             err = pthread_mutex_init(&p->qf_mutex[i][j], NULL);
             if (err != 0) {
                 av_log(ctx, AV_LOG_ERROR, "pthread_mutex_init failed : %s\n",
                        av_err2str(err));
+                av_free(qf);
                 return AVERROR(err);
             }
         }
     }
+
+    av_free(qf);
 
     graph_index = hwctx->queue_family_index;
     comp_index  = hwctx->queue_family_comp_index;
@@ -1757,19 +1778,18 @@ static void vulkan_free_internal(AVVkFrame *f)
     av_freep(&f->internal);
 }
 
-static void vulkan_frame_free(void *opaque, uint8_t *data)
+static void vulkan_frame_free(AVHWFramesContext *hwfc, AVVkFrame *f)
 {
-    AVVkFrame *f = (AVVkFrame *)data;
-    AVHWFramesContext *hwfc = opaque;
     AVVulkanDeviceContext *hwctx = hwfc->device_ctx->hwctx;
     VulkanDevicePriv *p = hwfc->device_ctx->internal->priv;
     FFVulkanFunctions *vk = &p->vkctx.vkfn;
     int nb_images = ff_vk_count_images(f);
 
     VkSemaphoreWaitInfo sem_wait = {
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
-        .pSemaphores = f->sem,
-        .pValues = f->sem_value,
+        .sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
+        .flags          = 0x0,
+        .pSemaphores    = f->sem,
+        .pValues        = f->sem_value,
         .semaphoreCount = nb_images,
     };
 
@@ -1784,6 +1804,11 @@ static void vulkan_frame_free(void *opaque, uint8_t *data)
     }
 
     av_free(f);
+}
+
+static void vulkan_frame_free_cb(void *opaque, uint8_t *data)
+{
+    vulkan_frame_free(opaque, (AVVkFrame*)data);
 }
 
 static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
@@ -2066,7 +2091,7 @@ static int create_frame(AVHWFramesContext *hwfc, AVVkFrame **frame,
     return 0;
 
 fail:
-    vulkan_frame_free(hwfc, (uint8_t *)f);
+    vulkan_frame_free(hwfc, f);
     return err;
 }
 
@@ -2168,7 +2193,8 @@ static AVBufferRef *vulkan_pool_alloc(void *opaque, size_t size)
     }
 
     err = create_frame(hwfc, &f, hwctx->tiling, hwctx->usage, hwctx->img_flags,
-                       hwctx->nb_layers, eiinfo.handleTypes ? &eiinfo : NULL);
+                       hwctx->nb_layers,
+                       eiinfo.handleTypes ? &eiinfo : hwctx->create_pnext);
     if (err)
         return NULL;
 
@@ -2187,14 +2213,14 @@ static AVBufferRef *vulkan_pool_alloc(void *opaque, size_t size)
         goto fail;
 
     avbuf = av_buffer_create((uint8_t *)f, sizeof(AVVkFrame),
-                             vulkan_frame_free, hwfc, 0);
+                             vulkan_frame_free_cb, hwfc, 0);
     if (!avbuf)
         goto fail;
 
     return avbuf;
 
 fail:
-    vulkan_frame_free(hwfc, (uint8_t *)f);
+    vulkan_frame_free(hwfc, f);
     return NULL;
 }
 
@@ -2335,7 +2361,7 @@ static int vulkan_frames_init(AVHWFramesContext *hwfc)
     if (err)
         return err;
 
-    vulkan_frame_free(hwfc, (uint8_t *)f);
+    vulkan_frame_free(hwfc, f);
 
     /* If user did not specify a pool, hwfc->pool will be set to the internal one
      * in hwcontext.c just after this gets called */
@@ -2382,31 +2408,7 @@ static int vulkan_transfer_get_formats(AVHWFramesContext *hwfc,
 #if CONFIG_LIBDRM
 static void vulkan_unmap_from_drm(AVHWFramesContext *hwfc, HWMapDescriptor *hwmap)
 {
-    AVVkFrame *f = hwmap->priv;
-    AVVulkanDeviceContext *hwctx = hwfc->device_ctx->hwctx;
-    VulkanDevicePriv *p = hwfc->device_ctx->internal->priv;
-    FFVulkanFunctions *vk = &p->vkctx.vkfn;
-    const int nb_images = ff_vk_count_images(f);
-
-    VkSemaphoreWaitInfo wait_info = {
-        .sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
-        .flags          = 0x0,
-        .pSemaphores    = f->sem,
-        .pValues        = f->sem_value,
-        .semaphoreCount = nb_images,
-    };
-
-    vk->WaitSemaphores(hwctx->act_dev, &wait_info, UINT64_MAX);
-
-    vulkan_free_internal(f);
-
-    for (int i = 0; i < nb_images; i++) {
-        vk->DestroyImage(hwctx->act_dev,     f->img[i], hwctx->alloc);
-        vk->FreeMemory(hwctx->act_dev,       f->mem[i], hwctx->alloc);
-        vk->DestroySemaphore(hwctx->act_dev, f->sem[i], hwctx->alloc);
-    }
-
-    av_free(f);
+    vulkan_frame_free(hwfc, hwmap->priv);
 }
 
 static const struct {
@@ -2744,7 +2746,7 @@ static int vulkan_map_from_drm(AVHWFramesContext *hwfc, AVFrame *dst,
     return 0;
 
 fail:
-    vulkan_frame_free(hwfc->device_ctx->hwctx, (uint8_t *)f);
+    vulkan_frame_free(hwfc->device_ctx->hwctx, f);
     dst->data[0] = NULL;
     return err;
 }
@@ -3043,7 +3045,6 @@ static int vulkan_transfer_data_from_cuda(AVHWFramesContext *hwfc,
 fail:
     CHECK_CU(cu->cuCtxPopCurrent(&dummy));
     vulkan_free_internal(dst_f);
-    dst_f->internal = NULL;
     av_buffer_unref(&dst->buf[0]);
     return err;
 }
@@ -3620,7 +3621,6 @@ static int vulkan_transfer_data_to_cuda(AVHWFramesContext *hwfc, AVFrame *dst,
 fail:
     CHECK_CU(cu->cuCtxPopCurrent(&dummy));
     vulkan_free_internal(dst_f);
-    dst_f->internal = NULL;
     av_buffer_unref(&dst->buf[0]);
     return err;
 }

@@ -648,8 +648,8 @@ static int ffmal_copy_frame(AVCodecContext *avctx,  AVFrame *frame,
         av_image_fill_arrays(src, linesize,
                              buffer->data + buffer->type->video.offset[0],
                              avctx->pix_fmt, w, h, 1);
-        av_image_copy(frame->data, frame->linesize, (const uint8_t **)src, linesize,
-                      avctx->pix_fmt, avctx->width, avctx->height);
+        av_image_copy2(frame->data, frame->linesize, src, linesize,
+                       avctx->pix_fmt, avctx->width, avctx->height);
     }
 
     frame->sample_aspect_ratio = avctx->sample_aspect_ratio;
@@ -843,8 +843,7 @@ static const AVClass ffmmal_dec_class = {
         .flush          = ffmmal_flush, \
         .p.priv_class   = &ffmmal_dec_class, \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE, \
-        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | \
-                          FF_CODEC_CAP_SETS_PKT_DTS, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE \
         .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_MMAL, \
                                                          AV_PIX_FMT_YUV420P, \
                                                          AV_PIX_FMT_NONE}, \

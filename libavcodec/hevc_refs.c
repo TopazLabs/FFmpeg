@@ -118,16 +118,10 @@ static HEVCFrame *alloc_frame(HEVCContext *s)
             (s->sei.picture_timing.picture_struct == AV_PICTURE_STRUCTURE_BOTTOM_FIELD))
             frame->frame->flags |= AV_FRAME_FLAG_INTERLACED;
 
-        if (s->avctx->hwaccel) {
-            const AVHWAccel *hwaccel = s->avctx->hwaccel;
-            av_assert0(!frame->hwaccel_picture_private);
-            if (hwaccel->frame_priv_data_size) {
-                frame->hwaccel_priv_buf = ff_hwaccel_frame_priv_alloc(s->avctx, hwaccel);
-                if (!frame->hwaccel_priv_buf)
-                    goto fail;
-                frame->hwaccel_picture_private = frame->hwaccel_priv_buf->data;
-            }
-        }
+        ret = ff_hwaccel_frame_priv_alloc(s->avctx, &frame->hwaccel_picture_private,
+                                          &frame->hwaccel_priv_buf);
+        if (ret < 0)
+            goto fail;
 
         return frame;
 fail:
@@ -354,7 +348,7 @@ int ff_hevc_slice_rpl(HEVCContext *s)
                 }
             }
             // Construct RefPicList0, RefPicList1 (8-8, 8-10)
-            if (s->ps.pps->pps_curr_pic_ref_enabled_flag) {
+            if (s->ps.pps->pps_curr_pic_ref_enabled_flag && rpl_tmp.nb_refs < HEVC_MAX_REFS) {
                 rpl_tmp.list[rpl_tmp.nb_refs]           = s->ref->poc;
                 rpl_tmp.ref[rpl_tmp.nb_refs]            = s->ref;
                 rpl_tmp.isLongTerm[rpl_tmp.nb_refs]     = 1;

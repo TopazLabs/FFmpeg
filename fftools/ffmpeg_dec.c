@@ -30,10 +30,13 @@
 #include "libavfilter/buffersrc.h"
 
 #include "ffmpeg.h"
+#include "thread_queue.h"
 
 struct Decoder {
     AVFrame         *frame;
     AVPacket        *pkt;
+
+    enum AVPixelFormat hwaccel_pix_fmt;
 
     // pts/estimated duration of the last decoded frame
     // * in decoder timebase for video,
@@ -43,7 +46,53 @@ struct Decoder {
     AVRational      last_frame_tb;
     int64_t         last_filter_in_rescale_delta;
     int             last_frame_sample_rate;
+
+    /* previous decoded subtitles */
+    AVFrame *sub_prev[2];
+    AVFrame *sub_heartbeat;
+
+    pthread_t       thread;
+    /**
+     * Queue for sending coded packets from the main thread to
+     * the decoder thread.
+     *
+     * An empty packet is sent to flush the decoder without terminating
+     * decoding.
+     */
+    ThreadQueue    *queue_in;
+    /**
+     * Queue for sending decoded frames from the decoder thread
+     * to the main thread.
+     *
+     * An empty frame is sent to signal that a single packet has been fully
+     * processed.
+     */
+    ThreadQueue    *queue_out;
 };
+
+// data that is local to the decoder thread and not visible outside of it
+typedef struct DecThreadContext {
+    AVFrame         *frame;
+    AVPacket        *pkt;
+} DecThreadContext;
+
+static int dec_thread_stop(Decoder *d)
+{
+    void *ret;
+
+    if (!d->queue_in)
+        return 0;
+
+    tq_send_finish(d->queue_in, 0);
+    tq_receive_finish(d->queue_out, 0);
+
+    pthread_join(d->thread, &ret);
+
+    tq_free(&d->queue_in);
+    tq_free(&d->queue_out);
+
+    return (intptr_t)ret;
+}
 
 void dec_free(Decoder **pdec)
 {
@@ -52,8 +101,14 @@ void dec_free(Decoder **pdec)
     if (!dec)
         return;
 
+    dec_thread_stop(dec);
+
     av_frame_free(&dec->frame);
     av_packet_free(&dec->pkt);
+
+    for (int i = 0; i < FF_ARRAY_ELEMS(dec->sub_prev); i++)
+        av_frame_free(&dec->sub_prev[i]);
+    av_frame_free(&dec->sub_heartbeat);
 
     av_freep(pdec);
 }
@@ -79,6 +134,7 @@ static int dec_alloc(Decoder **pdec)
     dec->last_filter_in_rescale_delta = AV_NOPTS_VALUE;
     dec->last_frame_pts               = AV_NOPTS_VALUE;
     dec->last_frame_tb                = (AVRational){ 1, 1 };
+    dec->hwaccel_pix_fmt              = AV_PIX_FMT_NONE;
 
     *pdec = dec;
 
@@ -269,11 +325,15 @@ static int video_frame_process(InputStream *ist, AVFrame *frame)
             ist->dec_ctx->pix_fmt);
     }
 
-    if(ist->top_field_first>=0)
+#if FFMPEG_OPT_TOP
+    if(ist->top_field_first>=0) {
+        av_log(ist, AV_LOG_WARNING, "-top is deprecated, use the setfield filter instead\n");
         frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+    }
+#endif
 
-    if (ist->hwaccel_retrieve_data && frame->format == ist->hwaccel_pix_fmt) {
-        int err = ist->hwaccel_retrieve_data(ist->dec_ctx, frame);
+    if (frame->format == d->hwaccel_pix_fmt) {
+        int err = hwaccel_retrieve_data(ist->dec_ctx, frame);
         if (err < 0)
             return err;
     }
@@ -328,82 +388,141 @@ static void sub2video_flush(InputStream *ist)
     }
 }
 
-int process_subtitle(InputStream *ist, AVSubtitle *subtitle, int *got_output)
+static int process_subtitle(InputStream *ist, AVFrame *frame)
 {
+    Decoder *d = ist->decoder;
+    const AVSubtitle *subtitle = (AVSubtitle*)frame->buf[0]->data;
     int ret = 0;
 
     if (ist->fix_sub_duration) {
+        AVSubtitle *sub_prev = d->sub_prev[0]->buf[0] ?
+                               (AVSubtitle*)d->sub_prev[0]->buf[0]->data : NULL;
         int end = 1;
-        if (ist->prev_sub.got_output) {
-            end = av_rescale(subtitle->pts - ist->prev_sub.subtitle.pts,
+        if (sub_prev) {
+            end = av_rescale(subtitle->pts - sub_prev->pts,
                              1000, AV_TIME_BASE);
-            if (end < ist->prev_sub.subtitle.end_display_time) {
+            if (end < sub_prev->end_display_time) {
                 av_log(NULL, AV_LOG_DEBUG,
                        "Subtitle duration reduced from %"PRId32" to %d%s\n",
-                       ist->prev_sub.subtitle.end_display_time, end,
+                       sub_prev->end_display_time, end,
                        end <= 0 ? ", dropping it" : "");
-                ist->prev_sub.subtitle.end_display_time = end;
+                sub_prev->end_display_time = end;
             }
         }
-        FFSWAP(int,        *got_output, ist->prev_sub.got_output);
-        FFSWAP(int,        ret,         ist->prev_sub.ret);
-        FFSWAP(AVSubtitle, *subtitle,   ist->prev_sub.subtitle);
+
+        av_frame_unref(d->sub_prev[1]);
+        av_frame_move_ref(d->sub_prev[1], frame);
+
+        frame    = d->sub_prev[0];
+        subtitle = frame->buf[0] ? (AVSubtitle*)frame->buf[0]->data : NULL;
+
+        FFSWAP(AVFrame*, d->sub_prev[0], d->sub_prev[1]);
+
         if (end <= 0)
-            goto out;
+            return 0;
     }
 
-    if (!*got_output)
-        return ret;
+    if (!subtitle)
+        return 0;
 
     for (int i = 0; i < ist->nb_filters; i++) {
-        ret = ifilter_sub2video(ist->filters[i], subtitle);
+        ret = ifilter_sub2video(ist->filters[i], frame);
         if (ret < 0) {
             av_log(ist, AV_LOG_ERROR, "Error sending a subtitle for filtering: %s\n",
                    av_err2str(ret));
-            goto out;
+            return ret;
         }
     }
 
+    subtitle = (AVSubtitle*)frame->buf[0]->data;
     if (!subtitle->num_rects)
-        goto out;
+        return 0;
 
     for (int oidx = 0; oidx < ist->nb_outputs; oidx++) {
         OutputStream *ost = ist->outputs[oidx];
         if (!ost->enc || ost->type != AVMEDIA_TYPE_SUBTITLE)
             continue;
 
-        enc_subtitle(output_files[ost->file_index], ost, subtitle);
+        ret = enc_subtitle(output_files[ost->file_index], ost, subtitle);
+        if (ret < 0)
+            return ret;
     }
 
-out:
-    avsubtitle_free(subtitle);
-    return ret;
+    return 0;
 }
 
-static int transcode_subtitles(InputStream *ist, const AVPacket *pkt)
+int fix_sub_duration_heartbeat(InputStream *ist, int64_t signal_pts)
 {
+    Decoder *d = ist->decoder;
+    int ret = AVERROR_BUG;
+    AVSubtitle *prev_subtitle = d->sub_prev[0]->buf[0] ?
+        (AVSubtitle*)d->sub_prev[0]->buf[0]->data : NULL;
+    AVSubtitle *subtitle;
+
+    if (!ist->fix_sub_duration || !prev_subtitle ||
+        !prev_subtitle->num_rects || signal_pts <= prev_subtitle->pts)
+        return 0;
+
+    av_frame_unref(d->sub_heartbeat);
+    ret = subtitle_wrap_frame(d->sub_heartbeat, prev_subtitle, 1);
+    if (ret < 0)
+        return ret;
+
+    subtitle = (AVSubtitle*)d->sub_heartbeat->buf[0]->data;
+    subtitle->pts = signal_pts;
+
+    return process_subtitle(ist, d->sub_heartbeat);
+}
+
+static int transcode_subtitles(InputStream *ist, const AVPacket *pkt,
+                               AVFrame *frame)
+{
+    Decoder          *d = ist->decoder;
+    AVPacket *flush_pkt = NULL;
     AVSubtitle subtitle;
     int got_output;
-    int ret = avcodec_decode_subtitle2(ist->dec_ctx,
-                                       &subtitle, &got_output, pkt);
+    int ret;
+
+    if (!pkt) {
+        flush_pkt = av_packet_alloc();
+        if (!flush_pkt)
+            return AVERROR(ENOMEM);
+    }
+
+    ret = avcodec_decode_subtitle2(ist->dec_ctx, &subtitle, &got_output,
+                                   pkt ? pkt : flush_pkt);
+    av_packet_free(&flush_pkt);
 
     if (ret < 0) {
         av_log(ist, AV_LOG_ERROR, "Error decoding subtitles: %s\n",
                 av_err2str(ret));
-        if (exit_on_error)
-            exit_program(1);
         ist->decode_errors++;
+        return exit_on_error ? ret : 0;
     }
 
-    if (ret < 0 || !got_output) {
-        if (!pkt->size)
-            sub2video_flush(ist);
-        return ret < 0 ? ret : AVERROR_EOF;
-    }
+    if (!got_output)
+        return pkt ? 0 : AVERROR_EOF;
 
     ist->frames_decoded++;
 
-    return process_subtitle(ist, &subtitle, &got_output);
+    // XXX the queue for transferring data back to the main thread runs
+    // on AVFrames, so we wrap AVSubtitle in an AVBufferRef and put that
+    // inside the frame
+    // eventually, subtitles should be switched to use AVFrames natively
+    ret = subtitle_wrap_frame(frame, &subtitle, 0);
+    if (ret < 0) {
+        avsubtitle_free(&subtitle);
+        return ret;
+    }
+
+    frame->width  = ist->dec_ctx->width;
+    frame->height = ist->dec_ctx->height;
+
+    ret = tq_send(d->queue_out, 0, frame);
+    if (ret < 0)
+        av_frame_unref(frame);
+
+    return ret;
 }
 
 static int send_filter_eof(InputStream *ist)
@@ -421,7 +540,7 @@ static int send_filter_eof(InputStream *ist)
     return 0;
 }
 
-int dec_packet(InputStream *ist, const AVPacket *pkt, int no_eof)
+static int packet_decode(InputStream *ist, const AVPacket *pkt, AVFrame *frame)
 {
     Decoder *d = ist->decoder;
     AVCodecContext *dec = ist->dec_ctx;
@@ -429,7 +548,7 @@ int dec_packet(InputStream *ist, const AVPacket *pkt, int no_eof)
     int ret;
 
     if (dec->codec_type == AVMEDIA_TYPE_SUBTITLE)
-        return transcode_subtitles(ist, pkt ? pkt : d->pkt);
+        return transcode_subtitles(ist, pkt, frame);
 
     // With fate-indeo3-2, we're getting 0-sized packets before EOF for some
     // reason. This seems like a semi-critical bug. Don't trigger EOF, and
@@ -444,21 +563,24 @@ int dec_packet(InputStream *ist, const AVPacket *pkt, int no_eof)
         if (ret == AVERROR(EAGAIN)) {
             av_log(ist, AV_LOG_FATAL, "A decoder returned an unexpected error code. "
                                       "This is a bug, please report it.\n");
-            exit_program(1);
+            return AVERROR_BUG;
         }
         av_log(ist, AV_LOG_ERROR, "Error submitting %s to decoder: %s\n",
                pkt ? "packet" : "EOF", av_err2str(ret));
-        if (exit_on_error)
-            exit_program(1);
 
-        if (ret != AVERROR_EOF)
+        if (ret != AVERROR_EOF) {
             ist->decode_errors++;
+            if (!exit_on_error)
+                ret = 0;
+        }
 
         return ret;
     }
 
     while (1) {
-        AVFrame *frame = d->frame;
+        FrameData *fd;
+
+        av_frame_unref(frame);
 
         update_benchmark(NULL);
         ret = avcodec_receive_frame(dec, frame);
@@ -469,45 +591,35 @@ int dec_packet(InputStream *ist, const AVPacket *pkt, int no_eof)
             av_assert0(pkt); // should never happen during flushing
             return 0;
         } else if (ret == AVERROR_EOF) {
-            /* after flushing, send an EOF on all the filter inputs attached to the stream */
-            /* except when looping we need to flush but not to send an EOF */
-            if (!no_eof) {
-                ret = send_filter_eof(ist);
-                if (ret < 0) {
-                    av_log(NULL, AV_LOG_FATAL, "Error marking filters as finished\n");
-                    exit_program(1);
-                }
-            }
-
-            return AVERROR_EOF;
+            return ret;
         } else if (ret < 0) {
             av_log(ist, AV_LOG_ERROR, "Decoding error: %s\n", av_err2str(ret));
-            if (exit_on_error)
-                exit_program(1);
             ist->decode_errors++;
-            return ret;
+
+            if (exit_on_error)
+                return ret;
+
+            continue;
         }
 
         if (frame->decode_error_flags || (frame->flags & AV_FRAME_FLAG_CORRUPT)) {
             av_log(ist, exit_on_error ? AV_LOG_FATAL : AV_LOG_WARNING,
                    "corrupt decoded frame\n");
             if (exit_on_error)
-                exit_program(1);
+                return AVERROR_INVALIDDATA;
         }
 
-        if (ist->want_frame_data) {
-            FrameData *fd;
 
-            av_assert0(!frame->opaque_ref);
-            fd      = frame_data(frame);
-            if (!fd) {
-                av_frame_unref(frame);
-                report_and_exit(AVERROR(ENOMEM));
-            }
-            fd->pts = frame->pts;
-            fd->tb  = dec->pkt_timebase;
-            fd->idx = dec->frame_num - 1;
+        av_assert0(!frame->opaque_ref);
+        fd      = frame_data(frame);
+        if (!fd) {
+            av_frame_unref(frame);
+            return AVERROR(ENOMEM);
         }
+        fd->dec.pts                 = frame->pts;
+        fd->dec.tb                  = dec->pkt_timebase;
+        fd->dec.frame_num           = dec->frame_num - 1;
+        fd->bits_per_raw_sample     = dec->bits_per_raw_sample;
 
         frame->time_base = dec->pkt_timebase;
 
@@ -521,24 +633,258 @@ int dec_packet(InputStream *ist, const AVPacket *pkt, int no_eof)
             if (ret < 0) {
                 av_log(NULL, AV_LOG_FATAL, "Error while processing the decoded "
                        "data for stream #%d:%d\n", ist->file_index, ist->index);
-                exit_program(1);
+                return ret;
             }
         }
 
         ist->frames_decoded++;
 
-        ret = send_frame_to_filters(ist, frame);
-        av_frame_unref(frame);
+        ret = tq_send(d->queue_out, 0, frame);
         if (ret < 0)
-            exit_program(1);
+            return ret;
     }
+}
+
+static void dec_thread_set_name(const InputStream *ist)
+{
+    char name[16];
+    snprintf(name, sizeof(name), "dec%d:%d:%s", ist->file_index, ist->index,
+             ist->dec_ctx->codec->name);
+    ff_thread_setname(name);
+}
+
+static void dec_thread_uninit(DecThreadContext *dt)
+{
+    av_packet_free(&dt->pkt);
+    av_frame_free(&dt->frame);
+
+    memset(dt, 0, sizeof(*dt));
+}
+
+static int dec_thread_init(DecThreadContext *dt)
+{
+    memset(dt, 0, sizeof(*dt));
+
+    dt->frame = av_frame_alloc();
+    if (!dt->frame)
+        goto fail;
+
+    dt->pkt = av_packet_alloc();
+    if (!dt->pkt)
+        goto fail;
+
+    return 0;
+
+fail:
+    dec_thread_uninit(dt);
+    return AVERROR(ENOMEM);
+}
+
+static void *decoder_thread(void *arg)
+{
+    InputStream *ist = arg;
+    InputFile *ifile = input_files[ist->file_index];
+    Decoder       *d = ist->decoder;
+    DecThreadContext dt;
+    int ret = 0, input_status = 0;
+
+    ret = dec_thread_init(&dt);
+    if (ret < 0)
+        goto finish;
+
+    dec_thread_set_name(ist);
+
+    while (!input_status) {
+        int dummy, flush_buffers;
+
+        input_status = tq_receive(d->queue_in, &dummy, dt.pkt);
+        flush_buffers = input_status >= 0 && !dt.pkt->buf;
+        if (!dt.pkt->buf)
+            av_log(ist, AV_LOG_VERBOSE, "Decoder thread received %s packet\n",
+                   flush_buffers ? "flush" : "EOF");
+
+        ret = packet_decode(ist, dt.pkt->buf ? dt.pkt : NULL, dt.frame);
+
+        av_packet_unref(dt.pkt);
+        av_frame_unref(dt.frame);
+
+        if (ret == AVERROR_EOF) {
+            av_log(ist, AV_LOG_VERBOSE, "Decoder returned EOF, %s\n",
+                   flush_buffers ? "resetting" : "finishing");
+
+            if (!flush_buffers)
+                break;
+
+            /* report last frame duration to the demuxer thread */
+            if (ist->dec->type == AVMEDIA_TYPE_AUDIO) {
+                LastFrameDuration dur;
+
+                dur.stream_idx = ist->index;
+                dur.duration   = av_rescale_q(ist->nb_samples,
+                                              (AVRational){ 1, ist->dec_ctx->sample_rate},
+                                              ist->st->time_base);
+
+                av_thread_message_queue_send(ifile->audio_duration_queue, &dur, 0);
+            }
+
+            avcodec_flush_buffers(ist->dec_ctx);
+        } else if (ret < 0) {
+            av_log(ist, AV_LOG_ERROR, "Error processing packet in decoder: %s\n",
+                   av_err2str(ret));
+            break;
+        }
+
+        // signal to the consumer thread that the entire packet was processed
+        ret = tq_send(d->queue_out, 0, dt.frame);
+        if (ret < 0) {
+            if (ret != AVERROR_EOF)
+                av_log(ist, AV_LOG_ERROR, "Error communicating with the main thread\n");
+            break;
+        }
+    }
+
+    // EOF is normal thread termination
+    if (ret == AVERROR_EOF)
+        ret = 0;
+
+finish:
+    tq_receive_finish(d->queue_in,  0);
+    tq_send_finish   (d->queue_out, 0);
+
+    // make sure the demuxer does not get stuck waiting for audio durations
+    // that will never arrive
+    if (ifile->audio_duration_queue && ist->dec->type == AVMEDIA_TYPE_AUDIO)
+        av_thread_message_queue_set_err_recv(ifile->audio_duration_queue, AVERROR_EOF);
+
+    dec_thread_uninit(&dt);
+
+    av_log(ist, AV_LOG_VERBOSE, "Terminating decoder thread\n");
+
+    return (void*)(intptr_t)ret;
+}
+
+int dec_packet(InputStream *ist, const AVPacket *pkt, int no_eof)
+{
+    Decoder *d = ist->decoder;
+    int ret = 0, thread_ret;
+
+    // thread already joined
+    if (!d->queue_in)
+        return AVERROR_EOF;
+
+    // send the packet/flush request/EOF to the decoder thread
+    if (pkt || no_eof) {
+        av_packet_unref(d->pkt);
+
+        if (pkt) {
+            ret = av_packet_ref(d->pkt, pkt);
+            if (ret < 0)
+                goto finish;
+        }
+
+        ret = tq_send(d->queue_in, 0, d->pkt);
+        if (ret < 0)
+            goto finish;
+    } else
+        tq_send_finish(d->queue_in, 0);
+
+    // retrieve all decoded data for the packet
+    while (1) {
+        int dummy;
+
+        ret = tq_receive(d->queue_out, &dummy, d->frame);
+        if (ret < 0)
+            goto finish;
+
+        // packet fully processed
+        if (!d->frame->buf[0])
+            return 0;
+
+        // process the decoded frame
+        if (ist->dec->type == AVMEDIA_TYPE_SUBTITLE) {
+            ret = process_subtitle(ist, d->frame);
+        } else {
+            ret = send_frame_to_filters(ist, d->frame);
+        }
+        av_frame_unref(d->frame);
+        if (ret < 0)
+            goto finish;
+    }
+
+finish:
+    thread_ret = dec_thread_stop(d);
+    if (thread_ret < 0) {
+        av_log(ist, AV_LOG_ERROR, "Decoder thread returned error: %s\n",
+               av_err2str(thread_ret));
+        ret = err_merge(ret, thread_ret);
+    }
+    // non-EOF errors here are all fatal
+    if (ret < 0 && ret != AVERROR_EOF)
+        return ret;
+
+    // signal EOF to our downstreams
+    if (ist->dec->type == AVMEDIA_TYPE_SUBTITLE)
+        sub2video_flush(ist);
+    else {
+        ret = send_filter_eof(ist);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_FATAL, "Error marking filters as finished\n");
+            return ret;
+        }
+    }
+
+    return AVERROR_EOF;
+}
+
+static int dec_thread_start(InputStream *ist)
+{
+    Decoder *d = ist->decoder;
+    ObjPool *op;
+    int ret = 0;
+
+    op = objpool_alloc_packets();
+    if (!op)
+        return AVERROR(ENOMEM);
+
+    d->queue_in = tq_alloc(1, 1, op, pkt_move);
+    if (!d->queue_in) {
+        objpool_free(&op);
+        return AVERROR(ENOMEM);
+    }
+
+    op = objpool_alloc_frames();
+    if (!op)
+        goto fail;
+
+    d->queue_out = tq_alloc(1, 4, op, frame_move);
+    if (!d->queue_out) {
+        objpool_free(&op);
+        goto fail;
+    }
+
+    ret = pthread_create(&d->thread, NULL, decoder_thread, ist);
+    if (ret) {
+        ret = AVERROR(ret);
+        av_log(ist, AV_LOG_ERROR, "pthread_create() failed: %s\n",
+               av_err2str(ret));
+        goto fail;
+    }
+
+    return 0;
+fail:
+    if (ret >= 0)
+        ret = AVERROR(ENOMEM);
+
+    tq_free(&d->queue_in);
+    tq_free(&d->queue_out);
+    return ret;
 }
 
 static enum AVPixelFormat get_format(AVCodecContext *s, const enum AVPixelFormat *pix_fmts)
 {
     InputStream *ist = s->opaque;
+    Decoder       *d = ist->decoder;
     const enum AVPixelFormat *p;
-    int ret;
 
     for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(*p);
@@ -562,20 +908,7 @@ static enum AVPixelFormat get_format(AVCodecContext *s, const enum AVPixelFormat
             }
         }
         if (config && config->device_type == ist->hwaccel_device_type) {
-            ret = hwaccel_decode_init(s);
-            if (ret < 0) {
-                if (ist->hwaccel_id == HWACCEL_GENERIC) {
-                    av_log(NULL, AV_LOG_FATAL,
-                           "%s hwaccel requested for input stream #%d:%d, "
-                           "but cannot be initialized.\n",
-                           av_hwdevice_get_type_name(config->device_type),
-                           ist->file_index, ist->index);
-                    return AV_PIX_FMT_NONE;
-                }
-                continue;
-            }
-
-            ist->hwaccel_pix_fmt = *p;
+            d->hwaccel_pix_fmt = *p;
             break;
         }
     }
@@ -730,6 +1063,7 @@ static int hw_device_setup_for_decode(InputStream *ist)
 
 int dec_open(InputStream *ist)
 {
+    Decoder *d;
     const AVCodec *codec = ist->dec;
     int ret;
 
@@ -743,6 +1077,18 @@ int dec_open(InputStream *ist)
     ret = dec_alloc(&ist->decoder);
     if (ret < 0)
         return ret;
+    d = ist->decoder;
+
+    if (codec->type == AVMEDIA_TYPE_SUBTITLE && ist->fix_sub_duration) {
+        for (int i = 0; i < FF_ARRAY_ELEMS(d->sub_prev); i++) {
+            d->sub_prev[i] = av_frame_alloc();
+            if (!d->sub_prev[i])
+                return AVERROR(ENOMEM);
+        }
+        d->sub_heartbeat = av_frame_alloc();
+        if (!d->sub_heartbeat)
+            return AVERROR(ENOMEM);
+    }
 
     ist->dec_ctx->opaque                = ist;
     ist->dec_ctx->get_format            = get_format;
@@ -773,14 +1119,21 @@ int dec_open(InputStream *ist)
     }
 
     if ((ret = avcodec_open2(ist->dec_ctx, codec, &ist->decoder_opts)) < 0) {
-        if (ret == AVERROR_EXPERIMENTAL)
-            exit_program(1);
-
         av_log(ist, AV_LOG_ERROR, "Error while opening decoder: %s\n",
                av_err2str(ret));
         return ret;
     }
-    assert_avoptions(ist->decoder_opts);
+
+    ret = check_avoptions(ist->decoder_opts);
+    if (ret < 0)
+        return ret;
+
+    ret = dec_thread_start(ist);
+    if (ret < 0) {
+        av_log(ist, AV_LOG_ERROR, "Error starting decoder thread: %s\n",
+               av_err2str(ret));
+        return ret;
+    }
 
     return 0;
 }

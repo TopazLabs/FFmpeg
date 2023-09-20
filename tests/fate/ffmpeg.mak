@@ -132,6 +132,13 @@ fate-ffmpeg-fix_sub_duration_heartbeat: CMD = fmtstdout srt -fix_sub_duration \
   -c:s srt \
   -f null -
 
+# FIXME: the integer AAC decoder does not produce the same output on all platforms
+# so until that is fixed we use the volume filter to silence the data
+FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MATROSKA, H264 AAC_FIXED, PCM_S32LE_ENCODER VOLUME_FILTER) += fate-ffmpeg-streamloop-transcode-av
+fate-ffmpeg-streamloop-transcode-av: CMD = \
+    framecrc -auto_conversion_filters -stream_loop 3 -c:a aac_fixed -i $(TARGET_SAMPLES)/mkv/1242-small.mkv \
+    -af volume=0:precision=fixed -c:a pcm_s32le
+
 FATE_STREAMCOPY-$(call REMUX, MP4 MOV, EAC3_DEMUXER) += fate-copy-trac3074
 fate-copy-trac3074: CMD = transcode eac3 $(TARGET_SAMPLES)/eac3/csi_miami_stereo_128_spx.eac3\
                      mp4 "-codec copy -map 0" "-codec copy"
@@ -167,8 +174,8 @@ FATE_STREAMCOPY-$(call REMUX, PSP MOV, H264_PARSER H264_DECODER) += fate-copy-ps
 fate-copy-psp: CMD = transcode "mov" $(TARGET_SAMPLES)/h264/wwwq_cut.mp4\
                       psp "-c copy" "-codec copy"
 
-FATE_STREAMCOPY-$(call FRAMEMD5, FLV, H264) += fate-ffmpeg-streamloop
-fate-ffmpeg-streamloop: CMD = framemd5 -stream_loop 2 -i $(TARGET_SAMPLES)/flv/streamloop.flv -c copy
+FATE_STREAMCOPY-$(call FRAMEMD5, FLV, H264) += fate-ffmpeg-streamloop-copy
+fate-ffmpeg-streamloop-copy: CMD = framemd5 -stream_loop 2 -i $(TARGET_SAMPLES)/flv/streamloop.flv -c copy
 
 tests/data/audio_shorter_than_video.nut: TAG = GEN
 tests/data/audio_shorter_than_video.nut: tests/data/vsynth_lena.yuv
@@ -225,7 +232,7 @@ fate-time_base: CMD = md5 -i $(TARGET_SAMPLES)/mpeg2/dvd_single_frame.vob -an -s
 FATE_SAMPLES_FFMPEG-yes += $(FATE_TIME_BASE-yes)
 
 # test -r used as an input option
-fate-ffmpeg-input-r: CMD = framecrc -r 27 -idct simple -i $(TARGET_SAMPLES)/mpeg2/sony-ct3.bs
+fate-ffmpeg-input-r: CMD = framecrc -r 27 -idct simple -bitexact -i $(TARGET_SAMPLES)/mpeg2/sony-ct3.bs
 FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MPEGVIDEO, MPEG2VIDEO) += fate-ffmpeg-input-r
 
 # file with completely undecodable TTA audio stream

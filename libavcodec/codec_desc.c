@@ -1953,6 +1953,13 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("RTV1 (RivaTuner Video)"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_VMIX,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "vmix",
+        .long_name = NULL_IF_CONFIG_SMALL("vMix Video"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY,
+    },
 
     /* various PCM "codecs" */
     {
@@ -3398,6 +3405,20 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .name      = "rka",
         .long_name = NULL_IF_CONFIG_SMALL("RKA (RK Audio)"),
         .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSY | AV_CODEC_PROP_LOSSLESS,
+    },
+    {
+        .id        = AV_CODEC_ID_AC4,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "ac4",
+        .long_name = NULL_IF_CONFIG_SMALL("AC-4"),
+        .props     = AV_CODEC_PROP_LOSSY,
+    },
+    {
+        .id        = AV_CODEC_ID_OSQ,
+        .type      = AVMEDIA_TYPE_AUDIO,
+        .name      = "osq",
+        .long_name = NULL_IF_CONFIG_SMALL("OSQ (Original Sound Quality)"),
+        .props     = AV_CODEC_PROP_INTRA_ONLY | AV_CODEC_PROP_LOSSLESS,
     },
 
     /* subtitle codecs */

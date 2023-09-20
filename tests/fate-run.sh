@@ -33,6 +33,15 @@ errfile="${outdir}/${test}.err"
 cmpfile="${outdir}/${test}.diff"
 repfile="${outdir}/${test}.rep"
 
+case $threads in
+    random*)
+        threads_max=${threads#random}
+        [ -z "$threads_max" ] && threads_max=16
+        threads=$(awk "BEGIN { print 1+int(rand() * $threads_max) }" < /dev/null)
+        ;;
+esac
+
+
 target_path(){
     test ${1} = ${1#/} && p=${target_path}/
     echo ${p}${1}
@@ -266,15 +275,16 @@ transcode(){
 stream_remux(){
     src_fmt=$1
     srcfile=$2
-    enc_fmt=$3
-    stream_maps=$4
-    final_decode=$5
-    ffprobe_opts=$6
+    src_opts=$3
+    enc_fmt=$4
+    stream_maps=$5
+    final_decode=$6
+    ffprobe_opts=$7
     encfile="${outdir}/${test}.${enc_fmt}"
     test $keep -ge 1 || cleanfiles="$cleanfiles $encfile"
     tsrcfile=$(target_path $srcfile)
     tencfile=$(target_path $encfile)
-    ffmpeg -f $src_fmt -i $tsrcfile $stream_maps -codec copy $FLAGS \
+    ffmpeg -f $src_fmt $src_opts -i $tsrcfile $stream_maps -codec copy $FLAGS \
         -f $enc_fmt -y $tencfile || return
     ffmpeg $DEC_OPTS -i $tencfile $ENC_OPTS $FLAGS $final_decode \
         -f framecrc - || return
@@ -630,6 +640,7 @@ fi
 if [ $err -eq 0 ] && test $report_type = "standard" ; then
     unset cmpo erro
 else
+    echo "threads=$threads" >> "$errfile"
     cmpo="$($base64 <$cmpfile)"
     erro="$($base64 <$errfile)"
 fi

@@ -390,14 +390,13 @@ int ff_decklink_set_format(AVFormatContext *avctx, decklink_direction_t directio
     return ff_decklink_set_format(avctx, 0, 0, 0, 0, AV_FIELD_UNKNOWN, direction);
 }
 
-void ff_decklink_packet_queue_init(AVFormatContext *avctx, DecklinkPacketQueue *q)
+void ff_decklink_packet_queue_init(AVFormatContext *avctx, DecklinkPacketQueue *q, int64_t queue_size)
 {
-    struct decklink_cctx *ctx = (struct decklink_cctx *)avctx->priv_data;
     memset(q, 0, sizeof(DecklinkPacketQueue));
     pthread_mutex_init(&q->mutex, NULL);
     pthread_cond_init(&q->cond, NULL);
     q->avctx = avctx;
-    q->max_q_size = ctx->queue_size;
+    q->max_q_size = queue_size;
 }
 
 void ff_decklink_packet_queue_flush(DecklinkPacketQueue *q)
@@ -484,6 +483,22 @@ int ff_decklink_packet_queue_get(DecklinkPacketQueue *q, AVPacket *pkt, int bloc
     pthread_mutex_unlock(&q->mutex);
     return ret;
 }
+
+int64_t ff_decklink_packet_queue_peekpts(DecklinkPacketQueue *q)
+{
+    PacketListEntry *pkt1;
+    int64_t pts = -1;
+
+    pthread_mutex_lock(&q->mutex);
+    pkt1 = q->pkt_list.head;
+    if (pkt1) {
+        pts = pkt1->pkt.pts;
+    }
+    pthread_mutex_unlock(&q->mutex);
+
+    return pts;
+}
+
 
 int ff_decklink_list_devices(AVFormatContext *avctx,
                              struct AVDeviceInfoList *device_list,

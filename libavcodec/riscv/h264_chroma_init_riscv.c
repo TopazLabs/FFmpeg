@@ -27,15 +27,24 @@
 
 void h264_put_chroma_mc8_rvv(uint8_t *p_dst, const uint8_t *p_src, ptrdiff_t stride, int h, int x, int y);
 void h264_avg_chroma_mc8_rvv(uint8_t *p_dst, const uint8_t *p_src, ptrdiff_t stride, int h, int x, int y);
+void h264_put_chroma_mc4_rvv(uint8_t *p_dst, const uint8_t *p_src, ptrdiff_t stride, int h, int x, int y);
+void h264_avg_chroma_mc4_rvv(uint8_t *p_dst, const uint8_t *p_src, ptrdiff_t stride, int h, int x, int y);
+void h264_put_chroma_mc2_rvv(uint8_t *p_dst, const uint8_t *p_src, ptrdiff_t stride, int h, int x, int y);
+void h264_avg_chroma_mc2_rvv(uint8_t *p_dst, const uint8_t *p_src, ptrdiff_t stride, int h, int x, int y);
 
 av_cold void ff_h264chroma_init_riscv(H264ChromaContext *c, int bit_depth)
 {
 #if HAVE_RVV
     int flags = av_get_cpu_flags();
 
-    if (bit_depth == 8 && (flags & AV_CPU_FLAG_RVV_I32) && ff_get_rv_vlenb() >= 16) {
+    if (bit_depth == 8 && (flags & AV_CPU_FLAG_RVV_I32) &&
+        (flags & AV_CPU_FLAG_RVB_ADDR) && ff_get_rv_vlenb() >= 16) {
         c->put_h264_chroma_pixels_tab[0] = h264_put_chroma_mc8_rvv;
         c->avg_h264_chroma_pixels_tab[0] = h264_avg_chroma_mc8_rvv;
+        c->put_h264_chroma_pixels_tab[1] = h264_put_chroma_mc4_rvv;
+        c->avg_h264_chroma_pixels_tab[1] = h264_avg_chroma_mc4_rvv;
+        c->put_h264_chroma_pixels_tab[2] = h264_put_chroma_mc2_rvv;
+        c->avg_h264_chroma_pixels_tab[2] = h264_avg_chroma_mc2_rvv;
     }
 #endif
 }

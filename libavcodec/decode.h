@@ -54,11 +54,6 @@ typedef struct FrameDecodeData {
 } FrameDecodeData;
 
 /**
- * avcodec_receive_frame() implementation for decoders.
- */
-int ff_decode_receive_frame(AVCodecContext *avctx, AVFrame *frame);
-
-/**
  * Called by decoders to get the next packet for decoding.
  *
  * @param pkt An empty packet to be filled with data.
@@ -98,12 +93,6 @@ int ff_attach_decode_data(AVFrame *frame);
  * with invalid size.
  */
 int ff_copy_palette(void *dst, const AVPacket *src, void *logctx);
-
-/**
- * Perform decoder initialization and validation.
- * Called when opening the decoder, before the FFCodec.init() call.
- */
-int ff_decode_preinit(AVCodecContext *avctx);
 
 /**
  * Check that the provided frame dimensions are valid and set them on the codec
@@ -151,14 +140,17 @@ int ff_side_data_update_matrix_encoding(AVFrame *frame,
                                         enum AVMatrixEncoding matrix_encoding);
 
 /**
- * Allocate a hwaccel frame private data and create an AVBufferRef
- * from it.
+ * Allocate a hwaccel frame private data if the provided avctx
+ * uses a hwaccel method that needs it. The private data will
+ * be refcounted via the AVBuffer API (if allocated).
  *
- * @param     avctx   The codec context which to attach as an opaque value
- * @param     hwaccel The hwaccel for which to allocate
- * @return            The allocated buffer
+ * @param  avctx                   The codec context
+ * @param  hwaccel_picture_private Pointer to return hwaccel_picture_private
+ * @param  hwaccel_priv_buf        Pointer to return the AVBufferRef owning
+ *                                 hwaccel_picture_private
+ * @return 0 on success, < 0 on error
  */
-AVBufferRef *ff_hwaccel_frame_priv_alloc(AVCodecContext *avctx,
-                                         const AVHWAccel *hwaccel);
+int ff_hwaccel_frame_priv_alloc(AVCodecContext *avctx, void **hwaccel_picture_private,
+                                AVBufferRef **hwaccel_priv_buf);
 
 #endif /* AVCODEC_DECODE_H */

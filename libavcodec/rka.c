@@ -735,22 +735,22 @@ static int decode_filter(RKAContext *s, ChContext *ctx, ACoder *ac, int off, uns
                     ctx->buf1[off] = (val + (sum >> bits)) * (1U << bits) +
                         (((1U << bits) - 1U) & ctx->buf1[off + -1]);
                 }
-                ctx->buf0[off] = ctx->buf1[off] + ctx->buf0[off + -1];
+                ctx->buf0[off] = ctx->buf1[off] + (unsigned)ctx->buf0[off + -1];
             } else {
                 val *= 1U << ctx->cmode;
-                sum += ctx->buf0[off + -1] + val;
+                sum += ctx->buf0[off + -1] + (unsigned)val;
                 switch (s->bps) {
                 case 16: sum = av_clip_int16(sum); break;
                 case  8: sum = av_clip_int8(sum);  break;
                 }
                 ctx->buf1[off] = sum - ctx->buf0[off + -1];
                 ctx->buf0[off] = sum;
-                m += FFABS(ctx->buf1[off]);
+                m += (unsigned)FFABS(ctx->buf1[off]);
             }
         }
         if (ctx->cmode2 != 0) {
             int sum = 0;
-            for (int i = (m << 6) / split; i > 0; i = i >> 1)
+            for (int i = (signed)((unsigned)m << 6) / split; i > 0; i = i >> 1)
                 sum++;
             sum = sum - (ctx->cmode2 + 7);
             ctx->cmode = FFMAX(sum, tab[ctx->cmode2]);
@@ -948,6 +948,10 @@ static int rka_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             n += ret;
         }
     }
+
+    if (frame->nb_samples < s->frame_samples &&
+        frame->nb_samples > s->last_nb_samples)
+        frame->nb_samples = s->last_nb_samples;
 
     *got_frame_ptr = 1;
 
