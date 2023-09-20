@@ -32,16 +32,16 @@ steps:
     displayName: 'Install pipenv'
 
   - bash: |
-      echo "##vso[task.setvariable variable=CONAN_USER_HOME]${{ parameters.CONAN_USER_HOME }}"
-      mkdir -p "${{ parameters.CONAN_USER_HOME }}/.conan"
+      echo "##vso[task.setvariable variable=CONAN_HOME]${{ parameters.CONAN_USER_HOME }}/.conan2"
+      mkdir -p "${{ parameters.CONAN_USER_HOME }}/.conan2"
     displayName: 'Set conan cache location'
 
   - script: |
-      python -m pip install conan==1.59.0
-      conan remote add topaz-zuel-copy https://topaz.jfrog.io/artifactory/api/conan/topaz-zuel-copy
-      conan remote update topaz-zuel-copy https://topaz.jfrog.io/artifactory/api/conan/topaz-zuel-copy --insert
-      conan user -p $(CONAN_PASSWORD) -r topaz-zuel-copy build.bot
-      conan search -r topaz-zuel-copy
+      python -m pip install conan==2.0.9
+      conan profile detect --force
+      conan remote add topaz-conan https://topaz.jfrog.io/artifactory/api/conan/topaz-conan
+      conan remote login -p $(CONAN_PASSWORD) topaz-conan build.bot
+      conan remote disable conancenter
     displayName: 'Install conan'
     env:
       CONAN_PASSWORD: $(CONAN_PASSWORD)
@@ -51,22 +51,12 @@ steps:
         sudo apt update
         sudo apt install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
       displayName: Install APT packages
-      
-    - script: |
-        cd $(Build.SourcesDirectory)
-        python -m pip install aqtinstall==2.0.6
-      displayName: Install aqtinstall
-      
-    - script: |
-        python -m aqt install-qt --outputdir $(Build.BinariesDirectory)/Qt linux desktop $QT_VERSION gcc_64 -m qtshadertools qtimageformats
-        echo '##vso[task.prependpath]$(Build.BinariesDirectory)/Qt/$QT_VERSION/gcc_64/bin'
-      displayName: 'Install Qt $(QT_VERSION)'
 
 #Install Dependencies
   - task: Cache@2
     inputs:
-      key: 'conan | "$(Agent.OS)" | $(Build.SourcesDirectory)/FFmpeg/build-scripts/conanfile.py | $(Build.SourcesDirectory)/FFmpeg/build-scripts/deploy_conanfile.py'
-      path: '${{ parameters.CONAN_USER_HOME }}/.conan/data'
+      key: 'conan2 | "$(Agent.OS)" | $(Build.SourcesDirectory)/FFmpeg/build-scripts/conanfile.py | $(Build.SourcesDirectory)/FFmpeg/build-scripts/deploy_conanfile.py'
+      path: '${{ parameters.CONAN_USER_HOME }}/.conan2/p'
       cacheHitVar: CONAN_CACHE_RESTORED
     condition: and(succeeded(), eq('${{ parameters.SHOULD_RESTORE_CONAN_CACHE }}', 'true'))
     displayName: Restore conan packages cache
