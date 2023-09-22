@@ -39,10 +39,8 @@
 
 typedef struct TVAIStbContext {
     const AVClass *class;
-    char *model, *filename, *filler;
-    int device, extraThreads;
-    int canDownloadModels;
-    double vram;
+    BasicProcessorInfo basicInfo;
+    char *filename, *filler;
     void* pFrameProcessor;
     double smoothness;
     int postFlight, windowSize, cacheSize, stabDOF, enableRSC, enableFullFrame, reduceMotion;
@@ -51,13 +49,15 @@ typedef struct TVAIStbContext {
 } TVAIStbContext;
 
 #define OFFSET(x) offsetof(TVAIStbContext, x)
+#define BASIC_OFFSET(x) OFFSET(basicInfo) + offsetof(BasicProcessorInfo, x)
+#define DEVICE_OFFSET(x) BASIC_OFFSET(device) + offsetof(DeviceSetting, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_stb_options[] = {
-    { "model", "Model short name", OFFSET(model), AV_OPT_TYPE_STRING, {.str="ref-2"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  OFFSET(device),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
-    { "instances",  "Number of extra model instances to use on device",  OFFSET(extraThreads),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
-    { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
-    { "vram", "Max memory usage", OFFSET(vram), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="ref-2"}, .flags = FLAGS },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
+    { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
+    { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "full", "Perform full-frame stabilization. If disabled, performs auto-crop (ignores full-reame related options)", OFFSET(enableFullFrame), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, .flags = FLAGS, "full" },
     { "filename", "CPE output filename", OFFSET(filename), AV_OPT_TYPE_STRING, {.str="cpe.json"}, .flags = FLAGS, "filename"},
     { "rst", "Read start time relative to CPE", OFFSET(readStartTime), AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0, DBL_MAX, .flags = FLAGS, "rst" },
@@ -78,7 +78,7 @@ AVFILTER_DEFINE_CLASS(tvai_stb);
 
 static av_cold int init(AVFilterContext *ctx) {
   TVAIStbContext *tvai = ctx->priv;
-  av_log(ctx, AV_LOG_VERBOSE, "Here init with params: %s %d %s %s %lf\n", tvai->model, tvai->device, tvai->filename, tvai->filler, tvai->smoothness);
+  av_log(ctx, AV_LOG_VERBOSE, "Here init with params: %s %d %s %s %lf\n", tvai->basicInfo.modelName, tvai->basicInfo.device.index, tvai->filename, tvai->filler, tvai->smoothness);
   tvai->previousFrame = NULL;
   return 0;
 }
@@ -86,13 +86,15 @@ static av_cold int init(AVFilterContext *ctx) {
 static int config_props(AVFilterLink *outlink) {
   AVFilterContext *ctx = outlink->src;
   TVAIStbContext *tvai = ctx->priv;
-  AVFilterLink *inlink = ctx->inputs[0];
   VideoProcessorInfo info;
+  tvai->basicInfo.scale = 1;
   info.options[0] = tvai->filename;
   info.options[1] = tvai->filler;
-  float params[11] = {tvai->smoothness, tvai->windowSize, tvai->postFlight, tvai->canvasScaleX, tvai->canvasScaleY, tvai->cacheSize, tvai->stabDOF, tvai->enableRSC, tvai->readStartTime, tvai->writeStartTime, tvai->reduceMotion};
-  if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, tvai->enableFullFrame > 0, tvai->model, ModelTypeStabilization, tvai->device, tvai->extraThreads, tvai->vram, 1, tvai->canDownloadModels, params, 11, ctx)) {
-    return AVERROR(EINVAL);
+  float parameterValues[11] = {tvai->smoothness, tvai->windowSize, tvai->postFlight, tvai->canvasScaleX, tvai->canvasScaleY, 
+                                tvai->cacheSize, tvai->stabDOF, tvai->enableRSC, tvai->readStartTime, tvai->writeStartTime, 
+                                tvai->reduceMotion};
+  if(ff_tvai_prepareProcessorInfo(&info, ModelTypeStabilization, outlink, &(tvai->basicInfo), tvai->enableFullFrame > 0, parameterValues, 11)) {
+    return AVERROR(EINVAL);  
   }
   tvai->pFrameProcessor = tvai_create(&info);
   if(tvai->pFrameProcessor == NULL) {
@@ -141,7 +143,7 @@ static int request_frame(AVFilterLink *outlink) {
 
 static av_cold void uninit(AVFilterContext *ctx) {
     TVAIStbContext *tvai = ctx->priv;
-    av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s %d\n", tvai->model, tvai->pFrameProcessor == NULL);
+    av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s %d\n", tvai->basicInfo.modelName, tvai->pFrameProcessor == NULL);
     // if(tvai->pFrameProcessor)
     //     tvai_destroy(tvai->pFrameProcessor);
 }
