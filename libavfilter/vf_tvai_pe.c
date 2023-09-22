@@ -33,19 +33,17 @@
 
 typedef struct TVAIParamContext {
     const AVClass *class;
-    char *model;
-    int device;
-    int canDownloadModels;
+    BasicProcessorInfo basicInfo;
     void* pParamEstimator;
-    int firstFrame;
 } TVAIParamContext;
 
 #define OFFSET(x) offsetof(TVAIParamContext, x)
+#define BASIC_OFFSET(x) OFFSET(basicInfo) + offsetof(BasicProcessorInfo, x)
+
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_pe_options[] = {
-    { "model", "Model short name", OFFSET(model), AV_OPT_TYPE_STRING, {.str="prap-3"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  OFFSET(device),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
-    { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="prap-3"}, .flags = FLAGS },
+    { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { NULL }
 };
 
@@ -53,19 +51,22 @@ AVFILTER_DEFINE_CLASS(tvai_pe);
 
 static av_cold int init(AVFilterContext *ctx) {
   TVAIParamContext *tvai = ctx->priv;
-  av_log(NULL, AV_LOG_DEBUG, "Here init with params: %s %d\n", tvai->model, tvai->device);
-  tvai->firstFrame = 1;
+  av_log(NULL, AV_LOG_DEBUG, "Here init with params: %s\n", tvai->basicInfo.modelName);
   return tvai->pParamEstimator == NULL;
 }
 
 static int config_props(AVFilterLink *outlink) {
     AVFilterContext *ctx = outlink->src;
     TVAIParamContext *tvai = ctx->priv;
-    AVFilterLink *inlink = ctx->inputs[0];
-
-    tvai->pParamEstimator = ff_tvai_verifyAndCreate(inlink, outlink, 0, tvai->model, ModelTypeParameterEstimation, tvai->device, 0, 1, 1, tvai->canDownloadModels, NULL, 0, ctx);
+    tvai->basicInfo.scale = 1;
+    DeviceSetting device = {.index = -1, .maxMemory = 1, .extraThreadCount = 0};
+    tvai->basicInfo.device = device;
+    VideoProcessorInfo info;
+    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeParameterEstimation, outlink, &(tvai->basicInfo), 0, NULL, 0)) {
+      return AVERROR(EINVAL);  
+    }
+    tvai->pParamEstimator = tvai_create(&info);
     return tvai->pParamEstimator == NULL ? AVERROR(EINVAL) : 0;
-    return 0;
 }
 
 
@@ -78,9 +79,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAIParamContext *tvai = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    int ret = 0;
     if(ff_tvai_process(tvai->pParamEstimator, in, 0)) {
-        av_log(NULL, AV_LOG_ERROR, "The processing has failed\n");
+        av_log(ctx, AV_LOG_ERROR, "The processing has failed\n");
         av_frame_free(&in);
         return AVERROR(ENOSYS);
     }
@@ -93,7 +93,7 @@ static int request_frame(AVFilterLink *outlink) {
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
         tvai_end_stream(tvai->pParamEstimator);
-        av_log(ctx, AV_LOG_DEBUG, "End of file reached %s %d\n", tvai->model, tvai->pParamEstimator == NULL);
+        av_log(ctx, AV_LOG_DEBUG, "End of file reached %s %d\n", tvai->basicInfo.modelName, tvai->pParamEstimator == NULL);
     }
     return ret;
 }

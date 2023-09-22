@@ -41,49 +41,11 @@ int ff_tvai_checkModel(char* modelName, ModelType modelType, AVFilterContext* ct
   return 0;
 }
 
-int ff_tvai_verifyAndSetInfo(VideoProcessorInfo* info, AVFilterLink *inlink, AVFilterLink *outlink, unsigned int procIndex, char* modelName, ModelType modelType,
-                            int deviceIndex, int extraThreads, float vram, int scale, int canDownloadModels, float *pParameters, int parameterCount, AVFilterContext* ctx) {
-  ff_tvai_handleLogging();
-  if(ff_tvai_checkModel(modelName, modelType, ctx) || ff_tvai_checkDevice(deviceIndex, ctx) || ff_tvai_checkScale(modelName, scale, ctx)) {
-    return 1;
-  }
-  tvai_vp_name(modelName, procIndex, (char*)info->basic.processorName);
-  info->basic.modelName = modelName;
-  info->basic.scale = scale;
-  info->basic.device.index = deviceIndex;
-  info->basic.device.extraThreadCount = extraThreads;
-  info->basic.device.maxMemory = vram;
-  info->basic.canDownloadModel = canDownloadModels;
-  info->basic.inputWidth = inlink->w;
-  info->basic.inputHeight = inlink->h;
-  info->basic.timebase = av_q2d(inlink->time_base);
-  info->basic.framerate = av_q2d(inlink->frame_rate);
-  if(pParameters != NULL && parameterCount > 0) {
-    memcpy(info->modelParameters, pParameters, sizeof(float)*parameterCount);
-  }
-  outlink->w = inlink->w*scale;
-  outlink->h = inlink->h*scale;
-  outlink->time_base = inlink->time_base;
-  outlink->frame_rate = inlink->frame_rate;
-  outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
-  av_log(ctx, AV_LOG_DEBUG, "Output size set to: %d %d\n", outlink->w, outlink->h);
-  av_log(ctx, AV_LOG_DEBUG, "Here Config props model with params: %s %s %d %d %d %d %d %d %lf %lf\n", info->basic.processorName, info->basic.modelName, info->basic.scale, info->basic.device.index,
-          info->basic.device.extraThreadCount, info->basic.canDownloadModel, info->basic.inputWidth, info->basic.inputHeight, info->basic.timebase, info->basic.framerate);
-  return 0;
-}
-
-void* ff_tvai_verifyAndCreate(AVFilterLink *inlink, AVFilterLink *outlink, char *processorName, char* modelName, ModelType modelType,
-                            int deviceIndex, int extraThreads, float vram, int scale, int canDownloadModels, float *pParameters, int parameterCount, AVFilterContext* ctx) {
-  VideoProcessorInfo info;
-  if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, processorName, modelName, modelType, deviceIndex, extraThreads, vram, scale, canDownloadModels, pParameters, parameterCount, ctx))
-    return NULL;
-  return tvai_create(&info);
-}
-
 void ff_tvai_prepareBufferInput(TVAIBuffer* ioBuffer, AVFrame *in) {
   ioBuffer->pBuffer = in->data[0];
   ioBuffer->lineSize = in->linesize[0];
   ioBuffer->pts = in->pts;
+  ioBuffer->duration = in->duration;
 }
 
 AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer) {
@@ -95,6 +57,30 @@ AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer)
   oBuffer->pBuffer = out->data[0];
   oBuffer->lineSize = out->linesize[0];
   return out;
+}
+
+int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, BasicProcessorInfo* pBasic, int procIndex, float *pParameters, int parameterCount) {
+  ff_tvai_handleLogging();
+  AVFilterContext *pCtx = pOutlink->src;
+  AVFilterLink *pInlink = pCtx->inputs[0];
+  pProcessorInfo->basic = *pBasic;
+  if(ff_tvai_checkModel(pProcessorInfo->basic.modelName, modelType, pCtx) || ff_tvai_checkDevice(pProcessorInfo->basic.device.index, pCtx) || ff_tvai_checkScale(pProcessorInfo->basic.modelName, pProcessorInfo->basic.scale, pCtx)) {
+    return 1;
+  }
+  tvai_vp_name(pProcessorInfo->basic.modelName, procIndex, (char*)pProcessorInfo->basic.processorName);
+  pProcessorInfo->basic.inputWidth = pInlink->w;
+  pProcessorInfo->basic.inputHeight = pInlink->h;
+  pProcessorInfo->basic.timebase = av_q2d(pInlink->time_base);
+  pProcessorInfo->basic.framerate = av_q2d(pInlink->frame_rate);
+  if(pParameters != NULL && parameterCount > 0) {
+    memcpy(pProcessorInfo->modelParameters, pParameters, sizeof(float)*parameterCount);
+  }
+  pOutlink->w = pInlink->w*pProcessorInfo->basic.scale;
+  pOutlink->h = pInlink->h*pProcessorInfo->basic.scale;
+  pOutlink->time_base = pInlink->time_base;
+  pOutlink->frame_rate = pInlink->frame_rate;
+  pOutlink->sample_aspect_ratio = pInlink->sample_aspect_ratio;
+  return 0;
 }
 
 int ff_tvai_process(void *pFrameProcessor, AVFrame* frame, int copy) {
@@ -112,6 +98,7 @@ int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, 
         AVFrame *out = ff_tvai_prepareBufferOutput(outlink, &oBuffer);
         if(out != NULL && tvai_output_frame(pProcessor, &oBuffer, copy) == 0) {
             av_frame_copy_props(out, frame);
+            out->duration = oBuffer.duration;
             out->pts = oBuffer.pts;
             int ret = 0;
             if(oBuffer.pts >= 0)
