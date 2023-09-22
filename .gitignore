@@ -43,3 +43,4 @@
 /tools/python/__pycache__/
 .DS_Store
 /output/
+.vscode/settings.json

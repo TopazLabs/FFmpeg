@@ -37,6 +37,7 @@
 
 typedef struct  {
     const AVClass *class;
+    BasicProcessorInfo basicInfo;
     char *model;
     int device, extraThreads;
     double slowmo;
@@ -49,13 +50,15 @@ typedef struct  {
 } TVAIFIContext;
 
 #define OFFSET(x) offsetof(TVAIFIContext, x)
+#define BASIC_OFFSET(x) offsetof(TVAIFIContext, basicInfo) + offsetof(BasicProcessorInfo, x)
+#define DEVICE_OFFSET(x) BASIC_OFFSET(device) + offsetof(DeviceSetting, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_fi_options[] = {
-    { "model", "Model short name", OFFSET(model), AV_OPT_TYPE_STRING, {.str="chr-1"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  OFFSET(device),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
-    { "instances",  "Number of extra model instances to use on device",  OFFSET(extraThreads),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
-    { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
-    { "vram", "Max memory usage", OFFSET(vram), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="chr-1"}, .flags = FLAGS },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
+    { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
+    { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
     { "rdt",  "Replace duplicate threshold. (0 or below means do not remove, high value will detect more duplicates)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.2, FLAGS, "rdt" },
     { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
@@ -77,6 +80,7 @@ static int config_props(AVFilterLink *outlink) {
     AVFilterLink *inlink = ctx->inputs[0];
     float threshold = 0.05;
     float fpsFactor = 0;
+    tvai->basicInfo.scale = 1;
     if(tvai->frame_rate.num > 0) {
         AVRational frFactor = av_div_q(tvai->frame_rate, inlink->frame_rate);
         fpsFactor = 1/(tvai->slowmo*av_q2d(frFactor));
@@ -85,19 +89,22 @@ static int config_props(AVFilterLink *outlink) {
         outlink->frame_rate = inlink->frame_rate;
         fpsFactor = 1/tvai->slowmo;
     }
+    av_log(ctx, AV_LOG_ERROR, "MEESSSS download: %d index: %d threads: %d vram: %f model: %s scale: %d\n\n\n", tvai->basicInfo.canDownloadModel, tvai->basicInfo.device.index, tvai->basicInfo.device.extraThreadCount, 
+    tvai->basicInfo.device.maxMemory, tvai->basicInfo.modelName, tvai->basicInfo.scale);
     av_log(ctx, AV_LOG_DEBUG, "Set time base to %d/%d %lf -> %d/%d %lf\n", inlink->time_base.num, inlink->time_base.den, av_q2d(inlink->time_base), outlink->time_base.num, outlink->time_base.den, av_q2d(outlink->time_base));
     av_log(ctx, AV_LOG_DEBUG, "Set frame rate to %lf -> %lf\n", av_q2d(inlink->frame_rate), av_q2d(outlink->frame_rate));
     av_log(ctx, AV_LOG_DEBUG, "Set fpsFactor to %lf generating %lf frames\n", fpsFactor, 1/fpsFactor);
     threshold = fpsFactor*0.3;
     float params[4] = {threshold, fpsFactor, tvai->slowmo, tvai->rdt};
     tvai->pFrameProcessor = ff_tvai_verifyAndCreate(inlink, outlink, 0, tvai->model, ModelTypeFrameInterpolation, tvai->device, tvai->extraThreads, tvai->vram, 1, tvai->canDownloadModels, params, 4, ctx);
-    outlink->time_base = inlink->time_base;
     outlink->frame_rate = tvai->frame_rate.num > 0 ? tvai->frame_rate : inlink->frame_rate;
+    outlink->time_base  = av_inv_q(outlink->frame_rate);
     return tvai->pFrameProcessor == NULL ? AVERROR(EINVAL) : 0;
 }
 
 static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_RGB48,
+    AV_PIX_FMT_RGB32,
     AV_PIX_FMT_NONE
 };
 

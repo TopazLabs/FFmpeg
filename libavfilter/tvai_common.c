@@ -97,6 +97,30 @@ AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer)
   return out;
 }
 
+int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, BasicProcessorInfo* pBasic, int procIndex, float *pParameters, int parameterCount) {
+  ff_tvai_handleLogging();
+  AVFilterContext *pCtx = pOutlink->src;
+  AVFilterLink *pInlink = pCtx->inputs[0];
+  pProcessorInfo->basic = *pBasic;
+  if(ff_tvai_checkModel(pProcessorInfo->basic.modelName, modelType, pCtx) || ff_tvai_checkDevice(pProcessorInfo->basic.device.index, pCtx) || ff_tvai_checkScale(pProcessorInfo->basic.modelName, pProcessorInfo->basic.scale, pCtx)) {
+    return 1;
+  }
+  tvai_vp_name(pProcessorInfo->basic.modelName, procIndex, (char*)pProcessorInfo->basic.processorName);
+  pProcessorInfo->basic.inputWidth = pInlink->w;
+  pProcessorInfo->basic.inputHeight = pInlink->h;
+  pProcessorInfo->basic.timebase = av_q2d(pInlink->time_base);
+  pProcessorInfo->basic.framerate = av_q2d(pInlink->frame_rate);
+  if(pParameters != NULL && parameterCount > 0) {
+    memcpy(pProcessorInfo->modelParameters, pParameters, sizeof(float)*parameterCount);
+  }
+  pOutlink->w = pInlink->w*pProcessorInfo->basic.scale;
+  pOutlink->h = pInlink->h*pProcessorInfo->basic.scale;
+  pOutlink->time_base = pInlink->time_base;
+  pOutlink->frame_rate = pInlink->frame_rate;
+  pOutlink->sample_aspect_ratio = pInlink->sample_aspect_ratio;
+  return 0;
+}
+
 int ff_tvai_process(void *pFrameProcessor, AVFrame* frame, int copy) {
     TVAIBuffer iBuffer;
     ff_tvai_prepareBufferInput(&iBuffer, frame);
