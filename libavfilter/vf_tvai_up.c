@@ -119,7 +119,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAIUpContext *tvai = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    int ret = 0;
     if(ff_tvai_process(tvai->pFrameProcessor, in, 0)) {
         av_log(NULL, AV_LOG_ERROR, "The processing has failed\n");
         av_frame_free(&in);
@@ -128,8 +127,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    ret = ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, 0);
-    return ret;
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, 0);
 }
 
 static int request_frame(AVFilterLink *outlink) {

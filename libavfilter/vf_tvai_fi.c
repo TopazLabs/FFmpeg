@@ -38,11 +38,7 @@
 typedef struct  {
     const AVClass *class;
     BasicProcessorInfo basicInfo;
-    char *model;
-    int device, extraThreads;
     double slowmo;
-    double vram;
-    int canDownloadModels;
     double rdt;
     void* pFrameProcessor;
     AVRational frame_rate;
@@ -50,7 +46,7 @@ typedef struct  {
 } TVAIFIContext;
 
 #define OFFSET(x) offsetof(TVAIFIContext, x)
-#define BASIC_OFFSET(x) offsetof(TVAIFIContext, basicInfo) + offsetof(BasicProcessorInfo, x)
+#define BASIC_OFFSET(x) OFFSET(basicInfo) + offsetof(BasicProcessorInfo, x)
 #define DEVICE_OFFSET(x) BASIC_OFFSET(device) + offsetof(DeviceSetting, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_fi_options[] = {
@@ -69,7 +65,7 @@ AVFILTER_DEFINE_CLASS(tvai_fi);
 
 static av_cold int init(AVFilterContext *ctx) {
     TVAIFIContext *tvai = ctx->priv;
-    av_log(ctx, AV_LOG_DEBUG, "Init with params: %s %d %d %lf %d/%d = %lf\n", tvai->model, tvai->device, tvai->extraThreads, tvai->slowmo, tvai->frame_rate.num, tvai->frame_rate.den, av_q2d(tvai->frame_rate));
+    av_log(ctx, AV_LOG_DEBUG, "Init with params: %s %d %d %lf %d/%d = %lf\n", tvai->basicInfo.modelName, tvai->basicInfo.device.index, tvai->basicInfo.device.extraThreadCount, tvai->slowmo, tvai->frame_rate.num, tvai->frame_rate.den, av_q2d(tvai->frame_rate));
     tvai->previousFrame = NULL;
     return 0;
 }
@@ -84,27 +80,32 @@ static int config_props(AVFilterLink *outlink) {
     if(tvai->frame_rate.num > 0) {
         AVRational frFactor = av_div_q(tvai->frame_rate, inlink->frame_rate);
         fpsFactor = 1/(tvai->slowmo*av_q2d(frFactor));
-
     } else {
         outlink->frame_rate = inlink->frame_rate;
         fpsFactor = 1/tvai->slowmo;
     }
-    av_log(ctx, AV_LOG_ERROR, "MEESSSS download: %d index: %d threads: %d vram: %f model: %s scale: %d\n\n\n", tvai->basicInfo.canDownloadModel, tvai->basicInfo.device.index, tvai->basicInfo.device.extraThreadCount, 
-    tvai->basicInfo.device.maxMemory, tvai->basicInfo.modelName, tvai->basicInfo.scale);
+    VideoProcessorInfo info;
     av_log(ctx, AV_LOG_DEBUG, "Set time base to %d/%d %lf -> %d/%d %lf\n", inlink->time_base.num, inlink->time_base.den, av_q2d(inlink->time_base), outlink->time_base.num, outlink->time_base.den, av_q2d(outlink->time_base));
     av_log(ctx, AV_LOG_DEBUG, "Set frame rate to %lf -> %lf\n", av_q2d(inlink->frame_rate), av_q2d(outlink->frame_rate));
     av_log(ctx, AV_LOG_DEBUG, "Set fpsFactor to %lf generating %lf frames\n", fpsFactor, 1/fpsFactor);
     threshold = fpsFactor*0.3;
-    float params[4] = {threshold, fpsFactor, tvai->slowmo, tvai->rdt};
-    tvai->pFrameProcessor = ff_tvai_verifyAndCreate(inlink, outlink, 0, tvai->model, ModelTypeFrameInterpolation, tvai->device, tvai->extraThreads, tvai->vram, 1, tvai->canDownloadModels, params, 4, ctx);
-    outlink->frame_rate = tvai->frame_rate.num > 0 ? tvai->frame_rate : inlink->frame_rate;
-    outlink->time_base  = av_inv_q(outlink->frame_rate);
+    float parameterValues[4] = {threshold, fpsFactor, tvai->slowmo, tvai->rdt};
+    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeFrameInterpolation, outlink, &(tvai->basicInfo), 0, parameterValues, 4)) {
+        return AVERROR(EINVAL);
+    }
+    tvai->previousFrame = NULL;
+    if(tvai->frame_rate.num > 0) {
+        outlink->frame_rate = tvai->frame_rate;
+        info.basic.framerate = av_q2d(outlink->frame_rate);
+        outlink->time_base  = av_inv_q(outlink->frame_rate);
+        info.basic.timebase = av_q2d(outlink->time_base);
+    }
+    tvai->pFrameProcessor = tvai_create(&info);
     return tvai->pFrameProcessor == NULL ? AVERROR(EINVAL) : 0;
 }
 
 static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_RGB48,
-    AV_PIX_FMT_RGB32,
     AV_PIX_FMT_NONE
 };
 
@@ -112,8 +113,17 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAIFIContext *tvai = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    int ret = 0;
-    if(ff_tvai_process(tvai->pFrameProcessor, in, 0)) {
+    TVAIBuffer iBuffer;
+    iBuffer.pBuffer = in->data[0];
+    iBuffer.lineSize = in->linesize[0];
+    if(tvai->frame_rate.num > 0) {
+        iBuffer.pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
+        iBuffer.duration = 1;
+    } else {
+        iBuffer.pts = in->pts;
+        iBuffer.duration = in->duration;
+    }
+    if(tvai->pFrameProcessor == NULL || tvai_process(tvai->pFrameProcessor, &iBuffer, 0)) {
         av_log(NULL, AV_LOG_ERROR, "The processing has failed\n");
         av_frame_free(&in);
         return AVERROR(ENOSYS);
@@ -121,8 +131,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    ret = ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, 0);
-    return ret;
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, 0);
 }
 
 static int request_frame(AVFilterLink *outlink) {
