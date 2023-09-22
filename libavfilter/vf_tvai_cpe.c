@@ -38,21 +38,21 @@
 
 typedef struct TVAICPEContext {
     const AVClass *class;
-    char *model, *filename;
-    int device;
-    int canDownloadModels;
-    void* pFrameProcessor;
-    unsigned int counter;
-    int rsc;
+    BasicProcessorInfo basicInfo;
+    char *filename;
+    void *pFrameProcessor;
 } TVAICPEContext;
 
 #define OFFSET(x) offsetof(TVAICPEContext, x)
+#define BASIC_OFFSET(x) OFFSET(basicInfo) + offsetof(BasicProcessorInfo, x)
+#define DEVICE_OFFSET(x) BASIC_OFFSET(device) + offsetof(DeviceSetting, x)
+
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_cpe_options[] = {
-    { "model", "Model short name", OFFSET(model), AV_OPT_TYPE_STRING, {.str="cpe-1"}, .flags = FLAGS },
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="cpe-1"}, .flags = FLAGS },
     { "filename", "CPE output filename", OFFSET(filename), AV_OPT_TYPE_STRING, {.str="cpe.json"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  OFFSET(device),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
-    { "download",  "Enable model downloading",  OFFSET(canDownloadModels),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { NULL }
 };
 
@@ -60,22 +60,24 @@ AVFILTER_DEFINE_CLASS(tvai_cpe);
 
 static av_cold int init(AVFilterContext *ctx) {
   TVAICPEContext *tvai = ctx->priv;
-  av_log(ctx, AV_LOG_DEBUG, "Here init with params: %s %d\n", tvai->model, tvai->device);
-  tvai->counter = 0;
+  av_log(ctx, AV_LOG_DEBUG, "Here init with params: %s %d\n", tvai->basicInfo.modelName, tvai->basicInfo.device.index);
   return 0;
 }
 
 static int config_props(AVFilterLink *outlink) {
     AVFilterContext *ctx = outlink->src;
     TVAICPEContext *tvai = ctx->priv;
-    AVFilterLink *inlink = ctx->inputs[0];
     VideoProcessorInfo info;
+    tvai->basicInfo.scale = 1;
+    tvai->basicInfo.device.maxMemory = 1;
+    tvai->basicInfo.device.extraThreadCount = 0;
     info.options[0] = tvai->filename;
-    tvai->rsc = strncmp(tvai->model, (char*)"cpe-1", 5) != 0;
-    av_log(ctx, AV_LOG_DEBUG, "RSC: %d\n", tvai->rsc);
-    if(ff_tvai_verifyAndSetInfo(&info, inlink, outlink, 0, tvai->model, ModelTypeCamPoseEstimation, tvai->device, 0, 1, 1, tvai->canDownloadModels, &tvai->rsc, 1, ctx)) {
-      return AVERROR(EINVAL);
+    float rsc = strncmp(tvai->basicInfo.modelName, (char*)"cpe-1", 5) != 0;
+    av_log(ctx, AV_LOG_ERROR, "Model: %s RSC: %f\n", tvai->basicInfo.modelName, rsc);
+    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeCamPoseEstimation, outlink, &(tvai->basicInfo), 0, &rsc, 1)) {
+      return AVERROR(EINVAL);  
     }
+    av_log(ctx, AV_LOG_ERROR, "File: %s Model: %s RSC: %f\n", info.options[0], info.basic.modelName, rsc);
     tvai->pFrameProcessor = tvai_create(&info);
     return tvai->pFrameProcessor == NULL ? AVERROR(EINVAL) : 0;
 }
@@ -89,7 +91,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAICPEContext *tvai = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    int ret = 0;
     if(ff_tvai_process(tvai->pFrameProcessor, in, 0)) {
         av_log(NULL, AV_LOG_ERROR, "The processing has failed\n");
         av_frame_free(&in);
@@ -109,14 +110,14 @@ static int request_frame(AVFilterLink *outlink) {
             ff_tvai_ignore_output(tvai->pFrameProcessor);
             tvai_wait(20);
         }
-        av_log(ctx, AV_LOG_DEBUG, "End of file reached %s %d\n", tvai->model, tvai->pFrameProcessor == NULL);
+        av_log(ctx, AV_LOG_DEBUG, "End of file reached %s %d\n", tvai->basicInfo.modelName, tvai->pFrameProcessor == NULL);
     }
     return ret;
 }
 
 static av_cold void uninit(AVFilterContext *ctx) {
     TVAICPEContext *tvai = ctx->priv;
-    av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s\n", tvai->model);
+    av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s\n", tvai->basicInfo.modelName);
     // if(tvai->pFrameProcessor)
     //     tvai_destroy(tvai->pFrameProcessor);
 }
