@@ -93,7 +93,8 @@ static int config_props(AVFilterLink *outlink) {
     }
     tvai->previousFrame = NULL;
     tvai->timebaseUpdated = tvai->frame_rate.num > 0 && av_q2d(av_inv_q(tvai->frame_rate)) < av_q2d(outlink->time_base);
-    outlink->frame_rate = tvai->frame_rate;
+    if(tvai->frame_rate.num > 0)
+        outlink->frame_rate = tvai->frame_rate;
     info.basic.framerate = av_q2d(outlink->frame_rate);
     if(tvai->timebaseUpdated) {
         outlink->time_base  = av_d2q(0.001/info.basic.framerate, INT_MAX);
