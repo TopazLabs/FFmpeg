@@ -57,6 +57,9 @@ static int ref_pic_list_struct(const EVCParserSPS *sps, GetBitContext *gb, RefPi
 static int hrd_parameters(GetBitContext *gb, HRDParameters *hrd)
 {
     hrd->cpb_cnt_minus1 = get_ue_golomb_31(gb);
+    if (hrd->cpb_cnt_minus1 >= FF_ARRAY_ELEMS(hrd->cpb_size_value_minus1))
+        return AVERROR_INVALIDDATA;
+
     hrd->bit_rate_scale = get_bits(gb, 4);
     hrd->cpb_size_scale = get_bits(gb, 4);
     for (int SchedSelIdx = 0; SchedSelIdx <= hrd->cpb_cnt_minus1; SchedSelIdx++) {
@@ -75,6 +78,8 @@ static int hrd_parameters(GetBitContext *gb, HRDParameters *hrd)
 // @see  ISO_IEC_23094-1 (E.2.1 VUI parameters syntax)
 static int vui_parameters(GetBitContext *gb, VUIParameters *vui)
 {
+    int ret;
+
     vui->aspect_ratio_info_present_flag = get_bits(gb, 1);
     if (vui->aspect_ratio_info_present_flag) {
         vui->aspect_ratio_idc = get_bits(gb, 8);
@@ -113,11 +118,18 @@ static int vui_parameters(GetBitContext *gb, VUIParameters *vui)
         vui->fixed_pic_rate_flag = get_bits(gb, 1);
     }
     vui->nal_hrd_parameters_present_flag = get_bits(gb, 1);
-    if (vui->nal_hrd_parameters_present_flag)
-        hrd_parameters(gb, &vui->hrd_parameters);
+    if (vui->nal_hrd_parameters_present_flag) {
+        ret = hrd_parameters(gb, &vui->hrd_parameters);
+        if (ret < 0)
+            return ret;
+    }
+
     vui->vcl_hrd_parameters_present_flag = get_bits(gb, 1);
-    if (vui->vcl_hrd_parameters_present_flag)
-        hrd_parameters(gb, &vui->hrd_parameters);
+    if (vui->vcl_hrd_parameters_present_flag) {
+        ret = hrd_parameters(gb, &vui->hrd_parameters);
+        if (ret < 0)
+            return ret;
+    }
     if (vui->nal_hrd_parameters_present_flag || vui->vcl_hrd_parameters_present_flag)
         vui->low_delay_hrd_flag = get_bits(gb, 1);
     vui->pic_struct_present_flag = get_bits(gb, 1);
@@ -243,8 +255,10 @@ int ff_evc_parse_sps(GetBitContext *gb, EVCParamSets *ps)
         sps->max_num_tid0_ref_pics = get_ue_golomb_31(gb);
     else {
         sps->sps_max_dec_pic_buffering_minus1 = get_ue_golomb_long(gb);
-        if ((unsigned)sps->sps_max_dec_pic_buffering_minus1 > 16 - 1)
-            return AVERROR_INVALIDDATA;
+        if ((unsigned)sps->sps_max_dec_pic_buffering_minus1 > 16 - 1) {
+            ret = AVERROR_INVALIDDATA;
+            goto fail;
+        }
         sps->long_term_ref_pic_flag = get_bits1(gb);
         sps->rpl1_same_as_rpl0_flag = get_bits1(gb);
         sps->num_ref_pic_list_in_sps[0] = get_ue_golomb(gb);
@@ -304,8 +318,11 @@ int ff_evc_parse_sps(GetBitContext *gb, EVCParamSets *ps)
     }
 
     sps->vui_parameters_present_flag = get_bits1(gb);
-    if (sps->vui_parameters_present_flag)
-        vui_parameters(gb, &(sps->vui_parameters));
+    if (sps->vui_parameters_present_flag) {
+        ret = vui_parameters(gb, &(sps->vui_parameters));
+        if (ret < 0)
+            goto fail;
+    }
 
     // @note
     // If necessary, add the missing fields to the EVCParserSPS structure
