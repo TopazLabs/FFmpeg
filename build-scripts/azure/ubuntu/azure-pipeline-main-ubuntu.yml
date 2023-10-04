@@ -9,7 +9,7 @@ resources:
       type: github
       endpoint: TopazLabs
       name: FFmpeg/nv-codec-headers
-      ref: refs/tags/n12.0.16.0
+      ref: master
 
 jobs:
 - job: Ubuntu22_04
