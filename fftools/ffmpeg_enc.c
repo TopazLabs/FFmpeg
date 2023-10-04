@@ -1030,11 +1030,11 @@ static void video_sync_process(OutputFile *of, OutputStream *ost,
             *nb_frames = 0;
         else if (delta > 0.6)
             e->next_pts = llrint(sync_ipts);
-        frame->duration = duration;
+        frame->duration = llrint(duration);
         break;
     case VSYNC_DROP:
     case VSYNC_PASSTHROUGH:
-        frame->duration = duration;
+        frame->duration = llrint(duration);
         e->next_pts = llrint(sync_ipts);
         break;
     default:
@@ -1109,15 +1109,8 @@ static int do_video_out(OutputFile *of, OutputStream *ost, AVFrame *frame)
     int64_t nb_frames, nb_frames_prev, i;
     double duration = 0;
 
-    if (frame) {
-        FrameData *fd = frame_data(frame);
-
-        duration = lrintf(frame->duration * av_q2d(frame->time_base) / av_q2d(enc->time_base));
-
-        if (duration <= 0 &&
-            fd->frame_rate_filter.num > 0 && fd->frame_rate_filter.den > 0)
-            duration = 1 / (av_q2d(fd->frame_rate_filter) * av_q2d(enc->time_base));
-    }
+    if (frame)
+        duration = frame->duration * av_q2d(frame->time_base) / av_q2d(enc->time_base);
 
     video_sync_process(of, ost, frame, duration,
                        &nb_frames, &nb_frames_prev);

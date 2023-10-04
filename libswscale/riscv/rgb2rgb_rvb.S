@@ -1,4 +1,6 @@
 /*
+ * Copyright © 2022 Rémi Denis-Courmont.
+ *
  * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
@@ -16,18 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/attributes.h"
-#include "libavutil/cpu.h"
-#include "libavutil/arm/cpu.h"
+#include "config.h"
+#include "libavutil/riscv/asm.S"
+#include "libavutil/riscv/bswap_rvb.S"
 
-#include "libavcodec/rdft.h"
-
-void ff_rdft_calc_neon(struct RDFTContext *s, FFTSample *z);
-
-av_cold void ff_rdft_init_arm(RDFTContext *s)
-{
-    int cpu_flags = av_get_cpu_flags();
-
-    if (have_neon(cpu_flags))
-        s->rdft_calc    = ff_rdft_calc_neon;
-}
+#if (__riscv_xlen >= 64)
+func ff_shuffle_bytes_3210_rvb, zbb
+        srli    a2, a2, 2
+        bswap32_rvb a1, a0, a2
+endfunc
+#endif

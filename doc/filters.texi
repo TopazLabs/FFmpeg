@@ -16837,6 +16837,7 @@ ffmpeg -init_hw_device vulkan -hwaccel vaapi -hwaccel_output_format vaapi ... -v
 @end example
 @end itemize
 
+@anchor{libvmaf}
 @section libvmaf
 
 Calulate the VMAF (Video Multi-Method Assessment Fusion) score for a
@@ -16925,6 +16926,32 @@ ffmpeg -i distorted.mpg -i reference.mpg -lavfi libvmaf='feature=name=psnr|name=
 Example with options and different containers:
 @example
 ffmpeg -i distorted.mpg -i reference.mkv -lavfi "[0:v]settb=AVTB,setpts=PTS-STARTPTS[main];[1:v]settb=AVTB,setpts=PTS-STARTPTS[ref];[main][ref]libvmaf=log_fmt=json:log_path=output.json" -f null -
+@end example
+@end itemize
+
+@section libvmaf_cuda
+
+This is the CUDA variant of the @ref{libvmaf} filter. It only accepts CUDA frames.
+
+It requires Netflix's vmaf library (libvmaf) as a pre-requisite.
+After installing the library it can be enabled using:
+@code{./configure --enable-nonfree --enable-ffnvcodec --enable-libvmaf}.
+
+@subsection Examples
+@itemize
+
+@item
+Basic usage showing CUVID hardware decoding and CUDA scaling with @ref{scale_cuda}:
+@example
+ffmpeg \
+    -hwaccel cuda -hwaccel_output_format cuda -codec:v av1_cuvid -i dis.obu \
+    -hwaccel cuda -hwaccel_output_format cuda -codec:v av1_cuvid -i ref.obu \
+    -filter_complex "
+        [0:v]scale_cuda=format=yuv420p[ref]; \
+        [1:v]scale_cuda=format=yuv420p[dis]; \
+        [dis][ref]libvmaf_cuda=log_fmt=json:log_path=output.json
+    " \
+    -f null -
 @end example
 @end itemize
 
@@ -20869,6 +20896,7 @@ If the specified expression is not valid, it is kept at its current
 value.
 @end table
 
+@anchor{scale_cuda}
 @section scale_cuda
 
 Scale (resize) and convert (pixel format) the input video, using accelerated CUDA kernels.
