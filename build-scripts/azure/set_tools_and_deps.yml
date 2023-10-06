@@ -20,7 +20,7 @@ steps:
 #Install tools
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.x'
+      versionSpec: '3.11.x'
 
   - ${{ if eq(parameters.os, 'mac') }}:
     - script: |
