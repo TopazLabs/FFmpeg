@@ -68,6 +68,7 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
     return 1;
   }
   tvai_vp_name(pProcessorInfo->basic.modelName, procIndex, (char*)pProcessorInfo->basic.processorName);
+  pProcessorInfo->basic.preflight = 0;
   pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGB16;
   pProcessorInfo->basic.inputWidth = pInlink->w;
   pProcessorInfo->basic.inputHeight = pInlink->h;
