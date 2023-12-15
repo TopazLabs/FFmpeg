@@ -830,7 +830,7 @@ be achieved with @code{ffmpeg ... < /dev/null} but it requires a
 shell.
 
 @item -debug_ts (@emph{global})
-Print timestamp information. It is off by default. This option is
+Print timestamp/latency information. It is off by default. This option is
 mostly useful for testing and debugging purposes, and the output
 format may change from one version to another, so it should not be
 employed by portable scripts.
@@ -1060,7 +1060,6 @@ Deprecated see -bsf
 @item -force_key_frames[:@var{stream_specifier}] @var{time}[,@var{time}...] (@emph{output,per-stream})
 @item -force_key_frames[:@var{stream_specifier}] expr:@var{expr} (@emph{output,per-stream})
 @item -force_key_frames[:@var{stream_specifier}] source (@emph{output,per-stream})
-@item -force_key_frames[:@var{stream_specifier}] source_no_drop (@emph{output,per-stream})
 
 @var{force_key_frames} can take arguments of the following form:
 
@@ -1121,10 +1120,6 @@ starting from second 13:
 @item source
 If the argument is @code{source}, ffmpeg will force a key frame if
 the current frame being encoded is marked as a key frame in its source.
-
-@item source_no_drop
-If the argument is @code{source_no_drop}, ffmpeg will force a key frame if
-the current frame being encoded is marked as a key frame in its source.
 In cases where this particular source frame has to be dropped,
 enforce the next available frame to become a key frame instead.
 
@@ -1170,6 +1165,21 @@ Choose the first device and use the primary device context.
 
 @item d3d11va
 @var{device} is the number of the Direct3D 11 display adapter.
+If not specified, it will attempt to use the default Direct3D 11 display adapter
+or the first Direct3D 11 display adapter whose hardware VendorId is specified
+by @samp{vendor_id}.
+
+Examples:
+@table @emph
+@item -init_hw_device d3d11va
+Create a d3d11va device on the default Direct3D 11 display adapter.
+
+@item -init_hw_device d3d11va:1
+Create a d3d11va device on the Direct3D 11 display adapter specified by index 1.
+
+@item -init_hw_device d3d11va:,vendor_id=0x8086
+Create a d3d11va device on the first Direct3D 11 display adapter whose hardware VendorId is 0x8086.
+@end table
 
 @item vaapi
 @var{device} is either an X11 display name, a DRM render node or a DirectX adapter index.
@@ -1850,8 +1860,8 @@ of seconds.
 
 The timestamp discontinuity correction enabled by this option is only
 applied to input formats accepting timestamp discontinuity (for which
-the @code{AV_FMT_DISCONT} flag is enabled), e.g. MPEG-TS and HLS, and
-is automatically disabled when employing the @code{-copy_ts} option
+the @code{AVFMT_TS_DISCONT} flag is enabled), e.g. MPEG-TS and HLS, and
+is automatically disabled when employing the @code{-copyts} option
 (unless wrapping is detected).
 
 If a timestamp discontinuity is detected whose absolute value is
@@ -1867,7 +1877,7 @@ seconds.
 
 The timestamp correction enabled by this option is only applied to
 input formats not accepting timestamp discontinuity (for which the
-@code{AV_FMT_DISCONT} flag is not enabled).
+@code{AVFMT_TS_DISCONT} flag is not enabled).
 
 If a timestamp discontinuity is detected whose absolute value is
 greater than @var{threshold}, ffmpeg will drop the PTS/DTS timestamp
@@ -1893,9 +1903,19 @@ ffmpeg -i inurl -streamid 0:33 -streamid 1:36 out.ts
 @end example
 
 @item -bsf[:@var{stream_specifier}] @var{bitstream_filters} (@emph{output,per-stream})
-Set bitstream filters for matching streams. @var{bitstream_filters} is
-a comma-separated list of bitstream filters. Use the @code{-bsfs} option
-to get the list of bitstream filters.
+Apply bitstream filters to matching streams.
+
+@var{bitstream_filters} is a comma-separated list of bitstream filter
+specifications. The specified bitstream filters are applied to coded packets in
+the order they are written in. Each bitstream filter specification is of the
+form
+@example
+@var{filter}[=@var{optname0}=@var{optval0}:@var{optname1}=@var{optval1}:...]
+@end example
+Any of the ',=:' characters that are to be a part of an option value need to be
+escaped with a backslash.
+
+Use the @code{-bsfs} option to get the list of bitstream filters.
 @example
 ffmpeg -i h264.mp4 -c:v copy -bsf:v h264_mp4toannexb -an out.h264
 @end example

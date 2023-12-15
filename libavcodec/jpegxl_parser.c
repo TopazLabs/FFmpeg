@@ -46,6 +46,8 @@
 #define JXL_FLAG_USE_LF_FRAME 32
 #define JXL_FLAG_SKIP_ADAPTIVE_LF_SMOOTH 128
 
+#define MAX_PREFIX_ALPHABET_SIZE (1u << 15)
+
 #define clog1p(x) (ff_log2(x) + !!(x))
 #define unpack_signed(x) (((x) & 1 ? -(x)-1 : (x))/2)
 #define div_ceil(x, y) (((x) - 1) / (y) + 1)
@@ -681,7 +683,7 @@ static int read_vlc_prefix(GetBitContext *gb, JXLEntropyDecoder *dec, JXLSymbolD
     int repeat_count_prev = 0, repeat_count_zero = 0, prev = 8;
     int total_code = 0, len, hskip, num_codes = 0, ret;
 
-    VLC level1_vlc;
+    VLC level1_vlc = { 0 };
 
     if (dist->alphabet_size == 1) {
         dist->vlc.bits = 0;
@@ -707,8 +709,10 @@ static int read_vlc_prefix(GetBitContext *gb, JXLEntropyDecoder *dec, JXLSymbolD
         }
     }
 
-    if (total_code != 32 && num_codes >= 2 || num_codes < 1)
-        return AVERROR_INVALIDDATA;
+    if (total_code != 32 && num_codes >= 2 || num_codes < 1) {
+        ret = AVERROR_INVALIDDATA;
+        goto end;
+    }
 
     for (int i = 1; i < 19; i++)
          level1_codecounts[i] += level1_codecounts[i - 1];
@@ -724,24 +728,30 @@ static int read_vlc_prefix(GetBitContext *gb, JXLEntropyDecoder *dec, JXLSymbolD
     if (ret < 0)
         goto end;
 
-    buf = av_calloc(1, 262148); // 32768 * 8 + 4
+    buf = av_mallocz(MAX_PREFIX_ALPHABET_SIZE * (2 * sizeof(int8_t) + sizeof(int16_t) + sizeof(uint32_t))
+                     + sizeof(uint32_t));
     if (!buf) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
 
     level2_lens = (int8_t *)buf;
-    level2_lens_s = (int8_t *)(buf + 32768);
-    level2_syms = (int16_t *)(buf + 65536);
-    level2_codecounts = (uint32_t *)(buf + 131072);
+    level2_lens_s = (int8_t *)(buf + MAX_PREFIX_ALPHABET_SIZE * sizeof(int8_t));
+    level2_syms = (int16_t *)(buf + MAX_PREFIX_ALPHABET_SIZE * (2 * sizeof(int8_t)));
+    level2_codecounts = (uint32_t *)(buf + MAX_PREFIX_ALPHABET_SIZE * (2 * sizeof(int8_t) + sizeof(int16_t)));
 
     total_code = 0;
     for (int i = 0; i < dist->alphabet_size; i++) {
         len = get_vlc2(gb, level1_vlc.table, 5, 1);
+        if (get_bits_left(gb) < 0) {
+            ret = AVERROR_BUFFER_TOO_SMALL;
+            goto end;
+        }
         if (len == 16) {
             int extra = 3 + get_bits(gb, 2);
             if (repeat_count_prev)
-                extra = 4 * (repeat_count_prev - 2) - repeat_count_prev + extra;
+                extra += 4 * (repeat_count_prev - 2) - repeat_count_prev;
+            extra = FFMIN(extra, dist->alphabet_size - i);
             for (int j = 0; j < extra; j++)
                 level2_lens[i + j] = prev;
             total_code += (32768 >> prev) * extra;
@@ -752,7 +762,8 @@ static int read_vlc_prefix(GetBitContext *gb, JXLEntropyDecoder *dec, JXLSymbolD
         } else if (len == 17) {
             int extra = 3 + get_bits(gb, 3);
             if (repeat_count_zero > 0)
-                extra = 8 * (repeat_count_zero - 2) - repeat_count_zero + extra;
+                extra += 8 * (repeat_count_zero - 2) - repeat_count_zero;
+            extra = FFMIN(extra, dist->alphabet_size - i);
             i += extra - 1;
             repeat_count_prev = 0;
             repeat_count_zero += extra;
@@ -772,8 +783,10 @@ static int read_vlc_prefix(GetBitContext *gb, JXLEntropyDecoder *dec, JXLSymbolD
         }
     }
 
-    if (total_code != 32768 && level2_codecounts[0] < dist->alphabet_size - 1)
-        return AVERROR_INVALIDDATA;
+    if (total_code != 32768 && level2_codecounts[0] < dist->alphabet_size - 1) {
+        ret = AVERROR_INVALIDDATA;
+        goto end;
+    }
 
     for (int i = 1; i < dist->alphabet_size + 1; i++)
         level2_codecounts[i] += level2_codecounts[i - 1];
@@ -848,6 +861,8 @@ static int read_distribution_bundle(GetBitContext *gb, JXLEntropyDecoder *dec,
             if (get_bits1(gb)) {
                 int n = get_bits(gb, 4);
                 dist->alphabet_size = 1 + (1 << n) + get_bitsz(gb, n);
+                if (dist->alphabet_size > MAX_PREFIX_ALPHABET_SIZE)
+                    return AVERROR_INVALIDDATA;
             } else {
                 dist->alphabet_size = 1;
             }
@@ -1044,34 +1059,60 @@ static int skip_icc_profile(void *avctx, JXLParseContext *ctx, GetBitContext *gb
 {
     int64_t ret;
     uint32_t last = 0, last2 = 0;
-    JXLEntropyDecoder dec;
+    JXLEntropyDecoder dec = { 0 };
     uint64_t enc_size = jxl_u64(gb);
+    uint64_t output_size = 0;
+    int out_size_shift = 0;
 
-    if (!enc_size)
+    if (!enc_size || enc_size > (1 << 22))
         return AVERROR_INVALIDDATA;
 
     ret = entropy_decoder_init(avctx, gb, &dec, 41);
     if (ret < 0)
-        return ret;
+        goto end;
 
     if (get_bits_left(gb) < 0) {
-        entropy_decoder_close(&dec);
-        return AVERROR_BUFFER_TOO_SMALL;
+        ret = AVERROR_BUFFER_TOO_SMALL;
+        goto end;
     }
 
     for (uint64_t read = 0; read < enc_size; read++) {
         ret = entropy_decoder_read_symbol(gb, &dec, icc_context(read, last, last2));
-        if (ret < 0 || get_bits_left(gb) < 0) {
-            entropy_decoder_close(&dec);
-            return ret < 0 ? ret : AVERROR_BUFFER_TOO_SMALL;
+        if (ret < 0)
+            goto end;
+        if (ret > 255) {
+            ret = AVERROR_INVALIDDATA;
+            goto end;
+        }
+        if (get_bits_left(gb) < 0) {
+            ret = AVERROR_BUFFER_TOO_SMALL;
+            goto end;
         }
         last2 = last;
         last = ret;
+        if (out_size_shift < 63) {
+            output_size += (ret & UINT64_C(0x7F)) << out_size_shift;
+            if (!(ret & 0x80)) {
+                out_size_shift = 63;
+            } else {
+                out_size_shift += 7;
+                if (out_size_shift > 56) {
+                    ret = AVERROR_INVALIDDATA;
+                    goto end;
+                }
+            }
+        } else if (output_size < 132) {
+            ret = AVERROR_INVALIDDATA;
+            goto end;
+        }
     }
 
+    ret = 0;
+
+end:
     entropy_decoder_close(&dec);
 
-    return 0;
+    return ret;
 }
 
 static int skip_extensions(GetBitContext *gb)
@@ -1301,7 +1342,7 @@ static int skip_boxes(JXLParseContext *ctx, const uint8_t *buf, int buf_size)
 
     while (1) {
         uint64_t size;
-        int head_size = 4;
+        int head_size = 8;
 
         if (bytestream2_peek_le16(&gb) == FF_JPEGXL_CODESTREAM_SIGNATURE_LE)
             break;
@@ -1312,16 +1353,17 @@ static int skip_boxes(JXLParseContext *ctx, const uint8_t *buf, int buf_size)
             return AVERROR_BUFFER_TOO_SMALL;
 
         size = bytestream2_get_be32(&gb);
+        bytestream2_skip(&gb, 4); // tag
         if (size == 1) {
-            if (bytestream2_get_bytes_left(&gb) < 12)
+            if (bytestream2_get_bytes_left(&gb) < 8)
                 return AVERROR_BUFFER_TOO_SMALL;
             size = bytestream2_get_be64(&gb);
-            head_size = 12;
+            head_size = 16;
         }
         if (!size)
             return AVERROR_INVALIDDATA;
         /* invalid ISOBMFF size */
-        if (size <= head_size + 4 || size > INT_MAX - ctx->skip)
+        if (size <= head_size || size > INT_MAX - ctx->skip)
             return AVERROR_INVALIDDATA;
 
         ctx->skip += size;
@@ -1412,15 +1454,21 @@ static int jpegxl_parse(AVCodecParserContext *s, AVCodecContext *avctx,
 {
     JXLParseContext *ctx = s->priv_data;
     int next = END_NOT_FOUND, ret;
+    const uint8_t *pbuf = ctx->pc.buffer;
+    int pindex = ctx->pc.index;
 
     *poutbuf_size = 0;
     *poutbuf = NULL;
 
-    if (!ctx->pc.index)
-        goto flush;
+    if (!ctx->pc.index) {
+        if (ctx->pc.overread)
+            goto flush;
+        pbuf = buf;
+        pindex = buf_size;
+    }
 
     if ((!ctx->container || !ctx->codestream_length) && !ctx->next) {
-        ret = try_parse(s, avctx, ctx, ctx->pc.buffer, ctx->pc.index);
+        ret = try_parse(s, avctx, ctx, pbuf, pindex);
         if (ret < 0)
             goto flush;
         ctx->next = ret;
@@ -1429,7 +1477,7 @@ static int jpegxl_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     }
 
     if (ctx->container && ctx->next >= 0) {
-        ret = skip_boxes(ctx, ctx->pc.buffer, ctx->pc.index);
+        ret = skip_boxes(ctx, pbuf, pindex);
         if (ret < 0) {
             if (ret == AVERROR_INVALIDDATA)
                 ctx->next = -1;

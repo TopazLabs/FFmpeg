@@ -1,5 +1,6 @@
 # libavcodec tests
 # subsystems
+AVCODECOBJS-$(CONFIG_AC3DSP)            += ac3dsp.o
 AVCODECOBJS-$(CONFIG_AUDIODSP)          += audiodsp.o
 AVCODECOBJS-$(CONFIG_BLOCKDSP)          += blockdsp.o
 AVCODECOBJS-$(CONFIG_BSWAPDSP)          += bswapdsp.o
@@ -10,6 +11,7 @@ AVCODECOBJS-$(CONFIG_H264DSP)           += h264dsp.o
 AVCODECOBJS-$(CONFIG_H264PRED)          += h264pred.o
 AVCODECOBJS-$(CONFIG_H264QPEL)          += h264qpel.o
 AVCODECOBJS-$(CONFIG_IDCTDSP)           += idctdsp.o
+AVCODECOBJS-$(CONFIG_LLAUDDSP)          += llauddsp.o
 AVCODECOBJS-$(CONFIG_LLVIDDSP)          += llviddsp.o
 AVCODECOBJS-$(CONFIG_LLVIDENCDSP)       += llviddspenc.o
 AVCODECOBJS-$(CONFIG_LPC)               += lpc.o
@@ -21,6 +23,7 @@ AVCODECOBJS-$(CONFIG_VIDEODSP)          += videodsp.o
 # decoders/encoders
 AVCODECOBJS-$(CONFIG_AAC_DECODER)       += aacpsdsp.o \
                                            sbrdsp.o
+AVCODECOBJS-$(CONFIG_AAC_ENCODER)       += aacencdsp.o
 AVCODECOBJS-$(CONFIG_ALAC_DECODER)      += alacdsp.o
 AVCODECOBJS-$(CONFIG_DCA_DECODER)       += synth_filter.o
 AVCODECOBJS-$(CONFIG_EXR_DECODER)       += exrdsp.o
@@ -66,7 +69,7 @@ CHECKASMOBJS-$(CONFIG_AVUTIL)  += $(AVUTILOBJS)
 
 CHECKASMOBJS-$(ARCH_AARCH64)            += aarch64/checkasm.o
 CHECKASMOBJS-$(HAVE_ARMV5TE_EXTERNAL)   += arm/checkasm.o
-CHECKASMOBJS-$(ARCH_RISCV)              += riscv/checkasm.o
+CHECKASMOBJS-$(HAVE_RV)                 += riscv/checkasm.o
 CHECKASMOBJS-$(HAVE_X86ASM)             += x86/checkasm.o
 
 CHECKASMOBJS += $(CHECKASMOBJS-yes) checkasm.o

@@ -977,14 +977,17 @@ Favor improved speech intelligibility.
 @item audio
 Favor faithfulness to the input (the default).
 @item lowdelay
-Restrict to only the lowest delay modes.
+Restrict to only the lowest delay modes by disabling voice-optimized
+modes.
 @end table
 
 @item cutoff (N.A.)
 Set cutoff bandwidth in Hz. The argument must be exactly one of the
 following: 4000, 6000, 8000, 12000, or 20000, corresponding to
 narrowband, mediumband, wideband, super wideband, and fullband
-respectively. The default is 0 (cutoff disabled).
+respectively. The default is 0 (cutoff disabled). Note that libopus
+forces a wideband cutoff for bitrates < 15 kbps, unless CELT-only
+(@option{application} set to @samp{lowdelay}) mode is used.
 
 @item mapping_family (@emph{mapping_family})
 Set channel mapping family to be used by the encoder. The default value of -1
@@ -2418,6 +2421,10 @@ To get a more accurate and extensive documentation of the libx264
 options, invoke the command @command{x264 --fullhelp} or consult
 the libx264 documentation.
 
+In the list below, note that the @command{x264} option name is shown
+in parentheses after the libavcodec corresponding name, in case there
+is a direct mapping.
+
 @table @option
 @item b (@emph{bitrate})
 Set bitrate in bits/s. Note that FFmpeg's @option{b} option is
@@ -2425,17 +2432,19 @@ expressed in bits/s, while @command{x264}'s @option{bitrate} is in
 kilobits/s.
 
 @item bf (@emph{bframes})
+Number of B-frames between I and P-frames
 
 @item g (@emph{keyint})
+Maximum GOP size
 
 @item qmin (@emph{qpmin})
-Minimum quantizer scale.
+Minimum quantizer scale
 
 @item qmax (@emph{qpmax})
-Maximum quantizer scale.
+Maximum quantizer scale
 
 @item qdiff (@emph{qpstep})
-Maximum difference between quantizer scales.
+Maximum difference between quantizer scales
 
 @item qblur (@emph{qblur})
 Quantizer curve blur
@@ -2444,7 +2453,21 @@ Quantizer curve blur
 Quantizer curve compression factor
 
 @item refs (@emph{ref})
-Number of reference frames each P-frame can use. The range is from @var{0-16}.
+Number of reference frames each P-frame can use. The range is @var{0-16}.
+
+@item level (@emph{level})
+Set the @code{x264_param_t.i_level_idc} value in case the value is
+positive, it is ignored otherwise.
+
+This value can be set using the @code{AVCodecContext} API (e.g. by
+setting the @code{AVCodecContext} value directly), and is specified as
+an integer mapped on a corresponding level (e.g. the value 31 maps
+to H.264 level IDC "3.1", as defined in the @code{x264_levels}
+table). It is ignored when set to a non positive value.
+
+Alternatively it can be set as a private option, overriding the value
+set in @code{AVCodecContext}, and in this case must be specified as
+the level IDC identifier (e.g. "3.1"), as defined by H.264 Annex A.
 
 @item sc_threshold (@emph{scenecut})
 Sets the threshold for the scene change detection.
@@ -2452,7 +2475,8 @@ Sets the threshold for the scene change detection.
 @item trellis (@emph{trellis})
 Performs Trellis quantization to increase efficiency. Enabled by default.
 
-@item nr  (@emph{nr})
+@item nr (@emph{nr})
+Noise reduction
 
 @item me_range (@emph{merange})
 Maximum range of the motion search in pixels.
@@ -2533,6 +2557,7 @@ open GOP by setting it to @code{-cgop}. The result is similar to
 the behavior of @command{x264}'s @option{--open-gop} option.
 
 @item rc_init_occupancy (@emph{vbv-init})
+Initial VBV buffer occupancy
 
 @item preset (@emph{preset})
 Set the encoding preset.
@@ -2578,7 +2603,7 @@ Set AQ strength, reduce blocking and blurring in flat and textured areas.
 Use psychovisual optimizations when set to 1. When set to 0, it has the
 same effect as @command{x264}'s @option{--no-psy} option.
 
-@item psy-rd  (@emph{psy-rd})
+@item psy-rd (@emph{psy-rd})
 Set strength of psychovisual optimization, in
 @var{psy-rd}:@var{psy-trellis} format.
 
@@ -2610,7 +2635,7 @@ to 1.
 
 @item avcintra-class (@emph{class})
 Configure the encoder to generate AVC-Intra.
-Valid values are 50,100 and 200
+Valid values are 50, 100 and 200
 
 @item bluray-compat (@emph{bluray-compat})
 Configure the encoder to be compatible with the bluray standard.
@@ -2661,8 +2686,8 @@ Set loop filter parameters, in @var{alpha}:@var{beta} form.
 Set fluctuations reduction in QP (before curve compression).
 
 @item partitions (@emph{partitions})
-Set partitions to consider as a comma-separated list of. Possible
-values in the list:
+Set partitions to consider as a comma-separated list of values.
+Possible values in the list:
 
 @table @samp
 @item p8x8
@@ -2718,18 +2743,31 @@ Variable bit rate.
 Constant bit rate (not allowed in MP4 container).
 @end table
 
-@item x264opts (N.A.)
-Set any x264 option, see @command{x264 --fullhelp} for a list.
+@item x264opts @var{opts}
+@item x264-params @var{opts}
+Override the x264 configuration using a :-separated list of key=value
+options.
 
-Argument is a list of @var{key}=@var{value} couples separated by
-":". In @var{filter} and @var{psy-rd} options that use ":" as a separator
-themselves, use "," instead. They accept it as well since long ago but this
-is kept undocumented for some reason.
+The argument for both options is a list of @var{key}=@var{value}
+couples separated by ":". With @option{x264opts} the value can be
+omitted, and the value @code{1} is assumed in that case.
+
+For @var{filter} and @var{psy-rd} options values that use ":" as a
+separator themselves, use "," instead. They accept it as well since
+long ago but this is kept undocumented for some reason.
+
+For example, the options might be provided as:
+@example
+level=30:bframes=0:weightp=0:cabac=0:ref=1:vbv-maxrate=768:vbv-bufsize=2000:analyse=all:me=umh:no-fast-pskip=1:subq=6:8x8dct=0:trellis=0
+@end example
 
 For example to specify libx264 encoding options with @command{ffmpeg}:
 @example
 ffmpeg -i foo.mpg -c:v libx264 -x264opts keyint=123:min-keyint=20 -an out.mkv
 @end example
+
+To get the complete list of the libx264 options, invoke the command
+@command{x264 --fullhelp} or consult the libx264 documentation.
 
 @item a53cc @var{boolean}
 Import closed captions (which must be ATSC compatible format) into output.
@@ -2741,20 +2779,6 @@ Import user data unregistered SEI if available into output. Default is 0 (off).
 @item mb_info @var{boolean}
 Set mb_info data through AVFrameSideData, only useful when used from the
 API. Default is 0 (off).
-
-@item x264-params (N.A.)
-Override the x264 configuration using a :-separated list of key=value
-parameters.
-
-This option is functionally the same as the @option{x264opts}, but is
-duplicated for compatibility with the Libav fork.
-
-For example to specify libx264 encoding options with @command{ffmpeg}:
-@example
-ffmpeg -i INPUT -c:v libx264 -x264-params level=30:bframes=0:weightp=0:\
-cabac=0:ref=1:vbv-maxrate=768:vbv-bufsize=2000:analyse=all:me=umh:\
-no-fast-pskip=1:subq=6:8x8dct=0:trellis=0 OUTPUT
-@end example
 @end table
 
 Encoding ffpresets for common usages are provided so they can be used with the
@@ -2894,6 +2918,75 @@ ffmpeg -i input -c:v libxavs2 -xavs2-params RdoqLevel=0 output.avs2
 @end example
 @end table
 
+@section libxeve
+
+eXtra-fast Essential Video Encoder (XEVE) MPEG-5 EVC encoder wrapper.
+The xeve-equivalent options or values are listed in parentheses for easy migration.
+
+This encoder requires the presence of the libxeve headers and library
+during configuration. You need to explicitly configure the build with
+@option{--enable-libxeve}.
+
+@float NOTE
+Many libxeve encoder options are mapped to FFmpeg global codec options,
+while unique encoder options are provided through private options.
+Additionally the xeve-params private options allows one to pass a list
+of key=value tuples as accepted by the libxeve @code{parse_xeve_params} function.
+@end float
+
+The xeve project website is at @url{https://github.com/mpeg5/xeve}.
+
+@subsection Options
+
+The following options are supported by the libxeve wrapper.
+The xeve-equivalent options or values are listed in parentheses for easy migration.
+
+@float NOTE
+To reduce the duplication of documentation, only the private options
+and some others requiring special attention are documented here. For
+the documentation of the undocumented generic options, see
+@ref{codec-options,,the Codec Options chapter}.
+@end float
+
+@float NOTE
+To get a more accurate and extensive documentation of the libxeve options,
+invoke the command  @code{xeve_app --help} or consult the libxeve documentation.
+@end float
+
+@table @option
+@item b (@emph{bitrate})
+Set target video bitrate in bits/s.
+Note that FFmpeg's b option is expressed in bits/s, while xeve's bitrate is in kilobits/s.
+
+@item bf (@emph{bframes})
+Set the maximum number of B frames (1,3,7,15).
+
+@item g (@emph{keyint})
+Set the GOP size (I-picture period).
+
+@item preset (@emph{preset})
+Set the xeve preset.
+Set the encoder preset value to determine encoding speed [fast, medium, slow, placebo]
+
+@item tune (@emph{tune})
+Set the encoder tune parameter [psnr, zerolatency]
+
+@item profile (@emph{profile})
+Set the encoder profile [0: baselie; 1: main]
+
+@item crf (@emph{crf})
+Set the quality for constant quality mode.
+Constant rate factor <10..49> [default: 32]
+
+@item qp (@emph{qp})
+Set constant quantization rate control method parameter.
+Quantization parameter qp <0..51> [default: 32]
+
+@item threads (@emph{threads})
+Force to use a specific number of threads
+
+@end table
+
 @section libxvid
 
 Xvid MPEG-4 Part 2 encoder wrapper.
@@ -2962,27 +3055,24 @@ Place global headers in extradata instead of every keyframe.
 
 @item trellis
 
-@item me_method
-Set motion estimation method. Possible values in decreasing order of
+@item me_quality
+Set motion estimation quality level. Possible values in decreasing order of
 speed and increasing order of quality:
 
 @table @samp
-@item zero
+@item 0
 Use no motion estimation (default).
 
-@item phods
-@item x1
-@item log
+@item 1, 2
 Enable advanced diamond zonal search for 16x16 blocks and half-pixel
-refinement for 16x16 blocks. @samp{x1} and @samp{log} are aliases for
-@samp{phods}.
+refinement for 16x16 blocks.
 
-@item epzs
+@item 3, 4
 Enable all of the things described above, plus advanced diamond zonal
-search for 8x8 blocks, half-pixel refinement for 8x8 blocks, and motion
-estimation on chroma planes.
+search for 8x8 blocks and half-pixel refinement for 8x8 blocks, also
+enable motion estimation on chroma planes for P and B-frames.
 
-@item full
+@item 5, 6
 Enable all of the things described above, plus extended 16x16 and 8x8
 blocks search.
 @end table

@@ -164,6 +164,13 @@ static av_cold int common_init(AVFilterContext *ctx)
     return 0;
 }
 
+static void uninit(AVFilterContext *ctx)
+{
+    BufferSinkContext *buf = ctx->priv;
+
+    av_frame_free(&buf->peeked_frame);
+}
+
 static int activate(AVFilterContext *ctx)
 {
     BufferSinkContext *buf = ctx->priv;
@@ -293,7 +300,7 @@ static int asink_query_formats(AVFilterContext *ctx)
         cleanup_redundant_layouts(ctx);
         for (i = 0; i < NB_ITEMS(buf->channel_layouts); i++)
             if ((ret = av_channel_layout_from_mask(&layout, buf->channel_layouts[i])) < 0 ||
-                (ret = ff_add_channel_layout(&layouts, &layout) < 0))
+                (ret = ff_add_channel_layout(&layouts, &layout)) < 0)
                 return ret;
         for (i = 0; i < NB_ITEMS(buf->channel_counts); i++) {
             layout = FF_COUNT2LAYOUT(buf->channel_counts[i]);
@@ -385,6 +392,7 @@ const AVFilter ff_vsink_buffer = {
     .priv_size     = sizeof(BufferSinkContext),
     .priv_class    = &buffersink_class,
     .init          = common_init,
+    .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(ff_video_default_filterpad),
     .outputs       = NULL,
@@ -397,6 +405,7 @@ const AVFilter ff_asink_abuffer = {
     .priv_class    = &abuffersink_class,
     .priv_size     = sizeof(BufferSinkContext),
     .init          = common_init,
+    .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(ff_audio_default_filterpad),
     .outputs       = NULL,

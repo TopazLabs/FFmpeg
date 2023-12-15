@@ -28,6 +28,7 @@
 #endif
 
 #include "ffmpeg.h"
+#include "ffmpeg_sched.h"
 #include "cmdutils.h"
 #include "opt_common.h"
 #include "sync_queue.h"
@@ -63,7 +64,6 @@ const char *const opt_name_top_field_first[]                  = {"top", NULL};
 HWDevice *filter_hw_device;
 
 char *vstats_filename;
-char *sdp_filename;
 
 float audio_drift_threshold = 0.1;
 float dts_delta_threshold   = 10;
@@ -579,9 +579,8 @@ fail:
 
 static int opt_sdp_file(void *optctx, const char *opt, const char *arg)
 {
-    av_free(sdp_filename);
-    sdp_filename = av_strdup(arg);
-    return 0;
+    Scheduler *sch = optctx;
+    return sch_sdp_filename(sch, arg);
 }
 
 #if CONFIG_VAAPI
@@ -1157,20 +1156,22 @@ static int opt_audio_qscale(void *optctx, const char *opt, const char *arg)
 
 static int opt_filter_complex(void *optctx, const char *opt, const char *arg)
 {
+    Scheduler *sch = optctx;
     char *graph_desc = av_strdup(arg);
     if (!graph_desc)
         return AVERROR(ENOMEM);
 
-    return fg_create(NULL, graph_desc);
+    return fg_create(NULL, graph_desc, sch);
 }
 
 static int opt_filter_complex_script(void *optctx, const char *opt, const char *arg)
 {
+    Scheduler *sch = optctx;
     char *graph_desc = file_read(arg);
     if (!graph_desc)
         return AVERROR(EINVAL);
 
-    return fg_create(NULL, graph_desc);
+    return fg_create(NULL, graph_desc, sch);
 }
 
 void show_help_default(const char *opt, const char *arg)
@@ -1262,8 +1263,9 @@ static const OptionGroupDef groups[] = {
     [GROUP_INFILE]  = { "input url",   "i",  OPT_INPUT },
 };
 
-static int open_files(OptionGroupList *l, const char *inout,
-                      int (*open_file)(const OptionsContext*, const char*))
+static int open_files(OptionGroupList *l, const char *inout, Scheduler *sch,
+                      int (*open_file)(const OptionsContext*, const char*,
+                                       Scheduler*))
 {
     int i, ret;
 
@@ -1283,7 +1285,7 @@ static int open_files(OptionGroupList *l, const char *inout,
         }
 
         av_log(NULL, AV_LOG_DEBUG, "Opening an %s file: %s.\n", inout, g->arg);
-        ret = open_file(&o, g->arg);
+        ret = open_file(&o, g->arg, sch);
         uninit_options(&o);
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Error opening %s file %s.\n",
@@ -1296,7 +1298,7 @@ static int open_files(OptionGroupList *l, const char *inout,
     return 0;
 }
 
-int ffmpeg_parse_options(int argc, char **argv)
+int ffmpeg_parse_options(int argc, char **argv, Scheduler *sch)
 {
     OptionParseContext octx;
     const char *errmsg = NULL;
@@ -1313,7 +1315,7 @@ int ffmpeg_parse_options(int argc, char **argv)
     }
 
     /* apply global options */
-    ret = parse_optgroup(NULL, &octx.global_opts);
+    ret = parse_optgroup(sch, &octx.global_opts);
     if (ret < 0) {
         errmsg = "parsing global options";
         goto fail;
@@ -1323,7 +1325,7 @@ int ffmpeg_parse_options(int argc, char **argv)
     term_init();
 
     /* open input files */
-    ret = open_files(&octx.groups[GROUP_INFILE], "input", ifile_open);
+    ret = open_files(&octx.groups[GROUP_INFILE], "input", sch, ifile_open);
     if (ret < 0) {
         errmsg = "opening input files";
         goto fail;
@@ -1337,7 +1339,7 @@ int ffmpeg_parse_options(int argc, char **argv)
     }
 
     /* open output files */
-    ret = open_files(&octx.groups[GROUP_OUTFILE], "output", of_open);
+    ret = open_files(&octx.groups[GROUP_OUTFILE], "output", sch, of_open);
     if (ret < 0) {
         errmsg = "opening output files";
         goto fail;

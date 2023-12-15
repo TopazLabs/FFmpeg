@@ -23,6 +23,7 @@
 #ifndef TESTS_CHECKASM_CHECKASM_H
 #define TESTS_CHECKASM_CHECKASM_H
 
+#include <setjmp.h>
 #include <stdint.h>
 #include "config.h"
 
@@ -42,7 +43,9 @@
 #include "libavutil/lfg.h"
 #include "libavutil/timer.h"
 
+void checkasm_check_aacencdsp(void);
 void checkasm_check_aacpsdsp(void);
+void checkasm_check_ac3dsp(void);
 void checkasm_check_afir(void);
 void checkasm_check_alacdsp(void);
 void checkasm_check_audiodsp(void);
@@ -69,6 +72,7 @@ void checkasm_check_hevc_sao(void);
 void checkasm_check_huffyuvdsp(void);
 void checkasm_check_idctdsp(void);
 void checkasm_check_jpeg2000dsp(void);
+void checkasm_check_llauddsp(void);
 void checkasm_check_llviddsp(void);
 void checkasm_check_llviddspenc(void);
 void checkasm_check_lpc(void);
@@ -101,6 +105,7 @@ struct CheckasmPerf;
 void *checkasm_check_func(void *func, const char *name, ...) av_printf_format(2, 3);
 int checkasm_bench_func(void);
 void checkasm_fail_func(const char *msg, ...) av_printf_format(1, 2);
+void checkasm_fail_signal(int signum);
 struct CheckasmPerf *checkasm_get_perf_context(void);
 void checkasm_report(const char *name, ...) av_printf_format(1, 2);
 
@@ -209,14 +214,23 @@ void checkasm_checked_call(void *func, ...);
                       checked_call(func_new, 0, 0, 0, 0, 0, 0, 0, __VA_ARGS__,\
                                    7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0))
 #elif ARCH_RISCV
-void checkasm_set_function(void *);
+void checkasm_set_function(void *, sigjmp_buf);
 void *checkasm_get_wrapper(void);
+void checkasm_handle_signal(int signum);
 
-#if (__riscv_xlen == 64) && defined (__riscv_d)
+#if HAVE_RV && (__riscv_xlen == 64) && defined (__riscv_d)
 #define declare_new(ret, ...) \
+    int checked_call_signum = 0; \
+    sigjmp_buf checked_call_jb; \
     ret (*checked_call)(__VA_ARGS__) = checkasm_get_wrapper();
 #define call_new(...) \
-    (checkasm_set_function(func_new), checked_call(__VA_ARGS__))
+    (checkasm_set_function(func_new, checked_call_jb), \
+     (checked_call_signum = sigsetjmp(checked_call_jb, 1)) == 0 \
+        ? checked_call(__VA_ARGS__) \
+        : (checkasm_fail_signal(checked_call_signum), 0))
+#else
+#define declare_new(ret, ...)
+#define call_new(...) ((func_type *)func_new)(__VA_ARGS__)
 #endif
 #else
 #define declare_new(ret, ...)
