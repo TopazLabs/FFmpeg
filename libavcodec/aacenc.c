@@ -1210,9 +1210,6 @@ static av_cold int dsp_init(AVCodecContext *avctx, AACEncContext *s)
     if (!s->fdsp)
         return AVERROR(ENOMEM);
 
-    // window init
-    ff_aac_float_common_init();
-
     if ((ret = av_tx_init(&s->mdct1024, &s->mdct1024_fn, AV_TX_FLOAT_MDCT, 0,
                           1024, &scale, 0)) < 0)
         return ret;
@@ -1359,6 +1356,9 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     if (s->channels > 3)
         s->options.mid_side = 0;
 
+    // Initialize static tables
+    ff_aac_float_common_init();
+
     if ((ret = dsp_init(avctx, s)) < 0)
         return ret;
 
@@ -1381,19 +1381,9 @@ static av_cold int aac_encode_init(AVCodecContext *avctx)
     ff_lpc_init(&s->lpc, 2*avctx->frame_size, TNS_MAX_ORDER, FF_LPC_TYPE_LEVINSON);
     s->random_state = 0x1f2e3d4c;
 
-    s->abs_pow34   = abs_pow34_v;
-    s->quant_bands = quantize_bands;
-
-#if ARCH_X86
-    ff_aac_dsp_init_x86(s);
-#endif
-
-#if HAVE_MIPSDSP
-    ff_aac_coder_init_mips(s);
-#endif
+    ff_aac_dsp_init(s);
 
     ff_af_queue_init(avctx, &s->afq);
-    ff_aac_tableinit();
 
     return 0;
 }
@@ -1445,3 +1435,18 @@ const FFCodec ff_aac_encoder = {
                                                      AV_SAMPLE_FMT_NONE },
     .p.priv_class   = &aacenc_class,
 };
+
+void ff_aac_dsp_init(AACEncContext *s){
+    s->abs_pow34   = abs_pow34_v;
+    s->quant_bands = quantize_bands;
+
+#if ARCH_RISCV
+    ff_aac_dsp_init_riscv(s);
+#elif ARCH_X86
+    ff_aac_dsp_init_x86(s);
+#endif
+
+#if HAVE_MIPSDSP
+    ff_aac_coder_init_mips(s);
+#endif
+}

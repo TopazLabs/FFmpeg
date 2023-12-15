@@ -288,7 +288,7 @@ int ff_framesync_get_frame(FFFrameSync *fs, unsigned in, AVFrame **rframe,
         if (need_copy) {
             if (!(frame = av_frame_clone(frame)))
                 return AVERROR(ENOMEM);
-            if ((ret = ff_inlink_make_frame_writable(fs->parent->inputs[in], &frame) < 0)) {
+            if ((ret = ff_inlink_make_frame_writable(fs->parent->inputs[in], &frame)) < 0) {
                 av_frame_free(&frame);
                 return ret;
             }
@@ -354,7 +354,10 @@ static int consume_from_fifos(FFFrameSync *fs)
 
 int ff_framesync_activate(FFFrameSync *fs)
 {
+    AVFilterContext *ctx = fs->parent;
     int ret;
+
+    FF_FILTER_FORWARD_STATUS_BACK_ALL(ctx->outputs[0], ctx);
 
     ret = framesync_advance(fs);
     if (ret < 0)

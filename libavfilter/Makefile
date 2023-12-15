@@ -35,6 +35,7 @@ OBJS-$(CONFIG_DNN)                           += dnn_filter_common.o
 include $(SRC_PATH)/libavfilter/dnn/Makefile
 
 # audio filters
+OBJS-$(CONFIG_AAP_FILTER)                    += af_aap.o
 OBJS-$(CONFIG_ABENCH_FILTER)                 += f_bench.o
 OBJS-$(CONFIG_ACOMPRESSOR_FILTER)            += af_sidechaincompress.o
 OBJS-$(CONFIG_ACONTRAST_FILTER)              += af_acontrast.o
@@ -255,7 +256,7 @@ OBJS-$(CONFIG_COREIMAGE_FILTER)              += vf_coreimage.o
 OBJS-$(CONFIG_CORR_FILTER)                   += vf_corr.o framesync.o
 OBJS-$(CONFIG_COVER_RECT_FILTER)             += vf_cover_rect.o lavfutils.o
 OBJS-$(CONFIG_CROP_FILTER)                   += vf_crop.o
-OBJS-$(CONFIG_CROPDETECT_FILTER)             += vf_cropdetect.o
+OBJS-$(CONFIG_CROPDETECT_FILTER)             += vf_cropdetect.o edge_common.o
 OBJS-$(CONFIG_CUE_FILTER)                    += f_cue.o
 OBJS-$(CONFIG_CURVES_FILTER)                 += vf_curves.o
 OBJS-$(CONFIG_DATASCOPE_FILTER)              += vf_datascope.o
@@ -395,8 +396,7 @@ OBJS-$(CONFIG_MULTIPLY_FILTER)               += vf_multiply.o
 OBJS-$(CONFIG_NEGATE_FILTER)                 += vf_negate.o
 OBJS-$(CONFIG_NLMEANS_FILTER)                += vf_nlmeans.o
 OBJS-$(CONFIG_NLMEANS_OPENCL_FILTER)         += vf_nlmeans_opencl.o opencl.o opencl/nlmeans.o
-OBJS-$(CONFIG_NLMEANS_VULKAN_FILTER)         += vf_nlmeans_vulkan.o vulkan.o vulkan_filter.o \
-                                                vulkan/prefix_sum.o
+OBJS-$(CONFIG_NLMEANS_VULKAN_FILTER)         += vf_nlmeans_vulkan.o vulkan.o vulkan_filter.o
 OBJS-$(CONFIG_NNEDI_FILTER)                  += vf_nnedi.o
 OBJS-$(CONFIG_NOFORMAT_FILTER)               += vf_format.o
 OBJS-$(CONFIG_NOISE_FILTER)                  += vf_noise.o

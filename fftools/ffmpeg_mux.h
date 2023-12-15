@@ -24,7 +24,7 @@
 #include <stdatomic.h>
 #include <stdint.h>
 
-#include "thread_queue.h"
+#include "ffmpeg_sched.h"
 
 #include "libavformat/avformat.h"
 
@@ -32,16 +32,12 @@
 
 #include "libavutil/dict.h"
 #include "libavutil/fifo.h"
-#include "libavutil/thread.h"
 
 typedef struct MuxStream {
     OutputStream ost;
 
     // name used for logging
     char log_name[32];
-
-    /* the packets are buffered here until the muxer is ready to be initialized */
-    AVFifo *muxing_queue;
 
     AVBSFContext *bsf_ctx;
     AVPacket     *bsf_pkt;
@@ -50,18 +46,13 @@ typedef struct MuxStream {
 
     EncStats stats;
 
+    int sch_idx;
+    int sch_idx_enc;
+    int sch_idx_src;
+
+    int sq_idx_mux;
+
     int64_t max_frames;
-
-    /*
-     * The size of the AVPackets' buffers in queue.
-     * Updated when a packet is either pushed or pulled from the queue.
-     */
-    size_t muxing_queue_data_size;
-
-    int max_muxing_queue_size;
-
-    /* Threshold after which max_muxing_queue_size will be in effect */
-    size_t muxing_queue_data_threshold;
 
     // timestamp from which the streamcopied streams should start,
     // in AV_TIME_BASE_Q;
@@ -94,8 +85,12 @@ typedef struct Muxer {
 
     AVFormatContext *fc;
 
-    pthread_t    thread;
-    ThreadQueue *tq;
+    Scheduler   *sch;
+    unsigned     sch_idx;
+
+    // OutputStream indices indexed by scheduler stream indices
+    int         *sch_stream_idx;
+    int       nb_sch_stream_idx;
 
     AVDictionary *opts;
 
@@ -110,10 +105,7 @@ typedef struct Muxer {
     AVPacket *sq_pkt;
 } Muxer;
 
-/* whether we want to print an SDP, set in of_open() */
-extern int want_sdp;
-
-int mux_check_init(Muxer *mux);
+int mux_check_init(void *arg);
 
 static MuxStream *ms_from_ost(OutputStream *ost)
 {

@@ -23,6 +23,7 @@
 #include "cmdutils.h"
 #include "ffmpeg.h"
 #include "ffmpeg_mux.h"
+#include "ffmpeg_sched.h"
 #include "fopen_utf8.h"
 
 #include "libavformat/avformat.h"
@@ -430,11 +431,14 @@ static MuxStream *mux_stream_alloc(Muxer *mux, enum AVMediaType type)
     if (!ms)
         return NULL;
 
-    ms->ost.file_index = mux->of.index;
+    ms->ost.file       = &mux->of;
     ms->ost.index      = mux->of.nb_streams - 1;
     ms->ost.type       = type;
 
     ms->ost.class = &output_stream_class;
+
+    ms->sch_idx     = -1;
+    ms->sch_idx_enc = -1;
 
     snprintf(ms->log_name, sizeof(ms->log_name), "%cost#%d:%d",
              type_str ? *type_str : '?', mux->of.index, ms->ost.index);
@@ -744,7 +748,7 @@ static int new_stream_video(Muxer *mux, const OptionsContext *o,
             FILE *f;
 
             /* compute this stream's global index */
-            for (int i = 0; i <= ost->file_index; i++)
+            for (int i = 0; i <= ost->file->index; i++)
                 ost_idx += output_files[i]->nb_streams;
 
             snprintf(logfilename, sizeof(logfilename), "%s-%d.log",
@@ -789,7 +793,7 @@ static int new_stream_video(Muxer *mux, const OptionsContext *o,
         ost->vsync_method = video_sync_method;
         MATCH_PER_STREAM_OPT(fps_mode, str, fps_mode, oc, st);
         if (fps_mode) {
-            ret = parse_and_set_vsync(fps_mode, &ost->vsync_method, ost->file_index, ost->index, 0);
+            ret = parse_and_set_vsync(fps_mode, &ost->vsync_method, ost->file->index, ost->index, 0);
             if (ret < 0)
                 return ret;
         }
@@ -815,7 +819,7 @@ static int new_stream_video(Muxer *mux, const OptionsContext *o,
             }
 
             if (ost->ist && ost->vsync_method == VSYNC_CFR) {
-                const InputFile *ifile = input_files[ost->ist->file_index];
+                const InputFile *ifile = ost->ist->file;
 
                 if (ifile->nb_streams == 1 && ifile->input_ts_offset == 0)
                     ost->vsync_method = VSYNC_VSCFR;
@@ -889,7 +893,7 @@ static int new_stream_audio(Muxer *mux, const OptionsContext *o,
         /* check for channel mapping for this audio stream */
         for (int n = 0; n < o->nb_audio_channel_maps; n++) {
             AudioChannelMap *map = &o->audio_channel_maps[n];
-            if ((map->ofile_idx   == -1 || ost->file_index == map->ofile_idx) &&
+            if ((map->ofile_idx   == -1 || ost->file->index == map->ofile_idx) &&
                 (map->ostream_idx == -1 || ost->st->index  == map->ostream_idx)) {
                 InputStream *ist;
 
@@ -897,13 +901,13 @@ static int new_stream_audio(Muxer *mux, const OptionsContext *o,
                     ist = NULL;
                 } else if (!ost->ist) {
                     av_log(ost, AV_LOG_FATAL, "Cannot determine input stream for channel mapping %d.%d\n",
-                           ost->file_index, ost->st->index);
+                           ost->file->index, ost->st->index);
                     continue;
                 } else {
                     ist = ost->ist;
                 }
 
-                if (!ist || (ist->file_index == map->file_idx && ist->index == map->stream_idx)) {
+                if (!ist || (ist->file->index == map->file_idx && ist->index == map->stream_idx)) {
                     ret = av_reallocp_array(&ost->audio_channels_map,
                                             ost->audio_channels_mapped + 1,
                                             sizeof(*ost->audio_channels_map));
@@ -917,13 +921,6 @@ static int new_stream_audio(Muxer *mux, const OptionsContext *o,
 #endif
     }
 
-    return 0;
-}
-
-static int new_stream_attachment(Muxer *mux, const OptionsContext *o,
-                                 OutputStream *ost)
-{
-    ost->finished    = 1;
     return 0;
 }
 
@@ -973,7 +970,7 @@ static int streamcopy_init(const Muxer *mux, OutputStream *ost)
     MuxStream           *ms         = ms_from_ost(ost);
 
     const InputStream   *ist        = ost->ist;
-    const InputFile     *ifile      = input_files[ist->file_index];
+    const InputFile     *ifile      = ist->file;
 
     AVCodecParameters   *par        = ost->par_in;
     uint32_t             codec_tag  = par->codec_tag;
@@ -1045,24 +1042,28 @@ static int streamcopy_init(const Muxer *mux, OutputStream *ost)
         }
     }
 
-    for (int i = 0; i < ist->st->nb_side_data; i++) {
-        const AVPacketSideData *sd_src = &ist->st->side_data[i];
-        uint8_t *dst_data;
+    for (int i = 0; i < ist->st->codecpar->nb_coded_side_data; i++) {
+        const AVPacketSideData *sd_src = &ist->st->codecpar->coded_side_data[i];
+        AVPacketSideData *sd_dst;
 
-        dst_data = av_stream_new_side_data(ost->st, sd_src->type, sd_src->size);
-        if (!dst_data) {
+        sd_dst = av_packet_side_data_new(&ost->st->codecpar->coded_side_data,
+                                         &ost->st->codecpar->nb_coded_side_data,
+                                         sd_src->type, sd_src->size, 0);
+        if (!sd_dst) {
             ret = AVERROR(ENOMEM);
             goto fail;
         }
-        memcpy(dst_data, sd_src->data, sd_src->size);
+        memcpy(sd_dst->data, sd_src->data, sd_src->size);
     }
 
 #if FFMPEG_ROTATION_METADATA
     if (ost->rotate_overridden) {
-        uint8_t *sd = av_stream_new_side_data(ost->st, AV_PKT_DATA_DISPLAYMATRIX,
-                                              sizeof(int32_t) * 9);
+        AVPacketSideData *sd = av_packet_side_data_new(&ost->st->codecpar->coded_side_data,
+                                                       &ost->st->codecpar->nb_coded_side_data,
+                                                       AV_PKT_DATA_DISPLAYMATRIX,
+                                                       sizeof(int32_t) * 9, 0);
         if (sd)
-            av_display_rotation_set((int32_t *)sd, -ost->rotate_override_value);
+            av_display_rotation_set((int32_t *)sd->data, -ost->rotate_override_value);
     }
 #endif
 
@@ -1123,6 +1124,22 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
     if (!ms)
         return AVERROR(ENOMEM);
 
+    // only streams with sources (i.e. not attachments)
+    // are handled by the scheduler
+    if (ist || ofilter) {
+        ret = GROW_ARRAY(mux->sch_stream_idx, mux->nb_sch_stream_idx);
+        if (ret < 0)
+            return ret;
+
+        ret = sch_add_mux_stream(mux->sch, mux->sch_idx);
+        if (ret < 0)
+            return ret;
+
+        av_assert0(ret == mux->nb_sch_stream_idx - 1);
+        mux->sch_stream_idx[ret] = ms->ost.index;
+        ms->sch_idx              = ret;
+    }
+
     ost = &ms->ost;
 
     if (o->streamid) {
@@ -1144,9 +1161,6 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
     if (!ost->par_in)
         return AVERROR(ENOMEM);
 
-    ms->muxing_queue = av_fifo_alloc2(8, sizeof(AVPacket*), 0);
-    if (!ms->muxing_queue)
-        return AVERROR(ENOMEM);
     ms->last_mux_dts = AV_NOPTS_VALUE;
 
     ost->st         = st;
@@ -1166,7 +1180,13 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
         if (!ost->enc_ctx)
             return AVERROR(ENOMEM);
 
-        ret = enc_alloc(&ost->enc, enc);
+        ret = sch_add_enc(mux->sch, encoder_thread, ost,
+                          ost->type == AVMEDIA_TYPE_SUBTITLE ? NULL : enc_open);
+        if (ret < 0)
+            return ret;
+        ms->sch_idx_enc = ret;
+
+        ret = enc_alloc(&ost->enc, enc, mux->sch, ms->sch_idx_enc);
         if (ret < 0)
             return ret;
 
@@ -1188,7 +1208,7 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
            av_get_media_type_string(type));
     if (ist)
         av_log(ost, AV_LOG_VERBOSE, "input stream %d:%d",
-               ist->file_index, ist->index);
+               ist->file->index, ist->index);
     else if (ofilter)
         av_log(ost, AV_LOG_VERBOSE, "complex filtergraph %d:[%s]\n",
                ofilter->graph->index, ofilter->name);
@@ -1376,11 +1396,16 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
         ost->enc_ctx->global_quality = FF_QP2LAMBDA * qscale;
     }
 
-    ms->max_muxing_queue_size = 128;
-    MATCH_PER_STREAM_OPT(max_muxing_queue_size, i, ms->max_muxing_queue_size, oc, st);
+    if (ms->sch_idx >= 0) {
+        int max_muxing_queue_size       = 128;
+        int muxing_queue_data_threshold = 50 * 1024 * 1024;
 
-    ms->muxing_queue_data_threshold = 50*1024*1024;
-    MATCH_PER_STREAM_OPT(muxing_queue_data_threshold, i, ms->muxing_queue_data_threshold, oc, st);
+        MATCH_PER_STREAM_OPT(max_muxing_queue_size, i, max_muxing_queue_size, oc, st);
+        MATCH_PER_STREAM_OPT(muxing_queue_data_threshold, i, muxing_queue_data_threshold, oc, st);
+
+        sch_mux_stream_buffering(mux->sch, mux->sch_idx, ms->sch_idx,
+                                 max_muxing_queue_size, muxing_queue_data_threshold);
+    }
 
     MATCH_PER_STREAM_OPT(bits_per_raw_sample, i, ost->bits_per_raw_sample,
                          oc, st);
@@ -1397,8 +1422,6 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
     if (ost->enc_ctx && av_get_exact_bits_per_sample(ost->enc_ctx->codec_id) == 24)
         av_dict_set(&ost->swr_opts, "output_sample_bits", "24", 0);
 
-    ost->last_mux_dts = AV_NOPTS_VALUE;
-
     MATCH_PER_STREAM_OPT(copy_initial_nonkeyframes, i,
                          ms->copy_initial_nonkeyframes, oc, st);
 
@@ -1406,7 +1429,6 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
     case AVMEDIA_TYPE_VIDEO:      ret = new_stream_video     (mux, o, ost); break;
     case AVMEDIA_TYPE_AUDIO:      ret = new_stream_audio     (mux, o, ost); break;
     case AVMEDIA_TYPE_SUBTITLE:   ret = new_stream_subtitle  (mux, o, ost); break;
-    case AVMEDIA_TYPE_ATTACHMENT: ret = new_stream_attachment(mux, o, ost); break;
     }
     if (ret < 0)
         return ret;
@@ -1421,23 +1443,47 @@ static int ost_add(Muxer *mux, const OptionsContext *o, enum AVMediaType type,
         (type == AVMEDIA_TYPE_VIDEO || type == AVMEDIA_TYPE_AUDIO)) {
         if (ofilter) {
             ost->filter       = ofilter;
-            ret = ofilter_bind_ost(ofilter, ost);
+            ret = ofilter_bind_ost(ofilter, ost, ms->sch_idx_enc);
             if (ret < 0)
                 return ret;
         } else {
-            ret = init_simple_filtergraph(ost->ist, ost, filters);
+            ret = init_simple_filtergraph(ost->ist, ost, filters,
+                                          mux->sch, ms->sch_idx_enc);
             if (ret < 0) {
                 av_log(ost, AV_LOG_ERROR,
                        "Error initializing a simple filtergraph\n");
                 return ret;
             }
         }
+
+        ret = sch_connect(mux->sch, SCH_ENC(ms->sch_idx_enc),
+                                    SCH_MSTREAM(mux->sch_idx, ms->sch_idx));
+        if (ret < 0)
+            return ret;
     } else if (ost->ist) {
-        ret = ist_output_add(ost->ist, ost);
-        if (ret < 0) {
+        int sched_idx = ist_output_add(ost->ist, ost);
+        if (sched_idx < 0) {
             av_log(ost, AV_LOG_ERROR,
                    "Error binding an input stream\n");
-            return ret;
+            return sched_idx;
+        }
+        ms->sch_idx_src = sched_idx;
+
+        if (ost->enc) {
+            ret = sch_connect(mux->sch, SCH_DEC(sched_idx),
+                                        SCH_ENC(ms->sch_idx_enc));
+            if (ret < 0)
+                return ret;
+
+            ret = sch_connect(mux->sch, SCH_ENC(ms->sch_idx_enc),
+                                        SCH_MSTREAM(mux->sch_idx, ms->sch_idx));
+            if (ret < 0)
+                return ret;
+        } else {
+            ret = sch_connect(mux->sch, SCH_DSTREAM(ost->ist->file->index, sched_idx),
+                                        SCH_MSTREAM(ost->file->index, ms->sch_idx));
+            if (ret < 0)
+                return ret;
         }
     }
 
@@ -1833,6 +1879,26 @@ static int create_streams(Muxer *mux, const OptionsContext *o)
     if (ret < 0)
         return ret;
 
+    // setup fix_sub_duration_heartbeat mappings
+    for (unsigned i = 0; i < oc->nb_streams; i++) {
+        MuxStream *src = ms_from_ost(mux->of.streams[i]);
+
+        if (!src->ost.fix_sub_duration_heartbeat)
+            continue;
+
+        for (unsigned j = 0; j < oc->nb_streams; j++) {
+            MuxStream *dst = ms_from_ost(mux->of.streams[j]);
+
+            if (src == dst || dst->ost.type != AVMEDIA_TYPE_SUBTITLE ||
+                !dst->ost.enc || !dst->ost.ist || !dst->ost.ist->fix_sub_duration)
+                continue;
+
+            ret = sch_mux_sub_heartbeat_add(mux->sch, mux->sch_idx, src->sch_idx,
+                                            dst->sch_idx_src);
+
+        }
+    }
+
     if (!oc->nb_streams && !(oc->oformat->flags & AVFMT_NOSTREAMS)) {
         av_dump_format(oc, nb_output_files - 1, oc->url, 1);
         av_log(mux, AV_LOG_ERROR, "Output file does not contain any stream\n");
@@ -1857,8 +1923,7 @@ static int setup_sync_queues(Muxer *mux, AVFormatContext *oc, int64_t buf_size_u
         MuxStream     *ms = ms_from_ost(ost);
         enum AVMediaType type = ost->type;
 
-        ost->sq_idx_encode = -1;
-        ost->sq_idx_mux    = -1;
+        ms->sq_idx_mux  = -1;
 
         nb_interleaved += IS_INTERLEAVED(type);
         nb_av_enc      += IS_AV_ENC(ost, type);
@@ -1880,11 +1945,17 @@ static int setup_sync_queues(Muxer *mux, AVFormatContext *oc, int64_t buf_size_u
      * - at least one encoded audio/video stream is frame-limited, since
      *   that has similar semantics to 'shortest'
      * - at least one audio encoder requires constant frame sizes
+     *
+     * Note that encoding sync queues are handled in the scheduler, because
+     * different encoders run in different threads and need external
+     * synchronization, while muxer sync queues can be handled inside the muxer
      */
     if ((of->shortest && nb_av_enc > 1) || limit_frames_av_enc || nb_audio_fs) {
-        of->sq_encode = sq_alloc(SYNC_QUEUE_FRAMES, buf_size_us, mux);
-        if (!of->sq_encode)
-            return AVERROR(ENOMEM);
+        int sq_idx, ret;
+
+        sq_idx = sch_add_sq_enc(mux->sch, buf_size_us, mux);
+        if (sq_idx < 0)
+            return sq_idx;
 
         for (int i = 0; i < oc->nb_streams; i++) {
             OutputStream *ost = of->streams[i];
@@ -1894,13 +1965,11 @@ static int setup_sync_queues(Muxer *mux, AVFormatContext *oc, int64_t buf_size_u
             if (!IS_AV_ENC(ost, type))
                 continue;
 
-            ost->sq_idx_encode = sq_add_stream(of->sq_encode,
-                                               of->shortest || ms->max_frames < INT64_MAX);
-            if (ost->sq_idx_encode < 0)
-                return ost->sq_idx_encode;
-
-            if (ms->max_frames != INT64_MAX)
-                sq_limit_frames(of->sq_encode, ost->sq_idx_encode, ms->max_frames);
+            ret = sch_sq_add_enc(mux->sch, sq_idx, ms->sch_idx_enc,
+                                 of->shortest || ms->max_frames < INT64_MAX,
+                                 ms->max_frames);
+            if (ret < 0)
+                return ret;
         }
     }
 
@@ -1923,13 +1992,13 @@ static int setup_sync_queues(Muxer *mux, AVFormatContext *oc, int64_t buf_size_u
             if (!IS_INTERLEAVED(type))
                 continue;
 
-            ost->sq_idx_mux = sq_add_stream(mux->sq_mux,
-                                            of->shortest || ms->max_frames < INT64_MAX);
-            if (ost->sq_idx_mux < 0)
-                return ost->sq_idx_mux;
+            ms->sq_idx_mux = sq_add_stream(mux->sq_mux,
+                                           of->shortest || ms->max_frames < INT64_MAX);
+            if (ms->sq_idx_mux < 0)
+                return ms->sq_idx_mux;
 
             if (ms->max_frames != INT64_MAX)
-                sq_limit_frames(mux->sq_mux, ost->sq_idx_mux, ms->max_frames);
+                sq_limit_frames(mux->sq_mux, ms->sq_idx_mux, ms->max_frames);
         }
     }
 
@@ -2178,11 +2247,11 @@ static int copy_metadata(Muxer *mux, AVFormatContext *ic,
     if (ret < 0)
         return ret;
 
-    if (type_in == 'g' || type_out == 'g' || !*outspec)
+    if (type_in == 'g' || type_out == 'g' || (!*outspec && !ic))
         *metadata_global_manual = 1;
-    if (type_in == 's' || type_out == 's' || !*outspec)
+    if (type_in == 's' || type_out == 's' || (!*outspec && !ic))
         *metadata_streams_manual = 1;
-    if (type_in == 'c' || type_out == 'c' || !*outspec)
+    if (type_in == 'c' || type_out == 'c' || (!*outspec && !ic))
         *metadata_chapters_manual = 1;
 
     /* ic is NULL when just disabling automatic mappings */
@@ -2509,8 +2578,12 @@ static int process_forced_keyframes(Muxer *mux, const OptionsContext *o)
             // parse it only for static kf timings
         } else if (!strcmp(forced_keyframes, "source")) {
             ost->kf.type = KF_FORCE_SOURCE;
+#if FFMPEG_OPT_FORCE_KF_SOURCE_NO_DROP
         } else if (!strcmp(forced_keyframes, "source_no_drop")) {
-            ost->kf.type = KF_FORCE_SOURCE_NO_DROP;
+            av_log(ost, AV_LOG_WARNING, "The 'source_no_drop' value for "
+                   "-force_key_frames is deprecated, use just 'source'\n");
+            ost->kf.type = KF_FORCE_SOURCE;
+#endif
         } else {
             int ret = parse_forced_key_frames(ost, &ost->kf, mux, forced_keyframes);
             if (ret < 0)
@@ -2567,23 +2640,6 @@ static int validate_enc_avopt(Muxer *mux, const AVDictionary *codec_avopt)
     return 0;
 }
 
-static int init_output_stream_nofilter(OutputStream *ost)
-{
-    int ret = 0;
-
-    if (ost->enc_ctx) {
-        ret = enc_open(ost, NULL);
-        if (ret < 0)
-            return ret;
-    } else {
-        ret = of_stream_init(output_files[ost->file_index], ost);
-        if (ret < 0)
-            return ret;
-    }
-
-    return ret;
-}
-
 static const char *output_file_item_name(void *obj)
 {
     const Muxer *mux = obj;
@@ -2613,7 +2669,7 @@ static Muxer *mux_alloc(void)
     return mux;
 }
 
-int of_open(const OptionsContext *o, const char *filename)
+int of_open(const OptionsContext *o, const char *filename, Scheduler *sch)
 {
     Muxer *mux;
     AVFormatContext *oc;
@@ -2666,8 +2722,6 @@ int of_open(const OptionsContext *o, const char *filename)
     av_strlcat(mux->log_name, "/",               sizeof(mux->log_name));
     av_strlcat(mux->log_name, oc->oformat->name, sizeof(mux->log_name));
 
-    if (strcmp(oc->oformat->name, "rtp"))
-        want_sdp = 0;
 
     of->format = oc->oformat;
     if (recording_time != INT64_MAX)
@@ -2682,6 +2736,13 @@ int of_open(const OptionsContext *o, const char *filename)
         of->bitexact  = check_opt_bitexact(oc, mux->opts, "fflags",
                                            AVFMT_FLAG_BITEXACT);
     }
+
+    err = sch_add_mux(sch, muxer_thread, mux_check_init, mux,
+                      !strcmp(oc->oformat->name, "rtp"));
+    if (err < 0)
+        return err;
+    mux->sch     = sch;
+    mux->sch_idx = err;
 
     /* create all output streams for this file */
     err = create_streams(mux, o);
@@ -2762,26 +2823,15 @@ int of_open(const OptionsContext *o, const char *filename)
 
     of->url        = filename;
 
-    /* initialize stream copy and subtitle/data streams.
-     * Encoded AVFrame based streams will get initialized when the first AVFrame
-     * is received in do_video_out
-     */
+    /* initialize streamcopy streams. */
     for (int i = 0; i < of->nb_streams; i++) {
         OutputStream *ost = of->streams[i];
 
-        if (ost->filter)
-            continue;
-
-        err = init_output_stream_nofilter(ost);
-        if (err < 0)
-            return err;
-    }
-
-    /* write the header for files with no streams */
-    if (of->format->flags & AVFMT_NOSTREAMS && oc->nb_streams == 0) {
-        int ret = mux_check_init(mux);
-        if (ret < 0)
-            return ret;
+        if (!ost->enc) {
+            err = of_stream_init(of, ost);
+            if (err < 0)
+                return err;
+        }
     }
 
     return 0;

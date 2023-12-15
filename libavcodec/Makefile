@@ -56,6 +56,7 @@ OBJS = ac3_parser.o                                                     \
        profiles.o                                                       \
        qsv_api.o                                                        \
        raw.o                                                            \
+       refstruct.o                                                      \
        utils.o                                                          \
        version.o                                                        \
        vlc.o                                                            \
@@ -80,6 +81,7 @@ OBJS-$(CONFIG_CBS_H265)                += cbs_h2645.o cbs_sei.o h2645_parse.o
 OBJS-$(CONFIG_CBS_H266)                += cbs_h2645.o cbs_sei.o h2645_parse.o
 OBJS-$(CONFIG_CBS_JPEG)                += cbs_jpeg.o
 OBJS-$(CONFIG_CBS_MPEG2)               += cbs_mpeg2.o
+OBJS-$(CONFIG_CBS_VP8)                 += cbs_vp8.o vp8data.o
 OBJS-$(CONFIG_CBS_VP9)                 += cbs_vp9.o
 OBJS-$(CONFIG_CRYSTALHD)               += crystalhd.o
 OBJS-$(CONFIG_DEFLATE_WRAPPER)         += zlib_wrapper.o
@@ -175,10 +177,12 @@ OBJS-$(CONFIG_WMV2DSP)                 += wmv2dsp.o
 OBJS-$(CONFIG_ZERO12V_DECODER)         += 012v.o
 OBJS-$(CONFIG_A64MULTI_ENCODER)        += a64multienc.o elbg.o
 OBJS-$(CONFIG_A64MULTI5_ENCODER)       += a64multienc.o elbg.o
-OBJS-$(CONFIG_AAC_DECODER)             += aacdec.o aactab.o aacsbr.o aacps_common.o aacps_float.o \
+OBJS-$(CONFIG_AAC_DECODER)             += aacdec.o aacdec_common.o aactab.o \
+                                          aacsbr.o aacps_common.o aacps_float.o \
                                           kbdwin.o \
                                           sbrdsp.o aacpsdsp_float.o cbrt_data.o
-OBJS-$(CONFIG_AAC_FIXED_DECODER)       += aacdec_fixed.o aactab.o aacsbr_fixed.o aacps_common.o aacps_fixed.o \
+OBJS-$(CONFIG_AAC_FIXED_DECODER)       += aacdec_fixed.o aacdec_common.o aactab.o \
+                                          aacsbr_fixed.o aacps_common.o aacps_fixed.o \
                                           kbdwin.o \
                                           sbrdsp_fixed.o aacpsdsp_fixed.o cbrt_data_fixed.o
 OBJS-$(CONFIG_AAC_ENCODER)             += aacenc.o aaccoder.o aacenctab.o    \
@@ -476,6 +480,7 @@ OBJS-$(CONFIG_JV_DECODER)              += jvdec.o
 OBJS-$(CONFIG_KGV1_DECODER)            += kgv1dec.o
 OBJS-$(CONFIG_KMVC_DECODER)            += kmvc.o
 OBJS-$(CONFIG_LAGARITH_DECODER)        += lagarith.o lagarithrac.o
+OBJS-$(CONFIG_LEAD_DECODER)            += leaddec.o jpegquanttables.o
 OBJS-$(CONFIG_LJPEG_ENCODER)           += ljpegenc.o mjpegenc_common.o
 OBJS-$(CONFIG_LOCO_DECODER)            += loco.o
 OBJS-$(CONFIG_LSCR_DECODER)            += lscrdec.o png.o pngdec.o pngdsp.o
@@ -618,6 +623,7 @@ OBJS-$(CONFIG_QCELP_DECODER)           += qcelpdec.o                     \
 OBJS-$(CONFIG_QDM2_DECODER)            += qdm2.o
 OBJS-$(CONFIG_QDMC_DECODER)            += qdmc.o
 OBJS-$(CONFIG_QDRAW_DECODER)           += qdrw.o
+OBJS-$(CONFIG_QOA_DECODER)             += qoadec.o
 OBJS-$(CONFIG_QOI_DECODER)             += qoidec.o
 OBJS-$(CONFIG_QOI_ENCODER)             += qoienc.o
 OBJS-$(CONFIG_QPEG_DECODER)            += qpeg.o
@@ -992,7 +998,7 @@ OBJS-$(CONFIG_AV1_DXVA2_HWACCEL)          += dxva2_av1.o
 OBJS-$(CONFIG_AV1_NVDEC_HWACCEL)          += nvdec_av1.o
 OBJS-$(CONFIG_AV1_VAAPI_HWACCEL)          += vaapi_av1.o
 OBJS-$(CONFIG_AV1_VDPAU_HWACCEL)          += vdpau_av1.o
-OBJS-$(CONFIG_AV1_VULKAN_HWACCEL)         += vulkan_av1.o
+OBJS-$(CONFIG_AV1_VULKAN_HWACCEL)         += vulkan_decode.o vulkan_av1.o
 OBJS-$(CONFIG_H263_VAAPI_HWACCEL)         += vaapi_mpeg4.o
 OBJS-$(CONFIG_H263_VIDEOTOOLBOX_HWACCEL)  += videotoolbox.o
 OBJS-$(CONFIG_H264_D3D11VA_HWACCEL)       += dxva2_h264.o
@@ -1144,6 +1150,8 @@ OBJS-$(CONFIG_LIBX264_ENCODER)            += libx264.o
 OBJS-$(CONFIG_LIBX265_ENCODER)            += libx265.o
 OBJS-$(CONFIG_LIBXAVS_ENCODER)            += libxavs.o
 OBJS-$(CONFIG_LIBXAVS2_ENCODER)           += libxavs2.o
+OBJS-$(CONFIG_LIBXEVD_DECODER)            += libxevd.o
+OBJS-$(CONFIG_LIBXEVE_ENCODER)            += libxeve.o
 OBJS-$(CONFIG_LIBXVID_ENCODER)            += libxvid.o
 OBJS-$(CONFIG_LIBZVBI_TELETEXT_DECODER)   += libzvbi-teletextdec.o ass.o
 
