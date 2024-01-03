@@ -135,23 +135,14 @@ static void mux_log_debug_ts(OutputStream *ost, const AVPacket *pkt)
            pkt->size, *latency ? latency : "N/A");
 }
 
-static int write_packet(Muxer *mux, OutputStream *ost, AVPacket *pkt)
+static int mux_fixup_ts(Muxer *mux, MuxStream *ms, AVPacket *pkt)
 {
-    MuxStream *ms = ms_from_ost(ost);
-    AVFormatContext *s = mux->fc;
-    int64_t fs;
-    uint64_t frame_num;
-    int ret;
+    OutputStream *ost = &ms->ost;
 
-    fs = filesize(s->pb);
-    atomic_store(&mux->last_filesize, fs);
-    if (fs >= mux->limit_filesize) {
-        ret = AVERROR_EOF;
-        goto fail;
-    }
-
+#if FFMPEG_OPT_VSYNC_DROP
     if (ost->type == AVMEDIA_TYPE_VIDEO && ost->vsync_method == VSYNC_DROP)
         pkt->pts = pkt->dts = AV_NOPTS_VALUE;
+#endif
 
     // rescale timestamps to the stream timebase
     if (ost->type == AVMEDIA_TYPE_AUDIO && !ost->enc) {
@@ -172,13 +163,12 @@ static int write_packet(Muxer *mux, OutputStream *ost, AVPacket *pkt)
         av_packet_rescale_ts(pkt, pkt->time_base, ost->st->time_base);
     pkt->time_base = ost->st->time_base;
 
-    if (!(s->oformat->flags & AVFMT_NOTIMESTAMPS)) {
+    if (!(mux->fc->oformat->flags & AVFMT_NOTIMESTAMPS)) {
         if (pkt->dts != AV_NOPTS_VALUE &&
             pkt->pts != AV_NOPTS_VALUE &&
             pkt->dts > pkt->pts) {
-            av_log(s, AV_LOG_WARNING, "Invalid DTS: %"PRId64" PTS: %"PRId64" in output stream %d:%d, replacing by guess\n",
-                   pkt->dts, pkt->pts,
-                   mux->of.index, ost->st->index);
+            av_log(ost, AV_LOG_WARNING, "Invalid DTS: %"PRId64" PTS: %"PRId64", replacing by guess\n",
+                   pkt->dts, pkt->pts);
             pkt->pts =
             pkt->dts = pkt->pts + pkt->dts + ms->last_mux_dts + 1
                      - FFMIN3(pkt->pts, pkt->dts, ms->last_mux_dts + 1)
@@ -187,20 +177,19 @@ static int write_packet(Muxer *mux, OutputStream *ost, AVPacket *pkt)
         if ((ost->type == AVMEDIA_TYPE_AUDIO || ost->type == AVMEDIA_TYPE_VIDEO || ost->type == AVMEDIA_TYPE_SUBTITLE) &&
             pkt->dts != AV_NOPTS_VALUE &&
             ms->last_mux_dts != AV_NOPTS_VALUE) {
-            int64_t max = ms->last_mux_dts + !(s->oformat->flags & AVFMT_TS_NONSTRICT);
+            int64_t max = ms->last_mux_dts + !(mux->fc->oformat->flags & AVFMT_TS_NONSTRICT);
             if (pkt->dts < max) {
                 int loglevel = max - pkt->dts > 2 || ost->type == AVMEDIA_TYPE_VIDEO ? AV_LOG_WARNING : AV_LOG_DEBUG;
                 if (exit_on_error)
                     loglevel = AV_LOG_ERROR;
-                av_log(s, loglevel, "Non-monotonic DTS in output stream "
-                       "%d:%d; previous: %"PRId64", current: %"PRId64"; ",
-                       mux->of.index, ost->st->index, ms->last_mux_dts, pkt->dts);
+                av_log(ost, loglevel, "Non-monotonic DTS; "
+                       "previous: %"PRId64", current: %"PRId64"; ",
+                       ms->last_mux_dts, pkt->dts);
                 if (exit_on_error) {
-                    ret = AVERROR(EINVAL);
-                    goto fail;
+                    return AVERROR(EINVAL);
                 }
 
-                av_log(s, loglevel, "changing to %"PRId64". This may result "
+                av_log(ost, loglevel, "changing to %"PRId64". This may result "
                        "in incorrect timestamps in the output file.\n",
                        max);
                 if (pkt->pts >= pkt->dts)
@@ -211,13 +200,35 @@ static int write_packet(Muxer *mux, OutputStream *ost, AVPacket *pkt)
     }
     ms->last_mux_dts = pkt->dts;
 
+    if (debug_ts)
+        mux_log_debug_ts(ost, pkt);
+
+    return 0;
+}
+
+static int write_packet(Muxer *mux, OutputStream *ost, AVPacket *pkt)
+{
+    MuxStream *ms = ms_from_ost(ost);
+    AVFormatContext *s = mux->fc;
+    int64_t fs;
+    uint64_t frame_num;
+    int ret;
+
+    fs = filesize(s->pb);
+    atomic_store(&mux->last_filesize, fs);
+    if (fs >= mux->limit_filesize) {
+        ret = AVERROR_EOF;
+        goto fail;
+    }
+
+    ret = mux_fixup_ts(mux, ms, pkt);
+    if (ret < 0)
+        goto fail;
+
     ms->data_size_mux += pkt->size;
     frame_num = atomic_fetch_add(&ost->packets_written, 1);
 
     pkt->stream_index = ost->index;
-
-    if (debug_ts)
-        mux_log_debug_ts(ost, pkt);
 
     if (ms->stats.io)
         enc_stats_write(ost, &ms->stats, NULL, pkt, frame_num);
@@ -762,6 +773,17 @@ int of_write_trailer(OutputFile *of)
     return mux_result;
 }
 
+static void enc_stats_uninit(EncStats *es)
+{
+    for (int i = 0; i < es->nb_components; i++)
+        av_freep(&es->components[i].str);
+    av_freep(&es->components);
+
+    if (es->lock_initialized)
+        pthread_mutex_destroy(&es->lock);
+    es->lock_initialized = 0;
+}
+
 static void ost_free(OutputStream **post)
 {
     OutputStream *ost = *post;
@@ -807,17 +829,9 @@ static void ost_free(OutputStream **post)
         av_freep(&ost->enc_ctx->stats_in);
     avcodec_free_context(&ost->enc_ctx);
 
-    for (int i = 0; i < ost->enc_stats_pre.nb_components; i++)
-        av_freep(&ost->enc_stats_pre.components[i].str);
-    av_freep(&ost->enc_stats_pre.components);
-
-    for (int i = 0; i < ost->enc_stats_post.nb_components; i++)
-        av_freep(&ost->enc_stats_post.components[i].str);
-    av_freep(&ost->enc_stats_post.components);
-
-    for (int i = 0; i < ms->stats.nb_components; i++)
-        av_freep(&ms->stats.components[i].str);
-    av_freep(&ms->stats.components);
+    enc_stats_uninit(&ost->enc_stats_pre);
+    enc_stats_uninit(&ost->enc_stats_post);
+    enc_stats_uninit(&ms->stats);
 
     av_freep(post);
 }

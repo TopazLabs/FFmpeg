@@ -85,6 +85,7 @@ void checkasm_check_synth_filter(void);
 void checkasm_check_sw_gbrp(void);
 void checkasm_check_sw_rgb(void);
 void checkasm_check_sw_scale(void);
+void checkasm_check_takdsp(void);
 void checkasm_check_utvideodsp(void);
 void checkasm_check_v210dec(void);
 void checkasm_check_v210enc(void);
@@ -308,10 +309,10 @@ typedef struct CheckasmPerf {
 #endif
 
 #define DECL_CHECKASM_CHECK_FUNC(type) \
-int checkasm_check_##type(const char *const file, const int line, \
-                          const type *const buf1, const ptrdiff_t stride1, \
-                          const type *const buf2, const ptrdiff_t stride2, \
-                          const int w, const int h, const char *const name)
+int checkasm_check_##type(const char *file, int line, \
+                          const type *buf1, ptrdiff_t stride1, \
+                          const type *buf2, ptrdiff_t stride2, \
+                          int w, int h, const char *name)
 
 DECL_CHECKASM_CHECK_FUNC(uint8_t);
 DECL_CHECKASM_CHECK_FUNC(uint16_t);

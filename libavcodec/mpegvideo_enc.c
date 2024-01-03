@@ -99,7 +99,6 @@ static const AVOption mpv_generic_options[] = {
 
 const AVClass ff_mpv_enc_class = {
     .class_name = "generic mpegvideo encoder",
-    .item_name  = av_default_item_name,
     .option     = mpv_generic_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
@@ -1194,8 +1193,8 @@ static int load_input_picture(MpegEncContext *s, const AVFrame *pic_arg)
             }
 
             for (int i = 0; i < 3; i++) {
-                int src_stride = pic_arg->linesize[i];
-                int dst_stride = i ? s->uvlinesize : s->linesize;
+                ptrdiff_t src_stride = pic_arg->linesize[i];
+                ptrdiff_t dst_stride = i ? s->uvlinesize : s->linesize;
                 int h_shift = i ? s->chroma_x_shift : 0;
                 int v_shift = i ? s->chroma_y_shift : 0;
                 int w = s->width  >> h_shift;
@@ -1213,7 +1212,7 @@ static int load_input_picture(MpegEncContext *s, const AVFrame *pic_arg)
                     dst += INPLACE_OFFSET;
 
                 if (src_stride == dst_stride)
-                    memcpy(dst, src, src_stride * h);
+                    memcpy(dst, src, src_stride * h - src_stride + w);
                 else {
                     int h2 = h;
                     uint8_t *dst2 = dst;
