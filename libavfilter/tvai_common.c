@@ -68,6 +68,8 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
     return 1;
   }
   tvai_vp_name(pProcessorInfo->basic.modelName, procIndex, (char*)pProcessorInfo->basic.processorName);
+  pProcessorInfo->basic.preflight = 0;
+  pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGB16;
   pProcessorInfo->basic.inputWidth = pInlink->w;
   pProcessorInfo->basic.inputHeight = pInlink->h;
   pProcessorInfo->basic.timebase = av_q2d(pInlink->time_base);
@@ -83,20 +85,20 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
   return 0;
 }
 
-int ff_tvai_process(void *pFrameProcessor, AVFrame* frame, int copy) {
+int ff_tvai_process(void *pFrameProcessor, AVFrame* frame) {
     TVAIBuffer iBuffer;
     ff_tvai_prepareBufferInput(&iBuffer, frame);
-    if(pFrameProcessor == NULL || tvai_process(pFrameProcessor, &iBuffer, copy)) 
+    if(pFrameProcessor == NULL || tvai_process(pFrameProcessor, &iBuffer)) 
         return 1;
     return 0;
 }
 
-int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, int copy) {
+int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame) {
     int n = tvai_output_count(pProcessor), i;
     for(i=0;i<n;i++) {
         TVAIBuffer oBuffer;
         AVFrame *out = ff_tvai_prepareBufferOutput(outlink, &oBuffer);
-        if(out != NULL && tvai_output_frame(pProcessor, &oBuffer, copy) == 0) {
+        if(out != NULL && tvai_output_frame(pProcessor, &oBuffer) == 0) {
             av_frame_copy_props(out, frame);
             out->duration = oBuffer.duration;
             out->pts = oBuffer.pts;
@@ -121,7 +123,7 @@ void ff_tvai_ignore_output(void *pProcessor) {
     int n = tvai_output_count(pProcessor), i;
     for(i=0;i<n;i++) {
         TVAIBuffer oBuffer;
-        tvai_output_frame(pProcessor, &oBuffer, 1);
+        tvai_output_frame(pProcessor, &oBuffer);
         av_log(NULL, AV_LOG_DEBUG, "Ignoring output frame %d %d\n", i, n);
     }
 }
@@ -130,7 +132,7 @@ int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* pr
     tvai_end_stream(pFrameProcessor);
     int i = 0, remaining = tvai_remaining_frames(pFrameProcessor), pr = 0;
     while(remaining > 0 && i < 50) {
-        int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame, 0);
+        int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame);
         if(ret)
             return ret;
         tvai_wait(500);

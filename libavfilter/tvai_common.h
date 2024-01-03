@@ -20,8 +20,8 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
 void ff_tvai_prepareBufferInput(TVAIBuffer* ioBuffer, AVFrame *in);
 AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer);
 
-int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, int copy);
-int ff_tvai_process(void *pFrameProcessor, AVFrame* frame, int copy);
+int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame);
+int ff_tvai_process(void *pFrameProcessor, AVFrame* frame);
 void ff_tvai_ignore_output(void *pProcessor);
 
 int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame);

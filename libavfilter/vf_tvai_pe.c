@@ -79,7 +79,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAIParamContext *tvai = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    if(ff_tvai_process(tvai->pParamEstimator, in, 0)) {
+    if(ff_tvai_process(tvai->pParamEstimator, in)) {
         av_log(ctx, AV_LOG_ERROR, "The processing has failed\n");
         av_frame_free(&in);
         return AVERROR(ENOSYS);
