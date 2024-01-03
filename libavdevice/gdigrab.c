@@ -273,9 +273,22 @@ gdigrab_read_header(AVFormatContext *s1)
         }
     } else if (!strcmp(filename, "desktop")) {
         hwnd = NULL;
+    } else if (!strncmp(filename, "hwnd=", 5)) {
+        char *p;
+        name = filename + 5;
+
+        hwnd = (HWND) strtoull(name, &p, 0);
+
+        if (p == NULL || p == name || p[0] == '\0')
+        {
+            av_log(s1, AV_LOG_ERROR,
+                   "Invalid window handle '%s', must be a valid integer.\n", name);
+            ret = AVERROR(EINVAL);
+            goto error;
+        }
     } else {
         av_log(s1, AV_LOG_ERROR,
-               "Please use \"desktop\" or \"title=<windowname>\" to specify your target.\n");
+               "Please use \"desktop\", \"title=<windowname>\" or \"hwnd=<hwnd>\" to specify your target.\n");
         ret = AVERROR(EIO);
         goto error;
     }
@@ -657,7 +670,6 @@ static const AVOption options[] = {
 
 static const AVClass gdigrab_class = {
     .class_name = "GDIgrab indev",
-    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_INPUT,

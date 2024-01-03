@@ -85,8 +85,8 @@ static float quality_to_distance(float quality)
 }
 
 /**
- * Initalize the decoder on a per-frame basis. All of these need to be set
- * once each time the decoder is reset, which it must be each frame to make
+ * Initalize the encoder on a per-frame basis. All of these need to be set
+ * once each time the encoder is reset, which it must be each frame to make
  * the image2 muxer work.
  *
  * @return       0 upon success, negative on failure.
@@ -104,7 +104,7 @@ static int libjxl_init_jxl_encoder(AVCodecContext *avctx)
         return AVERROR_EXTERNAL;
     }
 
-    /* This needs to be set each time the decoder is reset */
+    /* This needs to be set each time the encoder is reset */
     if (JxlEncoderSetParallelRunner(ctx->encoder, JxlThreadParallelRunner, ctx->runner)
             != JXL_ENC_SUCCESS) {
         av_log(avctx, AV_LOG_ERROR, "Failed to set JxlThreadParallelRunner\n");
@@ -446,7 +446,7 @@ static av_cold int libjxl_encode_close(AVCodecContext *avctx)
     ctx->runner = NULL;
 
     /*
-     * destroying the decoder also frees
+     * destroying the encoder also frees
      * ctx->options so we don't need to
      */
     if (ctx->encoder)
@@ -471,7 +471,6 @@ static const AVOption libjxl_encode_options[] = {
 
 static const AVClass libjxl_encode_class = {
     .class_name = "libjxl",
-    .item_name  = av_default_item_name,
     .option     = libjxl_encode_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
@@ -486,6 +485,7 @@ const FFCodec ff_libjxl_encoder = {
     FF_CODEC_ENCODE_CB(libjxl_encode_frame),
     .close            = libjxl_encode_close,
     .p.capabilities   = AV_CODEC_CAP_OTHER_THREADS |
+                        AV_CODEC_CAP_DR1 |
                         AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .caps_internal    = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
                         FF_CODEC_CAP_AUTO_THREADS | FF_CODEC_CAP_INIT_CLEANUP |
@@ -493,6 +493,7 @@ const FFCodec ff_libjxl_encoder = {
     .p.pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48, AV_PIX_FMT_RGBA64,
+        AV_PIX_FMT_RGBF32, AV_PIX_FMT_RGBAF32,
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_YA8,
         AV_PIX_FMT_GRAY16, AV_PIX_FMT_YA16,
         AV_PIX_FMT_GRAYF32,

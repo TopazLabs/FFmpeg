@@ -38,20 +38,6 @@
 
 #include "libavformat/avformat.h"
 
-static const char *const opt_name_discard[]                   = {"discard", NULL};
-static const char *const opt_name_reinit_filters[]            = {"reinit_filter", NULL};
-static const char *const opt_name_fix_sub_duration[]          = {"fix_sub_duration", NULL};
-static const char *const opt_name_canvas_sizes[]              = {"canvas_size", NULL};
-static const char *const opt_name_guess_layout_max[]          = {"guess_layout_max", NULL};
-static const char *const opt_name_ts_scale[]                  = {"itsscale", NULL};
-static const char *const opt_name_hwaccels[]                  = {"hwaccel", NULL};
-static const char *const opt_name_hwaccel_devices[]           = {"hwaccel_device", NULL};
-static const char *const opt_name_hwaccel_output_formats[]    = {"hwaccel_output_format", NULL};
-static const char *const opt_name_autorotate[]                = {"autorotate", NULL};
-static const char *const opt_name_display_rotations[]         = {"display_rotation", NULL};
-static const char *const opt_name_display_hflips[]            = {"display_hflip", NULL};
-static const char *const opt_name_display_vflips[]            = {"display_vflip", NULL};
-
 typedef struct DemuxStream {
     InputStream ist;
 
@@ -1141,7 +1127,6 @@ static int ist_add(const OptionsContext *o, Demuxer *d, AVStream *st)
     ist->reinit_filters = -1;
     MATCH_PER_STREAM_OPT(reinit_filters, i, ist->reinit_filters, ic, st);
 
-    MATCH_PER_STREAM_OPT(discard, str, discard_str, ic, st);
     ist->user_set_discard = AVDISCARD_NONE;
 
     if ((o->video_disable && ist->st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) ||
@@ -1150,19 +1135,19 @@ static int ist_add(const OptionsContext *o, Demuxer *d, AVStream *st)
         (o->data_disable && ist->st->codecpar->codec_type == AVMEDIA_TYPE_DATA))
             ist->user_set_discard = AVDISCARD_ALL;
 
-    ist->dec_ctx = avcodec_alloc_context3(ist->dec);
-    if (!ist->dec_ctx)
-        return AVERROR(ENOMEM);
-
+    MATCH_PER_STREAM_OPT(discard, str, discard_str, ic, st);
     if (discard_str) {
-        const AVOption *discard_opt = av_opt_find(ist->dec_ctx, "skip_frame",
-                                                  NULL, 0, 0);
-        ret = av_opt_eval_int(ist->dec_ctx, discard_opt, discard_str, &ist->user_set_discard);
+        ret = av_opt_set(ist->st, "discard", discard_str, 0);
         if (ret  < 0) {
             av_log(ist, AV_LOG_ERROR, "Error parsing discard %s.\n", discard_str);
             return ret;
         }
+        ist->user_set_discard = ist->st->discard;
     }
+
+    ist->dec_ctx = avcodec_alloc_context3(ist->dec);
+    if (!ist->dec_ctx)
+        return AVERROR(ENOMEM);
 
     ret = avcodec_parameters_to_context(ist->dec_ctx, par);
     if (ret < 0) {
@@ -1334,10 +1319,10 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
     int64_t timestamp;
     AVDictionary *unused_opts = NULL;
     const AVDictionaryEntry *e = NULL;
-    char *   video_codec_name = NULL;
-    char *   audio_codec_name = NULL;
-    char *subtitle_codec_name = NULL;
-    char *    data_codec_name = NULL;
+    const char*    video_codec_name = NULL;
+    const char*    audio_codec_name = NULL;
+    const char* subtitle_codec_name = NULL;
+    const char*     data_codec_name = NULL;
     int scan_all_pmts_set = 0;
 
     int64_t start_time     = o->start_time;
@@ -1389,28 +1374,28 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
     ic = avformat_alloc_context();
     if (!ic)
         return AVERROR(ENOMEM);
-    if (o->nb_audio_sample_rate) {
-        av_dict_set_int(&o->g->format_opts, "sample_rate", o->audio_sample_rate[o->nb_audio_sample_rate - 1].u.i, 0);
+    if (o->audio_sample_rate.nb_opt) {
+        av_dict_set_int(&o->g->format_opts, "sample_rate", o->audio_sample_rate.opt[o->audio_sample_rate.nb_opt - 1].u.i, 0);
     }
-    if (o->nb_audio_channels) {
+    if (o->audio_channels.nb_opt) {
         const AVClass *priv_class;
         if (file_iformat && (priv_class = file_iformat->priv_class) &&
             av_opt_find(&priv_class, "ch_layout", NULL, 0,
                         AV_OPT_SEARCH_FAKE_OBJ)) {
             char buf[32];
-            snprintf(buf, sizeof(buf), "%dC", o->audio_channels[o->nb_audio_channels - 1].u.i);
+            snprintf(buf, sizeof(buf), "%dC", o->audio_channels.opt[o->audio_channels.nb_opt - 1].u.i);
             av_dict_set(&o->g->format_opts, "ch_layout", buf, 0);
         }
     }
-    if (o->nb_audio_ch_layouts) {
+    if (o->audio_ch_layouts.nb_opt) {
         const AVClass *priv_class;
         if (file_iformat && (priv_class = file_iformat->priv_class) &&
             av_opt_find(&priv_class, "ch_layout", NULL, 0,
                         AV_OPT_SEARCH_FAKE_OBJ)) {
-            av_dict_set(&o->g->format_opts, "ch_layout", o->audio_ch_layouts[o->nb_audio_ch_layouts - 1].u.str, 0);
+            av_dict_set(&o->g->format_opts, "ch_layout", o->audio_ch_layouts.opt[o->audio_ch_layouts.nb_opt - 1].u.str, 0);
         }
     }
-    if (o->nb_frame_rates) {
+    if (o->frame_rates.nb_opt) {
         const AVClass *priv_class;
         /* set the format-level framerate option;
          * this is important for video grabbers, e.g. x11 */
@@ -1418,19 +1403,19 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
             av_opt_find(&priv_class, "framerate", NULL, 0,
                         AV_OPT_SEARCH_FAKE_OBJ)) {
             av_dict_set(&o->g->format_opts, "framerate",
-                        o->frame_rates[o->nb_frame_rates - 1].u.str, 0);
+                        o->frame_rates.opt[o->frame_rates.nb_opt - 1].u.str, 0);
         }
     }
-    if (o->nb_frame_sizes) {
-        av_dict_set(&o->g->format_opts, "video_size", o->frame_sizes[o->nb_frame_sizes - 1].u.str, 0);
+    if (o->frame_sizes.nb_opt) {
+        av_dict_set(&o->g->format_opts, "video_size", o->frame_sizes.opt[o->frame_sizes.nb_opt - 1].u.str, 0);
     }
-    if (o->nb_frame_pix_fmts)
-        av_dict_set(&o->g->format_opts, "pixel_format", o->frame_pix_fmts[o->nb_frame_pix_fmts - 1].u.str, 0);
+    if (o->frame_pix_fmts.nb_opt)
+        av_dict_set(&o->g->format_opts, "pixel_format", o->frame_pix_fmts.opt[o->frame_pix_fmts.nb_opt - 1].u.str, 0);
 
-    MATCH_PER_TYPE_OPT(codec_names, str,    video_codec_name, ic, "v");
-    MATCH_PER_TYPE_OPT(codec_names, str,    audio_codec_name, ic, "a");
-    MATCH_PER_TYPE_OPT(codec_names, str, subtitle_codec_name, ic, "s");
-    MATCH_PER_TYPE_OPT(codec_names, str,     data_codec_name, ic, "d");
+    video_codec_name    = opt_match_per_type_str(&o->codec_names, 'v');
+    audio_codec_name    = opt_match_per_type_str(&o->codec_names, 'a');
+    subtitle_codec_name = opt_match_per_type_str(&o->codec_names, 's');
+    data_codec_name     = opt_match_per_type_str(&o->codec_names, 'd');
 
     if (video_codec_name)
         ret = err_merge(ret, find_codec(NULL, video_codec_name   , AVMEDIA_TYPE_VIDEO   , 0,
@@ -1649,14 +1634,14 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
     }
     av_dict_free(&unused_opts);
 
-    for (i = 0; i < o->nb_dump_attachment; i++) {
+    for (i = 0; i < o->dump_attachment.nb_opt; i++) {
         int j;
 
         for (j = 0; j < f->nb_streams; j++) {
             InputStream *ist = f->streams[j];
 
-            if (check_stream_specifier(ic, ist->st, o->dump_attachment[i].specifier) == 1) {
-                ret = dump_attachment(ist, o->dump_attachment[i].u.str);
+            if (check_stream_specifier(ic, ist->st, o->dump_attachment.opt[i].specifier) == 1) {
+                ret = dump_attachment(ist, o->dump_attachment.opt[i].u.str);
                 if (ret < 0)
                     return ret;
             }

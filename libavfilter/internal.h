@@ -203,6 +203,12 @@ enum FilterFormatsState {
  */
 int ff_fmt_is_in(int fmt, const int *fmts);
 
+/**
+ * Returns true if a pixel format is "regular YUV", which includes all pixel
+ * formats that are affected by YUV colorspace negotiation.
+ */
+int ff_fmt_is_regular_yuv(enum AVPixelFormat fmt);
+
 /* Functions to parse audio format arguments */
 
 /**
@@ -311,7 +317,6 @@ int ff_request_frame(AVFilterLink *link);
 #define AVFILTER_DEFINE_CLASS_EXT(name, desc, options) \
     static const AVClass name##_class = {       \
         .class_name = desc,                     \
-        .item_name  = av_default_item_name,     \
         .option     = options,                  \
         .version    = LIBAVUTIL_VERSION_INT,    \
         .category   = AV_CLASS_CATEGORY_FILTER, \
