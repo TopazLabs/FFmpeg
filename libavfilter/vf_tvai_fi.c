@@ -93,13 +93,15 @@ static int config_props(AVFilterLink *outlink) {
     }
     tvai->previousFrame = NULL;
     tvai->timebaseUpdated = tvai->frame_rate.num > 0 && av_q2d(av_inv_q(tvai->frame_rate)) < av_q2d(outlink->time_base);
-    if(tvai->frame_rate.num > 0)
+    if(tvai->frame_rate.num > 0) {
         outlink->frame_rate = tvai->frame_rate;
+    }
     info.basic.framerate = av_q2d(outlink->frame_rate);
     if(tvai->timebaseUpdated) {
-        outlink->time_base  = av_d2q(0.001/info.basic.framerate, INT_MAX);
+        outlink->time_base  = av_inv_q(outlink->frame_rate);
     }
     info.basic.timebase = av_q2d(outlink->time_base);
+
     tvai->pFrameProcessor = tvai_create(&info);
     av_log(ctx, AV_LOG_DEBUG, "Set time base to %d/%d %lf -> %d/%d %lf\n", inlink->time_base.num, inlink->time_base.den, av_q2d(inlink->time_base), outlink->time_base.num, outlink->time_base.den, av_q2d(outlink->time_base));
     av_log(ctx, AV_LOG_DEBUG, "Set frame rate to %lf -> %lf\n", av_q2d(inlink->frame_rate), av_q2d(outlink->frame_rate));
@@ -120,13 +122,13 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     iBuffer.pBuffer = in->data[0];
     iBuffer.lineSize = in->linesize[0];
     if(tvai->timebaseUpdated) {
-        iBuffer.pts = av_rescale_q(in->pts, inlink->time_base, outlink->time_base);
-        iBuffer.duration = av_rescale_q(in->duration, inlink->time_base, outlink->time_base);
+        iBuffer.pts = av_rescale_q_rnd(in->pts, inlink->time_base, outlink->time_base, AV_ROUND_PASS_MINMAX);
+        iBuffer.duration = av_rescale_q_rnd(in->duration, inlink->time_base, outlink->time_base, AV_ROUND_PASS_MINMAX);
     } else {
         iBuffer.pts = in->pts;
         iBuffer.duration = in->duration;
     }
-    if(tvai->pFrameProcessor == NULL || tvai_process(tvai->pFrameProcessor, &iBuffer, 0)) {
+    if(tvai->pFrameProcessor == NULL || tvai_process(tvai->pFrameProcessor, &iBuffer)) {
         av_log(NULL, AV_LOG_ERROR, "The processing has failed\n");
         av_frame_free(&in);
         return AVERROR(ENOSYS);
@@ -134,7 +136,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, 0);
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in);
 }
 
 static int request_frame(AVFilterLink *outlink) {
