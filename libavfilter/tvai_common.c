@@ -74,11 +74,11 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
   pProcessorInfo->basic.inputHeight = pInlink->h;
   pProcessorInfo->basic.timebase = av_q2d(pInlink->time_base);
   pProcessorInfo->basic.framerate = av_q2d(pInlink->frame_rate);
+  pProcessorInfo->outputWidth = pOutlink->w = pInlink->w*pProcessorInfo->basic.scale;
+  pProcessorInfo->outputHeight = pOutlink->h = pInlink->h*pProcessorInfo->basic.scale;
   if(pParameters != NULL && parameterCount > 0) {
     memcpy(pProcessorInfo->modelParameters, pParameters, sizeof(float)*parameterCount);
   }
-  pOutlink->w = pInlink->w*pProcessorInfo->basic.scale;
-  pOutlink->h = pInlink->h*pProcessorInfo->basic.scale;
   pOutlink->time_base = pInlink->time_base;
   pOutlink->frame_rate = pInlink->frame_rate;
   pOutlink->sample_aspect_ratio = pInlink->sample_aspect_ratio;
