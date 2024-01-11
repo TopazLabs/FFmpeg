@@ -14689,6 +14689,47 @@ option may cause flicker since the B-Frames have often larger QP. Default is
 
 @end table
 
+@anchor{fsync}
+@section fsync
+
+Synchronize video frames with an external mapping from a file.
+
+For each input PTS given in the map file it either drops or creates as many
+frames as necessary to recreate the sequence of output frames given in the
+map file.
+
+This filter is useful to recreate the output frames of a framerate conversion
+by the @ref{fps} filter, recorded into a map file using the ffmpeg option
+@code{-stats_mux_pre}, and do further processing to the corresponding frames
+e.g. quality comparison.
+
+Each line of the map file must contain three items per input frame, the input
+PTS (decimal), the output PTS (decimal) and the
+output TIMEBASE (decimal/decimal), seperated by a space.
+This file format corresponds to the output
+of @code{-stats_mux_pre_fmt="@{ptsi@} @{pts@} @{tb@}"}.
+
+The filter assumes the map file is sorted by increasing input PTS.
+
+The filter accepts the following options:
+@table @option
+
+@item file, f
+The filename of the map file to be used.
+@end table
+
+Example:
+@example
+# Convert a video to 25 fps and record a MAP_FILE file with the default format of this filter
+ffmpeg -i INPUT -vf fps=fps=25 -stats_mux_pre MAP_FILE -stats_mux_pre_fmt "@{ptsi@} @{pts@} @{tb@}" OUTPUT
+
+# Sort MAP_FILE by increasing input PTS
+sort -n MAP_FILE
+
+# Use INPUT, OUTPUT and the MAP_FILE from above to compare the corresponding frames in INPUT and OUTPUT via SSIM
+ffmpeg -i INPUT -i OUTPUT -filter_complex '[0:v]fsync=file=MAP_FILE[ref];[1:v][ref]ssim' -f null -
+@end example
+
 @section gblur
 
 Apply Gaussian blur filter.
@@ -15926,6 +15967,15 @@ computations, if it is found to be inaccurate it will be cleared without any
 further computations. This allows inserting the idet filter as a low computational
 method to clean up the interlaced flag
 @end table
+
+@subsection Examples
+
+Inspect the field order of the first 360 frames in a video, in verbose detail:
+@example
+ffmpeg -i INPUT -filter:v idet,metadata=mode=print -frames:v 360 -an -f null -
+@end example
+The idet filter will add analysis metadata to each frame, which will then be
+discarded. At the end, the filter will also print a final report with statistics.
 
 @section il
 
@@ -17895,7 +17945,7 @@ Macroblock size. Default @code{16}.
 Motion estimation search parameter. Default @code{32}.
 
 @item vsbmc
-Enable variable-size block motion compensation. Motion estimation is applied with smaller block sizes at object boundaries in order to make the them less blur. Default is @code{0} (disabled).
+Enable variable-size block motion compensation. Motion estimation is applied with smaller block sizes at object boundaries in order to make them less blurry. Default is @code{0} (disabled).
 @end table
 @end table
 
@@ -20101,7 +20151,7 @@ Generate a QR code using the libqrencode library (see
 @url{https://fukuchi.org/works/qrencode/}), and overlay it on top of the current
 frame.
 
-To enable the compilation of this filter, you need to configure FFmpeg with with
+To enable the compilation of this filter, you need to configure FFmpeg with
 @code{--enable-libqrencode}.
 
 The QR code is generated from the provided text or text pattern. The
@@ -20398,7 +20448,7 @@ Identify and decode a QR code using the libquirc library (see
 @url{https://github.com/dlbeer/quirc/}), and print the identified QR codes
 positions and payload as metadata.
 
-To enable the compilation of this filter, you need to configure FFmpeg with with
+To enable the compilation of this filter, you need to configure FFmpeg with
 @code{--enable-libquirc}.
 
 For each found QR code in the input video, some metadata entries are added with
@@ -29078,7 +29128,7 @@ ffplay -f lavfi life=s=300x200:mold=10:r=60:ratio=0.1:death_color=#C83232:life_c
 Generate a QR code using the libqrencode library (see
 @url{https://fukuchi.org/works/qrencode/}).
 
-To enable the compilation of this source, you need to configure FFmpeg with with
+To enable the compilation of this source, you need to configure FFmpeg with
 @code{--enable-libqrencode}.
 
 The QR code is generated from the provided text or text pattern. The
