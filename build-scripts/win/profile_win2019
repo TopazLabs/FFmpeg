@@ -9,4 +9,5 @@ compiler.runtime_type=Release
 build_type=Release
 libvpx*:compiler.runtime=static
 aom*:compiler.runtime=static
+zlib*:compiler.runtime=static
 [options]

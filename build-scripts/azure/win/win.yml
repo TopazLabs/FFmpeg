@@ -1,0 +1,34 @@
+steps:
+  - checkout: self
+  - checkout: topaz-conan-dev
+    
+  - template: ../set_tools_and_deps.yml
+    parameters:
+      OS: 'win'
+      SHOULD_RESTORE_CONAN_CACHE: true
+
+  - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
+      bash ./build-scripts/win/conan_win.sh
+    displayName: Install conan packages
+
+# Have we already entered msys2 now, or do I need to do a profile change or something?
+# zlib probably has a different-ish command, not sure how to do that.
+  - bash: |
+      source ./build-scripts/win/setup-msvc-toolchain.sh
+      ./configure --toolchain=msvc --prefix=output-conan --enable-libvpx --enable-libaom --enable-shared --enable-x86asm --x86asmexe=yasm --enable-nvenc --enable-nvdec --disable-vulkan --enable-amf --enable-libvpl --enable-zlib --enable-tvai --extra-cflags="-I./conan/lib3rdparty/videoai/include -I./conan/lib3rdparty/amf/include -I./conan/lib3rdparty/nv-codec-headers/include -I./conan/lib3rdparty/libvpx/include -I./conan/lib3rdparty/aom/include -I./conan/lib3rdparty/libvpl/include/vpl" --extra-ldflags="-libpath:./conan/lib3rdparty/videoai/lib -libpath:./conan/lib3rdparty/zlib/lib -libpath:./conan/lib3rdparty/libvpx/lib -libpath:./conan/lib3rdparty/aom/lib -libpath:./conan/lib3rdparty/libvpl/lib -incremental:no"
+      make clean
+      make -r -j$(nproc) install
+    displayName: Set up MSVC toolchain and build FFmpeg
+    
+# 4. Publish FFmpeg to conan.
+  - bash: |
+      if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
+        exit 0
+      else
+        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type\=Release/
+        cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
+        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type\=Release/
+        cd $(Build.SourcesDirectory)/topaz-conan-dev
+        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
+      fi
