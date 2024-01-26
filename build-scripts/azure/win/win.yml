@@ -13,9 +13,9 @@ steps:
     displayName: Install conan packages
 
   - bash: |
-      cd "/c/msys2"
+      cd "/c/msys64"
       MSYSTEM=MINGW64 ./usr/bin/bash "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh"
-    displayName: Set up MSVC toolchain and build FFmpeg
+    displayName: Set up MSVC toolchain and build
 
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
@@ -28,3 +28,4 @@ steps:
         cd $(Build.SourcesDirectory)/topaz-conan-dev
         bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
       fi
+    displayName: Publish to conan
