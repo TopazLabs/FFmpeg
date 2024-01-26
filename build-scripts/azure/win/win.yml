@@ -15,6 +15,7 @@ steps:
 # Have we already entered msys2 now, or do I need to do a profile change or something?
 # zlib probably has a different-ish command, not sure how to do that.
   - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
       source ./build-scripts/win/setup-msvc-toolchain.sh
       ./configure --toolchain=msvc --prefix=output-conan --enable-libvpx --enable-libaom --enable-shared --enable-x86asm --x86asmexe=yasm --enable-nvenc --enable-nvdec --disable-vulkan --enable-amf --enable-libvpl --enable-zlib --enable-tvai --extra-cflags="-I./conan/lib3rdparty/videoai/include -I./conan/lib3rdparty/amf/include -I./conan/lib3rdparty/nv-codec-headers/include -I./conan/lib3rdparty/libvpx/include -I./conan/lib3rdparty/aom/include -I./conan/lib3rdparty/libvpl/include/vpl" --extra-ldflags="-libpath:./conan/lib3rdparty/videoai/lib -libpath:./conan/lib3rdparty/zlib/lib -libpath:./conan/lib3rdparty/libvpx/lib -libpath:./conan/lib3rdparty/aom/lib -libpath:./conan/lib3rdparty/libvpl/lib -incremental:no"
       make clean
@@ -23,6 +24,7 @@ steps:
     
 # 4. Publish FFmpeg to conan.
   - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         exit 0
       else
