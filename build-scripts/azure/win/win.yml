@@ -21,7 +21,6 @@ steps:
       cd /d "C:\msys64"
       set MSYSTEM=MINGW64
       C:\msys64\usr\bin\bash "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh"
-
     displayName: Set up MSVC toolchain and build
 
   - bash: |
