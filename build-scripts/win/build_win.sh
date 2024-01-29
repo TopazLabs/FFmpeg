@@ -3,7 +3,7 @@
 set -e
 
 # Navigate to sources directory
-cd "$(dirname "$0")/../../.."
+cd "$(dirname "$0")/../../../"
 # Navigate to nv-codec-headers directory
 cd "./nv-codec-headers"
 make install
