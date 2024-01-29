@@ -14,7 +14,7 @@ steps:
 
   - bash: |
       cd "/c/msys64"
-      MSYSTEM=MINGW64 ./usr/bin/bash "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh"
+      MSYSTEM=MINGW64 ./usr/bin/bash -c "env BUILD_SOURCESDIRECTORY='$(Build.SourcesDirectory)' $(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh"
     displayName: Set up MSVC toolchain and build
 
   - bash: |
