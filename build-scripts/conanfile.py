@@ -17,6 +17,8 @@ class conanRecipe(ConanFile):
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.tool_requires("nasm/2.14")
+        if self.settings.os == "Windows":
+            self.tool_requires("yasm/1.3.0")
 
     def requirements(self):
         self.requires("videoai/[~1.2.0]")
