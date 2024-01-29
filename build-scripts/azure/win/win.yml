@@ -9,11 +9,6 @@ steps:
       SHOULD_RESTORE_CONAN_CACHE: true
 
   - bash: |
-      cd "$(Build.SourcesDirectory)/nv-codec-headers"
-      make install
-    displayName: Install nv-codec-headers
-
-  - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
       unix2dos ./build-scripts/win/configure-win.patch
       git apply ./build-scripts/win/configure-win.patch
