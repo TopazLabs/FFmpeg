@@ -1,11 +1,17 @@
 steps:
   - checkout: self
   - checkout: topaz-conan-dev
+  - checkout: nv-codec-headers
     
   - template: ../set_tools_and_deps.yml
     parameters:
       OS: 'win'
       SHOULD_RESTORE_CONAN_CACHE: true
+
+  - bash: |
+      cd "$(Build.SourcesDirectory)/nv-codec-headers"
+      make install
+    displayName: Install nv-codec-headers
 
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
