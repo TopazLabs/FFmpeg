@@ -25,3 +25,6 @@ else
 fi
 
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig":$PKG_CONFIG_PATH
+
+# Add yasm to PATH
+export PATH="/conan/lib3rdparty/yasm/bin":$PATH
