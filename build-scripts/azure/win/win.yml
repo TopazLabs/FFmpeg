@@ -12,9 +12,16 @@ steps:
       bash ./build-scripts/win/conan_win.sh
     displayName: Install conan packages
 
-  - bash: |
-      cd "/c/msys64"
-      MSYSTEM=MINGW64 ./usr/bin/bash "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh"
+  - script: |
+      pushd "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+      for /f "delims=" %%x in ('.\vswhere.exe -latest -property InstallationPath') do set VSPATH=%%x
+      popd
+      call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+      cd /d "C:\msys64"
+      set MSYSTEM=MINGW64
+      C:\msys64\usr\bin\bash "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh"
+
     displayName: Set up MSVC toolchain and build
 
   - bash: |
