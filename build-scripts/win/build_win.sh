@@ -3,7 +3,7 @@
 set -e
 
 # Ensure all expected system dependencies
-pacman -Sy base-devel
+pacman -S --noconfirm base-devel
 
 # Navigate to sources directory
 cd "$(dirname "$0")/../../../"
