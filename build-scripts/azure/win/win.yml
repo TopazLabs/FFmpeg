@@ -31,7 +31,7 @@ steps:
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         exit 0
       else
-        mkdir -p "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type\=Release/"
+        mkdir -p "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type=Release/"
         cp build-scripts/deploy_conanfile.py "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py"
         cp -Rp "output-conan"/* "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type=Release/"
         cd "$(Build.SourcesDirectory)/topaz-conan-dev"
