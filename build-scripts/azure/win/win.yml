@@ -23,7 +23,7 @@ steps:
 
       cd /d "C:\msys64"
       set MSYSTEM=MINGW64
-      C:\msys64\mingw64 "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh" > output.log 2>&1"
+      C:\msys64\mingw64 bash -c "$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh > output.log 2>&1"
       cat output.log
     displayName: Set up MSVC toolchain and build
 
