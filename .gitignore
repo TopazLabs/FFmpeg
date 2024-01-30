@@ -44,3 +44,5 @@
 .DS_Store
 /output/
 .vscode/settings.json
+/conan
+/output-conan
