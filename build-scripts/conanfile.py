@@ -27,7 +27,6 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Windows":
             self.requires("amf/1.4.33")
             self.requires("libvpl/2023.0.0")
-            self.requires("nv-codec-headers/12.1.14.0")
             self.requires("zlib-mt/1.2.13")
 
     def generate(self):
