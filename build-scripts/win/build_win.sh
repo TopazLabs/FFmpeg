@@ -2,6 +2,9 @@
 
 set -e
 
+# Ensure all expected system dependencies
+pacman -Sy base-devel
+
 # Navigate to sources directory
 cd "$(dirname "$0")/../../../"
 # Navigate to nv-codec-headers directory
