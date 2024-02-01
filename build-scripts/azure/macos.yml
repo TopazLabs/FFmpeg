@@ -2,7 +2,7 @@ steps:
   - checkout: self
   - checkout: topaz-conan-dev
     
-  - template: ../set_tools_and_deps.yml
+  - template: set_tools_and_deps.yml
     parameters:
       OS: 'mac'
       SHOULD_RESTORE_CONAN_CACHE: true
@@ -16,4 +16,3 @@ steps:
         arch -arm64 bash ./build_and_publish.sh $(VERSION) _ _ $(Build.SourcesDirectory)/topaz-conan-dev 1
       fi
     displayName: Build
-      
