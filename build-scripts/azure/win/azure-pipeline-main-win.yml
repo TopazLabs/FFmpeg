@@ -1,0 +1,21 @@
+resources:
+  repositories:
+    - repository: topaz-conan-dev
+      type: github
+      endpoint: TopazLabs
+      name: TopazLabs/topaz-conan-dev
+      ref: master
+    - repository: nv-codec-headers
+      type: github
+      endpoint: TopazLabs
+      name: FFmpeg/nv-codec-headers
+      ref: refs/tags/n12.1.14.0
+
+jobs:
+- job: Win2019
+  workspace:
+    clean: all
+  pool:
+    vmImage: 'windows-2019'
+  steps:
+    - template: win.yml
