@@ -1,0 +1,88 @@
+resources:
+  repositories:
+    - repository: topaz-conan-dev
+      type: github
+      endpoint: TopazLabs
+      name: TopazLabs/topaz-conan-dev
+      ref: master
+    - repository: nv-codec-headers
+      type: github
+      endpoint: TopazLabs
+      name: FFmpeg/nv-codec-headers
+      ref: refs/tags/n12.1.14.0
+
+parameters:
+  - name: version
+    displayName: 'VERSION'
+    type: string
+    default: '0.0.0'
+  - name: publish
+    displayName: 'PUBLISH'
+    type: boolean
+    default: false
+  - name: qt
+    displayName: 'QT_VERSION'
+    type: string
+    default: '6.6.1'
+  - name: windows
+    displayName: 'Windows (2019)'
+    type: boolean
+    default: true
+  - name: linux
+    displayName: 'Linux (Ubuntu 22.04)'
+    type: boolean
+    default: true
+  - name: mac
+    displayName: 'MacOS'
+    type: boolean
+    default: true
+
+variables:
+  - name: VERSION
+    value: ${{ parameters.version }}
+  - name: QT_VERSION
+    value: ${{ parameters.qt }}
+  - ${{ if eq(parameters.publish, true) }}:
+    - name: PUBLISH
+      value: 'true'
+  - ${{ if eq(parameters.publish, false) }}:
+    - name: PUBLISH
+      value: ''
+
+jobs:
+- ${{ if eq(parameters.windows, true) }}:
+  - job: Windows2019
+    workspace:
+      clean: all
+    strategy:
+      matrix:
+        windows:
+          imageName: 'windows-2019'
+    pool:
+      vmImage: $(imageName)
+    steps:
+      - template: win.yml
+
+- ${{ if eq(parameters.linux, true) }}:
+  - job: Ubuntu22_04
+    workspace:
+      clean: all
+    strategy:
+      matrix:
+        ubuntu:
+          imageName: 'ubuntu-22.04'
+    pool:
+      vmImage: $(imageName)
+    steps:
+      - template: ubuntu.yml
+
+- ${{ if eq(parameters.mac, true) }}:
+  - job: Mac
+    workspace:
+      clean: all
+    pool:
+      name: Mac
+      demands:
+      - AppleSilicon
+    steps:
+      - template: macos.yml
