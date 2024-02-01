@@ -1,0 +1,18 @@
+resources:
+  repositories:
+    - repository: topaz-conan-dev
+      type: github
+      endpoint: TopazLabs
+      name: TopazLabs/topaz-conan-dev
+      ref: master
+
+jobs:
+- job: MacM1
+  workspace:
+    clean: all
+  pool:
+    name: Mac
+    demands:
+    - AppleSilicon
+  steps:
+    - template: macos.yml

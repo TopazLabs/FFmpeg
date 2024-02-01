@@ -3,7 +3,7 @@ steps:
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
   
-  - template: set_tools_and_deps.yml
+  - template: ../set_tools_and_deps.yml
     parameters:
       OS: 'linux'
       SHOULD_RESTORE_CONAN_CACHE: true

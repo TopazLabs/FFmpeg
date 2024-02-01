@@ -1,0 +1,25 @@
+resources:
+  repositories:
+    - repository: topaz-conan-dev
+      type: github
+      endpoint: TopazLabs
+      name: TopazLabs/topaz-conan-dev
+      ref: master
+    - repository: nv-codec-headers
+      type: github
+      endpoint: TopazLabs
+      name: FFmpeg/nv-codec-headers
+      ref: master
+
+jobs:
+- job: Ubuntu22_04
+  workspace:
+    clean: all
+  strategy:
+    matrix:
+      ubuntu:
+        imageName: 'ubuntu-22.04'
+  pool:
+    vmImage: $(imageName)
+  steps:
+    - template: ubuntu.yml
