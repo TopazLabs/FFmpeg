@@ -12,6 +12,7 @@ steps:
       cd "$(Build.SourcesDirectory)/FFmpeg"
       unix2dos ./build-scripts/win/configure-win.patch
       git apply ./build-scripts/win/configure-win.patch
+      git apply ./build-scripts/configure-zimg.patch
       bash ./build-scripts/win/conan_win.sh
     displayName: Install conan packages
 
