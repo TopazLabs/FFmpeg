@@ -9,6 +9,7 @@ steps:
 
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
+      git apply ./build-scripts/configure-zimg.patch
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         arch -arm64 bash ./build-scripts/mac/build_mac.sh 1 ./builds-arm ./builds-x86 ./builds-univ '' ''
       else

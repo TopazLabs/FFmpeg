@@ -20,9 +20,10 @@ steps:
     
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
-      echo ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath,$(Build.BinariesDirectory)/Qt/${QT_VERSION}/gcc_64/lib -L./conan/lib" --prefix=./output-conan/
+      git apply ./build-scripts/configure-zimg.patch
+      echo ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath,$(Build.BinariesDirectory)/Qt/${QT_VERSION}/gcc_64/lib -L./conan/lib" --prefix=./output-conan/
       set -e
-      ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath,$(Build.BinariesDirectory)/Qt/${QT_VERSION}/gcc_64/lib -L./conan/lib" --prefix=./output-conan/
+      ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath,$(Build.BinariesDirectory)/Qt/${QT_VERSION}/gcc_64/lib -L./conan/lib" --prefix=./output-conan/
       
       make clean
       make -j$(nproc) install
