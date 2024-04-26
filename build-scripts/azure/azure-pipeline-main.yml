@@ -67,12 +67,8 @@ jobs:
   - job: Ubuntu22_04
     workspace:
       clean: all
-    strategy:
-      matrix:
-        ubuntu:
-          imageName: 'ubuntu-22.04'
     pool:
-      vmImage: $(imageName)
+      name: UbuntuVMSS
     steps:
       - template: ubuntu.yml
 

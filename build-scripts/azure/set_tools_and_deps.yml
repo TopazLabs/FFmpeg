@@ -51,8 +51,9 @@ steps:
       
   - ${{ if eq(parameters.os, 'linux') }}:
     - script: |
-        sudo apt update
-        sudo apt install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
+        export DEBIAN_FRONTEND='noninteractive'
+        sudo apt -y update
+        sudo apt -y install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
       displayName: Install APT packages
 
 #Install Dependencies
