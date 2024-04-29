@@ -152,9 +152,9 @@ static int request_frame(AVFilterLink *outlink) {
 }
 
 static av_cold void uninit(AVFilterContext *ctx) {
-    // TVAIFIContext *tvai = ctx->priv;
-    // if(tvai->pFrameProcessor)
-    //   tvai_destroy(tvai->pFrameProcessor);
+    TVAIFIContext *tvai = ctx->priv;
+    if(tvai->pFrameProcessor)
+      tvai_destroy(tvai->pFrameProcessor);
 }
 
 static const AVFilterPad tvai_fi_inputs[] = {

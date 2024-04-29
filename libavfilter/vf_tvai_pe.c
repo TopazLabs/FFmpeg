@@ -100,7 +100,8 @@ static int request_frame(AVFilterLink *outlink) {
 
 static av_cold void uninit(AVFilterContext *ctx) {
     TVAIParamContext *tvai = ctx->priv;
-    tvai_destroy(tvai->pParamEstimator);
+    if(tvai->pParamEstimator)
+        tvai_destroy(tvai->pParamEstimator);
 }
 
 static const AVFilterPad tvai_pe_inputs[] = {

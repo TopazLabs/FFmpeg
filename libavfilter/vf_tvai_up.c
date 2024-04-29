@@ -145,8 +145,8 @@ static int request_frame(AVFilterLink *outlink) {
 static av_cold void uninit(AVFilterContext *ctx) {
     TVAIUpContext *tvai = ctx->priv;
     av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s %d\n", tvai->basicInfo.modelName, tvai->pFrameProcessor == NULL);
-    // if(tvai->pFrameProcessor)
-    //     tvai_destroy(tvai->pFrameProcessor);
+    if(tvai->pFrameProcessor)
+        tvai_destroy(tvai->pFrameProcessor);
 }
 
 static const AVFilterPad tvai_up_inputs[] = {
