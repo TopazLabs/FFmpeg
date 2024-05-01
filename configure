@@ -333,6 +333,8 @@ External library support:
   --disable-securetransport disable Secure Transport, needed for TLS support
                            on OSX if openssl and gnutls are not used [autodetect]
   --enable-vapoursynth     enable VapourSynth demuxer [no]
+  --enable-tvai            enable Topaz Video AI [no]
+  --disable-vulkan         disable Vulkan code [autodetect]
   --disable-xlib           disable xlib [autodetect]
   --disable-zlib           disable zlib [autodetect]
 
@@ -1980,6 +1982,7 @@ EXTERNAL_LIBRARY_LIST="
     openssl
     pocketsphinx
     vapoursynth
+    tvai
 "
 
 HWACCEL_AUTODETECT_LIBRARY_LIST="
@@ -3934,6 +3937,16 @@ transpose_vulkan_filter_deps="vulkan spirv_compiler"
 unsharp_opencl_filter_deps="opencl"
 uspp_filter_deps="gpl avcodec"
 vaguedenoiser_filter_deps="gpl"
+tvai_up_filter_select="tvai"
+tvai_up_filter_deps="tvai"
+tvai_fi_filter_select="tvai"
+tvai_fi_filter_deps="tvai"
+tvai_pe_filter_select="tvai"
+tvai_pe_filter_deps="tvai"
+tvai_cpe_filter_select="tvai"
+tvai_cpe_filter_deps="tvai"
+tvai_stb_filter_select="tvai"
+tvai_stb_filter_deps="tvai"
 vflip_vulkan_filter_deps="vulkan spirv_compiler"
 vidstabdetect_filter_deps="libvidstab"
 vidstabtransform_filter_deps="libvidstab"
@@ -6837,7 +6850,7 @@ enabled gnutls            && require_pkg_config gnutls gnutls gnutls/gnutls.h gn
 enabled jni               && { [ $target_os = "android" ] && check_headers jni.h && enabled pthreads || die "ERROR: jni not found"; }
 enabled ladspa            && require_headers "ladspa.h dlfcn.h"
 enabled lcms2             && require_pkg_config lcms2 "lcms2 >= 2.13" lcms2.h cmsCreateContext
-enabled libaom            && require_pkg_config libaom "aom >= 2.0.0" aom/aom_codec.h aom_codec_version
+enabled libaom            && { check_lib libaom aom/aom_codec.h aom_codec_version "-laom" || check_pkg_config libaom "aom >= 2.0.0" aom/aom_codec.h aom_codec_version ; }
 enabled libaribb24        && { check_pkg_config libaribb24 "aribb24 > 1.0.3" "aribb24/aribb24.h" arib_instance_new ||
                                { enabled gpl && require_pkg_config libaribb24 aribb24 "aribb24/aribb24.h" arib_instance_new; } ||
                                die "ERROR: libaribb24 requires version higher than 1.0.3 or --enable-gpl."; }
@@ -6910,7 +6923,7 @@ elif enabled libvpl; then
 # Consider pkg-config only. The name of libmfx is still passed to check_pkg_config function for --enable-libvpl option
 # because QSV has dependency on libmfx, we can use the same dependency if using libmfx in this check. The package name
 # is extracted from "vpl >= 2.6"
-    check_pkg_config libmfx "vpl >= 2.6" "mfxvideo.h mfxdispatcher.h" MFXLoad || \
+    check_pkg_config libmfx "vpl >= 2.6" "mfxvideo.h mfxdispatcher.h" MFXLoad || check_lib libmfx "mfxvideo.h mfxdispatcher.h" MFXLoad "-lvpl $advapi32_extralibs" || \
             die "ERROR: libvpl >= 2.6 not found"
     add_cflags -DMFX_DEPRECATED_OFF
 fi
@@ -7083,6 +7096,7 @@ enabled rkmpp             && { require_pkg_config rkmpp rockchip_mpp  rockchip/r
                                  die "ERROR: rkmpp requires --enable-libdrm"; }
                              }
 enabled vapoursynth       && require_pkg_config vapoursynth "vapoursynth-script >= 42" VSScript.h vsscript_init
+enabled tvai              && require_headers tvai.h && require tvai "tvai.h" tvai_create "-ltvai"
 
 
 if enabled gcrypt; then

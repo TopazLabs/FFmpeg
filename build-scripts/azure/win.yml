@@ -1,0 +1,41 @@
+steps:
+  - checkout: self
+  - checkout: topaz-conan-dev
+  - checkout: nv-codec-headers
+    
+  - template: set_tools_and_deps.yml
+    parameters:
+      OS: 'win'
+      SHOULD_RESTORE_CONAN_CACHE: true
+
+  - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
+      unix2dos ./build-scripts/win/configure-win.patch
+      git apply ./build-scripts/win/configure-win.patch
+      git apply ./build-scripts/configure-zimg.patch
+      bash ./build-scripts/win/conan_win.sh
+    displayName: Install conan packages
+
+  - script: |
+      pushd "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+      for /f "delims=" %%x in ('.\vswhere.exe -latest -property InstallationPath') do set VSPATH=%%x
+      popd
+      call "%VSPATH%\VC\Auxiliary\Build\vcvarsall.bat" x64
+
+      cd /d "C:\msys64"
+      set MSYSTEM=MINGW64
+      C:\msys64\msys2_shell.cmd -defterm -no-start -mingw64 -c "$(cygpath '$(Build.SourcesDirectory)/FFmpeg/build-scripts/win/build_win.sh')"
+    displayName: Set up MSVC toolchain and build
+
+  - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
+      if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
+        exit 0
+      else
+        mkdir -p "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type=Release/"
+        cp build-scripts/deploy_conanfile.py "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py"
+        cp -Rp "output-conan"/* "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type=Release/"
+        cd "$(Build.SourcesDirectory)/topaz-conan-dev"
+        ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version "$(VERSION)" -r topaz-conan
+      fi
+    displayName: Publish to conan

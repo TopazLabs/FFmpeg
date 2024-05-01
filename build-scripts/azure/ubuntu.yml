@@ -1,0 +1,40 @@
+steps:
+  - checkout: self
+  - checkout: topaz-conan-dev
+  - checkout: nv-codec-headers
+  
+  - template: set_tools_and_deps.yml
+    parameters:
+      OS: 'linux'
+      SHOULD_RESTORE_CONAN_CACHE: true
+      
+  - bash: |
+      cd "$(Build.SourcesDirectory)/nv-codec-headers"
+      sudo make install
+    displayName: Install nv-codec-headers
+      
+  - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
+      bash ./build-scripts/linux/conan_linux.sh
+    displayName: Install conan packages
+    
+  - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
+      git apply ./build-scripts/configure-zimg.patch
+      echo ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath,$(Build.BinariesDirectory)/Qt/${QT_VERSION}/gcc_64/lib -L./conan/lib" --prefix=./output-conan/
+      set -e
+      ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath,$(Build.BinariesDirectory)/Qt/${QT_VERSION}/gcc_64/lib -L./conan/lib" --prefix=./output-conan/
+      
+      make clean
+      make -j$(nproc) install
+      
+      if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
+        exit 0
+      else
+        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_ubuntu22.04/build_type\=Release/
+        cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
+        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_ubuntu22.04/build_type\=Release/
+        cd $(Build.SourcesDirectory)/topaz-conan-dev
+        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
+      fi
+    displayName: Build FFmpeg
