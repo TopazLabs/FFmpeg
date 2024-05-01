@@ -50,6 +50,7 @@
 
 #include "libavutil/common.h"
 #include "libavutil/frame.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -224,6 +225,8 @@ typedef struct OpenGLContext {
     int picture_height;                ///< Rendered height
     int window_width;
     int window_height;
+
+    int warned;
 } OpenGLContext;
 
 static const struct OpenGLFormatDesc {
@@ -1060,6 +1063,15 @@ static av_cold int opengl_write_header(AVFormatContext *h)
     AVStream *st;
     int ret;
 
+    if (!opengl->warned) {
+        av_log(opengl, AV_LOG_WARNING,
+            "The opengl output device is deprecated due to being fundamentally incompatible with libavformat API. "
+            "For monitoring purposes in ffmpeg you can output to a file or use pipes and a video player.\n"
+            "Example: ffmpeg -i INPUT -f nut -c:v rawvideo - | ffplay -\n"
+        );
+        opengl->warned = 1;
+    }
+
     if (h->nb_streams != 1 ||
         par->codec_type != AVMEDIA_TYPE_VIDEO ||
         (par->codec_id != AV_CODEC_ID_WRAPPED_AVFRAME && par->codec_id != AV_CODEC_ID_RAWVIDEO)) {
@@ -1291,6 +1303,7 @@ static const AVOption options[] = {
 
 static const AVClass opengl_class = {
     .class_name = "opengl outdev",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_OUTPUT,

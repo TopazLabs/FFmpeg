@@ -30,6 +30,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/file_open.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/tree.h"
 #include "avio.h"
@@ -327,6 +328,7 @@ static const AVOption options[] = {
 
 static const AVClass cache_context_class = {
     .class_name = "cache",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

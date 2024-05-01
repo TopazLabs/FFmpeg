@@ -33,6 +33,7 @@
 #include <sys/shm.h>
 
 #include "libavutil/frame.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
@@ -371,6 +372,7 @@ static const AVOption options[] = {
 
 static const AVClass xv_class = {
     .class_name = "xvideo outdev",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_OUTPUT,

@@ -20,12 +20,13 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/common.h"
 #include "libavutil/iamf.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavcodec/get_bits.h"
 #include "libavcodec/flac.h"
+#include "libavcodec/leb.h"
 #include "libavcodec/mpeg4audio.h"
 #include "libavcodec/put_bits.h"
 #include "avio_internal.h"
@@ -332,6 +333,11 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
     if (nb_layers > 6)
         return AVERROR_INVALIDDATA;
 
+    audio_element->layers = av_calloc(nb_layers, sizeof(*audio_element->layers));
+    if (!audio_element->layers)
+        return AVERROR(ENOMEM);
+
+    audio_element->nb_layers = nb_layers;
     for (int i = 0; i < nb_layers; i++) {
         AVIAMFLayer *layer;
         int loudspeaker_layout, output_gain_is_present_flag;
@@ -349,6 +355,8 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
         substream_count = avio_r8(pb);
         coupled_substream_count = avio_r8(pb);
 
+        audio_element->layers[i].substream_count         = substream_count;
+        audio_element->layers[i].coupled_substream_count = coupled_substream_count;
         if (output_gain_is_present_flag) {
             layer->output_gain_flags = avio_r8(pb) >> 2;  // get_bits(&gb, 6);
             layer->output_gain = av_make_q(sign_extend(avio_rb16(pb), 16), 1 << 8);
@@ -400,6 +408,13 @@ static int ambisonics_config(void *s, AVIOContext *pb,
     if ((order + 1) * (order + 1) != output_channel_count)
         return AVERROR_INVALIDDATA;
 
+    audio_element->layers = av_mallocz(sizeof(*audio_element->layers));
+    if (!audio_element->layers)
+        return AVERROR(ENOMEM);
+
+    audio_element->nb_layers = 1;
+    audio_element->layers->substream_count = substream_count;
+
     layer = av_iamf_audio_element_add_layer(audio_element->element);
     if (!layer)
         return AVERROR(ENOMEM);
@@ -428,6 +443,8 @@ static int ambisonics_config(void *s, AVIOContext *pb,
         int coupled_substream_count = avio_r8(pb);  // M
         int nb_demixing_matrix = substream_count + coupled_substream_count;
         int demixing_matrix_size = nb_demixing_matrix * output_channel_count;
+
+        audio_element->layers->coupled_substream_count = coupled_substream_count;
 
         layer->ch_layout = (AVChannelLayout){ .order = AV_CHANNEL_ORDER_AMBISONIC, .nb_channels = output_channel_count };
         layer->demixing_matrix = av_malloc_array(demixing_matrix_size, sizeof(*layer->demixing_matrix));
@@ -563,16 +580,6 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
     return 0;
 }
 
-static IAMFCodecConfig *get_codec_config(IAMFContext *c, unsigned int codec_config_id)
-{
-    for (int i = 0; i < c->nb_codec_configs; i++) {
-        if (c->codec_configs[i]->codec_config_id == codec_config_id)
-            return c->codec_configs[i];
-    }
-
-    return NULL;
-}
-
 static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
 {
     const IAMFCodecConfig *codec_config;
@@ -610,7 +617,7 @@ static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
     audio_element_type = avio_r8(pbc) >> 5;
     codec_config_id = ffio_read_leb(pbc);
 
-    codec_config = get_codec_config(c, codec_config_id);
+    codec_config = ff_iamf_get_codec_config(c, codec_config_id);
     if (!codec_config) {
         av_log(s, AV_LOG_ERROR, "Non existant codec config id %d referenced in an audio element\n", codec_config_id);
         ret = AVERROR_INVALIDDATA;
@@ -650,6 +657,7 @@ static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+    audio_element->celement = element;
 
     element->audio_element_type = audio_element_type;
 
@@ -763,7 +771,7 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
     FFIOContext b;
     AVIOContext *pbc;
     uint8_t *buf;
-    unsigned mix_presentation_id;
+    unsigned nb_submixes, mix_presentation_id;
     int ret;
 
     buf = av_malloc(len);
@@ -808,11 +816,13 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+    mix_presentation->cmix = mix;
 
     mix_presentation->count_label = ffio_read_leb(pbc);
     mix_presentation->language_label = av_calloc(mix_presentation->count_label,
                                                  sizeof(*mix_presentation->language_label));
     if (!mix_presentation->language_label) {
+        mix_presentation->count_label = 0;
         ret = AVERROR(ENOMEM);
         goto fail;
     }
@@ -834,35 +844,24 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
             goto fail;
     }
 
-    mix->nb_submixes = ffio_read_leb(pbc);
-    mix->submixes = av_calloc(mix->nb_submixes, sizeof(*mix->submixes));
-    if (!mix->submixes) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    for (int i = 0; i < mix->nb_submixes; i++) {
+    nb_submixes = ffio_read_leb(pbc);
+    for (int i = 0; i < nb_submixes; i++) {
         AVIAMFSubmix *sub_mix;
+        unsigned nb_elements, nb_layouts;
 
-        sub_mix = mix->submixes[i] = av_mallocz(sizeof(*sub_mix));
+        sub_mix = av_iamf_mix_presentation_add_submix(mix);
         if (!sub_mix) {
             ret = AVERROR(ENOMEM);
             goto fail;
         }
 
-        sub_mix->nb_elements = ffio_read_leb(pbc);
-        sub_mix->elements = av_calloc(sub_mix->nb_elements, sizeof(*sub_mix->elements));
-        if (!sub_mix->elements) {
-            ret = AVERROR(ENOMEM);
-            goto fail;
-        }
-
-        for (int j = 0; j < sub_mix->nb_elements; j++) {
+        nb_elements = ffio_read_leb(pbc);
+        for (int j = 0; j < nb_elements; j++) {
             AVIAMFSubmixElement *submix_element;
             IAMFAudioElement *audio_element = NULL;
             unsigned int rendering_config_extension_size;
 
-            submix_element = sub_mix->elements[j] = av_mallocz(sizeof(*submix_element));
+            submix_element = av_iamf_submix_add_element(sub_mix);
             if (!submix_element) {
                 ret = AVERROR(ENOMEM);
                 goto fail;
@@ -912,19 +911,13 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
             goto fail;
         sub_mix->default_mix_gain = av_make_q(sign_extend(avio_rb16(pbc), 16), 1 << 8);
 
-        sub_mix->nb_layouts = ffio_read_leb(pbc);
-        sub_mix->layouts = av_calloc(sub_mix->nb_layouts, sizeof(*sub_mix->layouts));
-        if (!sub_mix->layouts) {
-            ret = AVERROR(ENOMEM);
-            goto fail;
-        }
-
-        for (int j = 0; j < sub_mix->nb_layouts; j++) {
+        nb_layouts = ffio_read_leb(pbc);
+        for (int j = 0; j < nb_layouts; j++) {
             AVIAMFSubmixLayout *submix_layout;
             int info_type;
             int byte = avio_r8(pbc);
 
-            submix_layout = sub_mix->layouts[j] = av_mallocz(sizeof(*submix_layout));
+            submix_layout = av_iamf_submix_add_layout(sub_mix);
             if (!submix_layout) {
                 ret = AVERROR(ENOMEM);
                 goto fail;
@@ -941,6 +934,10 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
             if (submix_layout->layout_type == 2) {
                 int sound_system;
                 sound_system = (byte >> 2) & 0xF;
+                if (sound_system >= FF_ARRAY_ELEMS(ff_iamf_sound_system_map)) {
+                    ret = AVERROR_INVALIDDATA;
+                    goto fail;
+                }
                 av_channel_layout_copy(&submix_layout->sound_system, &ff_iamf_sound_system_map[sound_system].layout);
             }
 

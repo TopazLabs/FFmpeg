@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "nvdec.h"
 #include "decode.h"
@@ -250,8 +251,8 @@ static int nvdec_av1_start_frame(AVCodecContext *avctx, const uint8_t *buffer, u
         AVFrame *ref_frame = s->ref[ref_idx].f;
 
         ppc->ref_frame[i].index = ppc->ref_frame_map[ref_idx];
-        ppc->ref_frame[i].width = ref_frame->width;
-        ppc->ref_frame[i].height = ref_frame->height;
+        ppc->ref_frame[i].width  = ref_frame ? ref_frame->width  : 0;
+        ppc->ref_frame[i].height = ref_frame ? ref_frame->height : 0;
 
         /* Global Motion */
         ppc->global_motion[i].invalid = !frame_header->is_global[AV1_REF_FRAME_LAST + i];
@@ -303,7 +304,7 @@ static int nvdec_av1_decode_slice(AVCodecContext *avctx, const uint8_t *buffer, 
 
     /* Shortcut if all tiles are in the same buffer */
     if (ctx->nb_slices == s->tg_end - s->tg_start + 1) {
-        ctx->bitstream = (uint8_t*)buffer;
+        ctx->bitstream = buffer;
         ctx->bitstream_len = size;
 
         for (int i = 0; i < ctx->nb_slices; ++i) {
@@ -321,7 +322,7 @@ static int nvdec_av1_decode_slice(AVCodecContext *avctx, const uint8_t *buffer, 
     }
     ctx->bitstream = ctx->bitstream_internal = tmp;
 
-    memcpy(ctx->bitstream + ctx->bitstream_len, buffer, size);
+    memcpy(ctx->bitstream_internal + ctx->bitstream_len, buffer, size);
 
     for (uint32_t tile_num = s->tg_start; tile_num <= s->tg_end; ++tile_num) {
         ctx->slice_offsets[tile_num*2    ] = ctx->bitstream_len + s->tile_group_info[tile_num].tile_offset;

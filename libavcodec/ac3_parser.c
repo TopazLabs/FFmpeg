@@ -20,10 +20,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config.h"
 #include "config_components.h"
 
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "parser.h"
 #include "ac3defs.h"
 #include "ac3tab.h"
@@ -204,7 +204,9 @@ int av_ac3_parse_header(const uint8_t *buf, size_t size,
     AC3HeaderInfo hdr;
     int err;
 
-    init_get_bits8(&gb, buf, size);
+    err = init_get_bits8(&gb, buf, size);
+    if (err < 0)
+        return AVERROR_INVALIDDATA;
     err = ff_ac3_parse_header(&gb, &hdr);
     if (err < 0)
         return AVERROR_INVALIDDATA;

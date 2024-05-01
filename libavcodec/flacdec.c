@@ -35,14 +35,13 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/crc.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "get_bits.h"
-#include "bytestream.h"
 #include "golomb.h"
 #include "flac.h"
-#include "flacdata.h"
 #include "flacdsp.h"
 #include "flac_parse.h"
 #include "thread.h"
@@ -820,6 +819,7 @@ static const AVOption options[] = {
 
 static const AVClass flac_decoder_class = {
     .class_name = "FLAC decoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

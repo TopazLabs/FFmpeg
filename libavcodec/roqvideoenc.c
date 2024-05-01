@@ -58,6 +58,7 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/lfg.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "roqvideo.h"
 #include "bytestream.h"
@@ -1110,6 +1111,7 @@ static const AVOption options[] = {
 
 static const AVClass roq_class = {
     .class_name = "RoQ",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

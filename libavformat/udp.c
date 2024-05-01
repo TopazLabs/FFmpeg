@@ -29,13 +29,13 @@
 
 #include "avformat.h"
 #include "libavutil/avassert.h"
+#include "libavutil/mem.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/fifo.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 #include "libavutil/time.h"
-#include "internal.h"
 #include "network.h"
 #include "os_support.h"
 #include "url.h"
@@ -144,12 +144,14 @@ static const AVOption options[] = {
 
 static const AVClass udp_class = {
     .class_name = "udp",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
 static const AVClass udplite_context_class = {
     .class_name     = "udplite",
+    .item_name      = av_default_item_name,
     .option         = options,
     .version        = LIBAVUTIL_VERSION_INT,
 };

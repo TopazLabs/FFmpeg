@@ -22,6 +22,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "codec_internal.h"
@@ -2962,6 +2963,7 @@ static const AVOption options[] = {
 
 static const AVClass wavpack_encoder_class = {
     .class_name = "WavPack encoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

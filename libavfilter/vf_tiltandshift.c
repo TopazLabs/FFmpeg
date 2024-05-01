@@ -25,14 +25,12 @@
 
 #include <string.h>
 
-#include "libavutil/common.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "libavutil/rational.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -140,7 +138,8 @@ static int config_props(AVFilterLink *outlink)
         if (outlink->format == AV_PIX_FMT_YUVJ420P ||
             outlink->format == AV_PIX_FMT_YUVJ422P ||
             outlink->format == AV_PIX_FMT_YUVJ444P ||
-            outlink->format == AV_PIX_FMT_YUVJ440P)
+            outlink->format == AV_PIX_FMT_YUVJ440P ||
+            outlink->color_range == AVCOL_RANGE_JPEG)
             black_data[0] = black_data[3] = 0;
 
         ret = av_image_alloc(s->black_buffers, s->black_linesizes, 1,

@@ -26,6 +26,7 @@
 #include "decode.h"
 #include "libavutil/colorspace.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/thread.h"
 
@@ -1564,6 +1565,7 @@ static const AVOption options[] = {
 };
 static const AVClass dvbsubdec_class = {
     .class_name = "DVB Sub Decoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

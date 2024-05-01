@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "vidstabutils.h"
 
 const enum AVPixelFormat ff_vidstab_pix_fmts[] =  {
@@ -61,6 +62,7 @@ static int vs2av_log(int type, const char *tag, const char *format, ...)
     VS2AVLogCtx ctx;
     AVClass class = {
         .class_name = tag,
+        .item_name  = av_default_item_name,
         .option     = 0,
         .version    = LIBAVUTIL_VERSION_INT,
         .category   = AV_CLASS_CATEGORY_FILTER,

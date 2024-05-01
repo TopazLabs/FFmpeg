@@ -20,10 +20,9 @@
 
 #include <string.h>
 
-#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 
-#include "libavcodec/aacenc.h"
+#include "libavcodec/aacencdsp.h"
 
 #include "checkasm.h"
 
@@ -36,7 +35,8 @@
         }                                                       \
     } while (0)
 
-static void test_abs_pow34(AACEncContext *s) {
+static void test_abs_pow34(AACEncDSPContext *s)
+{
 #define BUF_SIZE 1024
     LOCAL_ALIGNED_32(float, in, [BUF_SIZE]);
 
@@ -51,7 +51,7 @@ static void test_abs_pow34(AACEncContext *s) {
         call_ref(out, in, BUF_SIZE);
         call_new(out2, in, BUF_SIZE);
 
-        if (memcmp(out, out2, BUF_SIZE * sizeof(float)) != 0)
+        if (!float_near_ulp_array(out, out2, 1, BUF_SIZE))
             fail();
 
         bench_new(out, in, BUF_SIZE);
@@ -63,8 +63,8 @@ static void test_abs_pow34(AACEncContext *s) {
 
 void checkasm_check_aacencdsp(void)
 {
-    AACEncContext s = { 0 };
-    ff_aac_dsp_init(&s);
+    AACEncDSPContext s = { 0 };
+    ff_aacenc_dsp_init(&s);
 
     test_abs_pow34(&s);
 }

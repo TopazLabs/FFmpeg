@@ -25,6 +25,7 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/internal.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 
@@ -55,29 +56,30 @@ static const AVOption options[] = {
         { .i64 = 0 }, INT_MIN, INT_MAX, VE },
     { "profile",       NULL, offsetof(DNXHDEncContext, profile), AV_OPT_TYPE_INT,
         { .i64 = AV_PROFILE_DNXHD },
-        AV_PROFILE_DNXHD, AV_PROFILE_DNXHR_444, VE, "profile" },
+        AV_PROFILE_DNXHD, AV_PROFILE_DNXHR_444, VE, .unit = "profile" },
     { "dnxhd",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_DNXHD },
-        0, 0, VE, "profile" },
+        0, 0, VE, .unit = "profile" },
     { "dnxhr_444", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_DNXHR_444 },
-        0, 0, VE, "profile" },
+        0, 0, VE, .unit = "profile" },
     { "dnxhr_hqx", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_DNXHR_HQX },
-        0, 0, VE, "profile" },
+        0, 0, VE, .unit = "profile" },
     { "dnxhr_hq",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_DNXHR_HQ },
-        0, 0, VE, "profile" },
+        0, 0, VE, .unit = "profile" },
     { "dnxhr_sq",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_DNXHR_SQ },
-        0, 0, VE, "profile" },
+        0, 0, VE, .unit = "profile" },
     { "dnxhr_lb",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_DNXHR_LB },
-        0, 0, VE, "profile" },
+        0, 0, VE, .unit = "profile" },
     { NULL }
 };
 
 static const AVClass dnxhd_class = {
     .class_name = "dnxhd",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static void dnxhd_8bit_get_pixels_8x4_sym(int16_t *av_restrict block,
+static void dnxhd_8bit_get_pixels_8x4_sym(int16_t *restrict block,
                                           const uint8_t *pixels,
                                           ptrdiff_t line_size)
 {
@@ -101,7 +103,7 @@ static void dnxhd_8bit_get_pixels_8x4_sym(int16_t *av_restrict block,
 }
 
 static av_always_inline
-void dnxhd_10bit_get_pixels_8x4_sym(int16_t *av_restrict block,
+void dnxhd_10bit_get_pixels_8x4_sym(int16_t *restrict block,
                                     const uint8_t *pixels,
                                     ptrdiff_t line_size)
 {
@@ -444,9 +446,7 @@ static av_cold int dnxhd_encode_init(AVCodecContext *avctx)
         ctx->block_width_l2     = 3;
     }
 
-#if ARCH_X86
-    ff_dnxhdenc_init_x86(ctx);
-#endif
+    ff_dnxhdenc_init(ctx);
 
     ctx->m.mb_height = (avctx->height + 15) / 16;
     ctx->m.mb_width  = (avctx->width  + 15) / 16;
@@ -1376,3 +1376,10 @@ const FFCodec ff_dnxhd_encoder = {
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_dnxhd_profiles),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
+
+void ff_dnxhdenc_init(DNXHDEncContext *ctx)
+{
+#if ARCH_X86
+    ff_dnxhdenc_init_x86(ctx);
+#endif
+}

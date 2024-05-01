@@ -37,6 +37,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/dict.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time_internal.h"
 
@@ -537,6 +538,7 @@ static const AVOption options[] = {
 
 static const AVClass webm_dash_class = {
     .class_name = "WebM DASH Manifest muxer",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

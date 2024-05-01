@@ -33,16 +33,14 @@
 #include "compat/va_copy.h"
 #include "libavformat/avformat.h"
 #include "libswscale/swscale.h"
-#include "libswscale/version.h"
 #include "libswresample/swresample.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
-#include "libavutil/channel_layout.h"
+#include "libavutil/bprint.h"
 #include "libavutil/display.h"
 #include "libavutil/getenv_utf8.h"
-#include "libavutil/mathematics.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/libm.h"
+#include "libavutil/mem.h"
 #include "libavutil/parseutils.h"
 #include "libavutil/eval.h"
 #include "libavutil/dict.h"
@@ -107,7 +105,7 @@ int parse_number(const char *context, const char *numstr, enum OptionType type,
 }
 
 void show_help_options(const OptionDef *options, const char *msg, int req_flags,
-                       int rej_flags, int alt_flags)
+                       int rej_flags)
 {
     const OptionDef *po;
     int first;
@@ -117,7 +115,6 @@ void show_help_options(const OptionDef *options, const char *msg, int req_flags,
         char buf[128];
 
         if (((po->flags & req_flags) != req_flags) ||
-            (alt_flags && !(po->flags & alt_flags)) ||
             (po->flags & rej_flags))
             continue;
 
@@ -126,10 +123,15 @@ void show_help_options(const OptionDef *options, const char *msg, int req_flags,
             first = 0;
         }
         av_strlcpy(buf, po->name, sizeof(buf));
-        if (po->argname) {
-            av_strlcat(buf, " ", sizeof(buf));
-            av_strlcat(buf, po->argname, sizeof(buf));
-        }
+
+        if (po->flags & OPT_FLAG_PERSTREAM)
+            av_strlcat(buf, "[:<stream_spec>]", sizeof(buf));
+        else if (po->flags & OPT_FLAG_SPEC)
+            av_strlcat(buf, "[:<spec>]", sizeof(buf));
+
+        if (po->argname)
+            av_strlcatf(buf, sizeof(buf), " <%s>", po->argname);
+
         printf("-%-17s  %s\n", buf, po->help);
     }
     printf("\n");
@@ -150,6 +152,9 @@ void show_help_children(const AVClass *class, int flags)
 
 static const OptionDef *find_option(const OptionDef *po, const char *name)
 {
+    if (*name == '/')
+        name++;
+
     while (po->name) {
         const char *end;
         if (av_strstart(name, po->name, &end) && (!*end || *end == ':'))
@@ -239,9 +244,32 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
      * a global var*/
     void *dst = po->flags & OPT_FLAG_OFFSET ?
                 (uint8_t *)optctx + po->u.off : po->u.dst_ptr;
+    char *arg_allocated = NULL;
+
     SpecifierOptList *sol = NULL;
     double num;
-    int ret;
+    int ret = 0;
+
+    if (*opt == '/') {
+        opt++;
+
+        if (po->type == OPT_TYPE_BOOL) {
+            av_log(NULL, AV_LOG_FATAL,
+                   "Requested to load an argument from file for a bool option '%s'\n",
+                   po->name);
+            return AVERROR(EINVAL);
+        }
+
+        arg_allocated = file_read(arg);
+        if (!arg_allocated) {
+            av_log(NULL, AV_LOG_FATAL,
+                   "Error reading the value for option '%s' from file: %s\n",
+                   opt, arg);
+            return AVERROR(EINVAL);
+        }
+
+        arg = arg_allocated;
+    }
 
     if (po->flags & OPT_FLAG_SPEC) {
         char *p = strchr(opt, ':');
@@ -250,32 +278,42 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
         sol = dst;
         ret = GROW_ARRAY(sol->opt, sol->nb_opt);
         if (ret < 0)
-            return ret;
+            goto finish;
 
         str = av_strdup(p ? p + 1 : "");
-        if (!str)
-            return AVERROR(ENOMEM);
+        if (!str) {
+            ret = AVERROR(ENOMEM);
+            goto finish;
+        }
         sol->opt[sol->nb_opt - 1].specifier = str;
         dst = &sol->opt[sol->nb_opt - 1].u;
     }
 
     if (po->type == OPT_TYPE_STRING) {
         char *str;
-        str = av_strdup(arg);
+        if (arg_allocated) {
+            str           = arg_allocated;
+            arg_allocated = NULL;
+        } else
+            str = av_strdup(arg);
         av_freep(dst);
-        if (!str)
-            return AVERROR(ENOMEM);
+
+        if (!str) {
+            ret = AVERROR(ENOMEM);
+            goto finish;
+        }
+
         *(char **)dst = str;
     } else if (po->type == OPT_TYPE_BOOL || po->type == OPT_TYPE_INT) {
         ret = parse_number(opt, arg, OPT_TYPE_INT64, INT_MIN, INT_MAX, &num);
         if (ret < 0)
-            return ret;
+            goto finish;
 
         *(int *)dst = num;
     } else if (po->type == OPT_TYPE_INT64) {
-        ret = parse_number(opt, arg, OPT_TYPE_INT64, INT64_MIN, INT64_MAX, &num);
+        ret = parse_number(opt, arg, OPT_TYPE_INT64, INT64_MIN, (double)INT64_MAX, &num);
         if (ret < 0)
-            return ret;
+            goto finish;
 
         *(int64_t *)dst = num;
     } else if (po->type == OPT_TYPE_TIME) {
@@ -283,23 +321,21 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR, "Invalid duration for option %s: %s\n",
                    opt, arg);
-            return ret;
+            goto finish;
         }
     } else if (po->type == OPT_TYPE_FLOAT) {
         ret = parse_number(opt, arg, OPT_TYPE_FLOAT, -INFINITY, INFINITY, &num);
         if (ret < 0)
-            return ret;
+            goto finish;
 
         *(float *)dst = num;
     } else if (po->type == OPT_TYPE_DOUBLE) {
         ret = parse_number(opt, arg, OPT_TYPE_DOUBLE, -INFINITY, INFINITY, &num);
         if (ret < 0)
-            return ret;
+            goto finish;
 
         *(double *)dst = num;
     } else {
-        int ret;
-
         av_assert0(po->type == OPT_TYPE_FUNC && po->u.func_arg);
 
         ret = po->u.func_arg(optctx, opt, arg);
@@ -307,11 +343,13 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
             av_log(NULL, AV_LOG_ERROR,
                    "Failed to set value '%s' for option '%s': %s\n",
                    arg, opt, av_err2str(ret));
-            return ret;
+            goto finish;
         }
     }
-    if (po->flags & OPT_EXIT)
-        return AVERROR_EXIT;
+    if (po->flags & OPT_EXIT) {
+        ret = AVERROR_EXIT;
+        goto finish;
+    }
 
     if (sol) {
         sol->type = po->type;
@@ -319,7 +357,9 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
                          find_option(defs, po->u1.name_canon) : po;
     }
 
-    return 0;
+finish:
+    av_freep(&arg_allocated);
+    return ret;
 }
 
 int parse_option(void *optctx, const char *opt, const char *arg,
@@ -485,7 +525,7 @@ static void check_options(const OptionDef *po)
 {
     while (po->name) {
         if (po->flags & OPT_PERFILE)
-            av_assert0(po->flags & (OPT_INPUT | OPT_OUTPUT));
+            av_assert0(po->flags & (OPT_INPUT | OPT_OUTPUT | OPT_DECODER));
 
         if (po->type == OPT_TYPE_FUNC)
             av_assert0(!(po->flags & (OPT_FLAG_OFFSET | OPT_FLAG_SPEC)));
@@ -750,7 +790,7 @@ int split_commandline(OptionParseContext *octx, int argc, char *argv[],
     while (optindex < argc) {
         const char *opt = argv[optindex++], *arg;
         const OptionDef *po;
-        int ret;
+        int ret, group_idx;
 
         av_log(NULL, AV_LOG_DEBUG, "Reading option '%s' ...", opt);
 
@@ -779,14 +819,15 @@ do {                                                                           \
 } while (0)
 
         /* named group separators, e.g. -i */
-        if ((ret = match_group_separator(groups, nb_groups, opt)) >= 0) {
+        group_idx = match_group_separator(groups, nb_groups, opt);
+        if (group_idx >= 0) {
             GET_ARG(arg);
-            ret = finish_group(octx, ret, arg);
+            ret = finish_group(octx, group_idx, arg);
             if (ret < 0)
                 return ret;
 
             av_log(NULL, AV_LOG_DEBUG, " matched as %s with argument '%s'.\n",
-                   groups[ret].name, arg);
+                   groups[group_idx].name, arg);
             continue;
         }
 
@@ -850,11 +891,6 @@ do {                                                                           \
     av_log(NULL, AV_LOG_DEBUG, "Finished splitting the commandline.\n");
 
     return 0;
-}
-
-void print_error(const char *filename, int err)
-{
-    av_log(NULL, AV_LOG_ERROR, "%s: %s\n", filename, av_err2str(err));
 }
 
 int read_yesno(void)
@@ -958,10 +994,6 @@ int filter_codec_opts(const AVDictionary *opts, enum AVCodecID codec_id,
                                       : AV_OPT_FLAG_DECODING_PARAM;
     char          prefix = 0;
     const AVClass    *cc = avcodec_get_class();
-
-    if (!codec)
-        codec            = s->oformat ? avcodec_find_encoder(codec_id)
-                                      : avcodec_find_decoder(codec_id);
 
     switch (st->codecpar->codec_type) {
     case AVMEDIA_TYPE_VIDEO:
@@ -1076,7 +1108,7 @@ double get_rotation(const int32_t *displaymatrix)
 {
     double theta = 0;
     if (displaymatrix)
-        theta = -round(av_display_rotation_get((int32_t*) displaymatrix));
+        theta = -round(av_display_rotation_get(displaymatrix));
 
     theta -= 360*floor(theta/360 + 0.9/360);
 
@@ -1087,4 +1119,30 @@ double get_rotation(const int32_t *displaymatrix)
                "and contact the ffmpeg-devel mailing list. (ffmpeg-devel@ffmpeg.org)");
 
     return theta;
+}
+
+/* read file contents into a string */
+char *file_read(const char *filename)
+{
+    AVIOContext *pb      = NULL;
+    int ret = avio_open(&pb, filename, AVIO_FLAG_READ);
+    AVBPrint bprint;
+    char *str;
+
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Error opening file %s.\n", filename);
+        return NULL;
+    }
+
+    av_bprint_init(&bprint, 0, AV_BPRINT_SIZE_UNLIMITED);
+    ret = avio_read_to_bprint(pb, &bprint, SIZE_MAX);
+    avio_closep(&pb);
+    if (ret < 0) {
+        av_bprint_finalize(&bprint, NULL);
+        return NULL;
+    }
+    ret = av_bprint_finalize(&bprint, &str);
+    if (ret < 0)
+        return NULL;
+    return str;
 }

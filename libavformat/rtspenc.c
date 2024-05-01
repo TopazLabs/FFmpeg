@@ -32,12 +32,14 @@
 #include "avio_internal.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/avstring.h"
+#include "libavutil/mem.h"
 #include "libavutil/time.h"
 #include "url.h"
 
 
 static const AVClass rtsp_muxer_class = {
     .class_name = "RTSP muxer",
+    .item_name  = av_default_item_name,
     .option     = ff_rtsp_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

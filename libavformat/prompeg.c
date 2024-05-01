@@ -80,10 +80,9 @@
 
  */
 
-#include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/random_seed.h"
 #include "avformat.h"
 #include "config.h"
@@ -129,6 +128,7 @@ static const AVOption options[] = {
 
 static const AVClass prompeg_class = {
     .class_name = "prompeg",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

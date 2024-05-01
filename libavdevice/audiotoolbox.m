@@ -28,6 +28,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #include <pthread.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavformat/internal.h"
 #include "libavformat/mux.h"
@@ -293,6 +294,7 @@ static const AVOption options[] = {
 
 static const AVClass at_class = {
     .class_name = "AudioToolbox",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
     .category   = AV_CLASS_CATEGORY_DEVICE_AUDIO_OUTPUT,
