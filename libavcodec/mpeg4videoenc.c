@@ -22,10 +22,10 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/thread.h"
 #include "codec_internal.h"
-#include "mpegutils.h"
 #include "mpegvideo.h"
 #include "h263.h"
 #include "h263enc.h"
@@ -1388,6 +1388,7 @@ static const AVOption options[] = {
 
 static const AVClass mpeg4enc_class = {
     .class_name = "MPEG4 encoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

@@ -22,6 +22,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/file_open.h"
 #include "libavutil/getenv_utf8.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include <sys/stat.h>
 #include "os_support.h"
@@ -331,6 +332,7 @@ static const AVOption options[] = {
 
 static const AVClass ipfs_gateway_context_class = {
     .class_name     = "IPFS Gateway",
+    .item_name      = av_default_item_name,
     .option         = options,
     .version        = LIBAVUTIL_VERSION_INT,
 };

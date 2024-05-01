@@ -307,10 +307,6 @@ For example, in case of the @ref{drawtext,,drawtext filter}, you might prefer to
 use the @option{textfile} option in place of @option{text} to specify the text
 to render.
 
-When using the @command{ffmpeg} tool, you might consider to use the
-@ref{filter_script option,,-filter_script option,ffmpeg} or
-@ref{filter_complex_script option,,-filter_complex_script option,ffmpeg}.
-
 @chapter Timeline editing
 
 Some filters support a generic @option{enable} option. For the filters
@@ -4295,14 +4291,18 @@ It accepts the following parameters:
 @item map
 Map channels from input to output. The argument is a '|'-separated list of
 mappings, each in the @code{@var{in_channel}-@var{out_channel}} or
-@var{in_channel} form. @var{in_channel} can be either the name of the input
-channel (e.g. FL for front left) or its index in the input channel layout.
-@var{out_channel} is the name of the output channel or its index in the output
-channel layout. If @var{out_channel} is not given then it is implicitly an
-index, starting with zero and increasing by one for each mapping.
+@code{@var{in_channel}} form. @var{in_channel} can be either the name of the
+input channel (e.g. FL for front left) or its index in the input channel
+layout. @var{out_channel} is the name of the output channel or its index in the
+output channel layout. If @var{out_channel} is not given then it is implicitly
+an index, starting with zero and increasing by one for each mapping. Mixing
+different types of mappings is not allowed and will result in a parse error.
 
 @item channel_layout
-The channel layout of the output stream.
+The channel layout of the output stream. If not specified, then filter will
+guess it based on the @var{out_channel} names or the number of mappings.
+Guessed layouts will not necessarily contain channels in the order of the
+mappings.
 @end table
 
 If no mapping is present, the filter will implicitly map input channels to
@@ -10501,7 +10501,7 @@ and from 1 to 49 odd number of signed integers in @var{row} mode.
 @item 2rdiv
 @item 3rdiv
 Set multiplier for calculated value for each plane.
-If unset or 0, it will be sum of all matrix elements.
+If unset or 0, it will be 1/sum of all matrix elements.
 
 @item 0bias
 @item 1bias
@@ -12073,11 +12073,21 @@ need to build and install the OpenVINO for C library (see
 @code{--enable-libopenvino} (--extra-cflags=-I... --extra-ldflags=-L... might
 be needed if the header files and libraries are not installed into system path)
 
+@item torch
+Libtorch backend. To enable this backend you need to build and install Libtroch
+for C++ library. Please download cxx11 ABI version (see
+@url{https://pytorch.org/get-started/locally})
+and configure FFmpeg with @code{--enable-libtorch
+--extra-cflags=-I/libtorch_root/libtorch/include
+--extra-cflags=-I/libtorch_root/libtorch/include/torch/csrc/api/include
+--extra-ldflags=-L/libtorch_root/libtorch/lib/}
+
 @end table
 
 @item model
 Set path to model file specifying network architecture and its parameters.
-Note that different backends use different file formats. TensorFlow, OpenVINO backend can load files for only its format.
+Note that different backends use different file formats. TensorFlow, OpenVINO
+and Libtorch backend can load files for only its format.
 
 @item input
 Set the input name of the dnn network.
@@ -14125,15 +14135,6 @@ For example:
 @example
 ffmpeg -i in.vob -vf "fieldorder=bff" out.dv
 @end example
-
-@section fifo, afifo
-
-Buffer input images and send them when they are requested.
-
-It is mainly useful when auto-inserted by the libavfilter
-framework.
-
-It does not take parameters.
 
 @section fillborders
 
@@ -27831,8 +27832,7 @@ The inputs have same memory layout for color channels, the overlay has additiona
 
 @section tonemap_vaapi
 
-Perform HDR(High Dynamic Range) to SDR(Standard Dynamic Range) conversion with tone-mapping.
-It maps the dynamic range of HDR10 content to the SDR content.
+Perform HDR-to-SDR or HDR-to-HDR tone-mapping.
 It currently only accepts HDR10 as input.
 
 It accepts the following parameters:
@@ -27841,28 +27841,42 @@ It accepts the following parameters:
 @item format
 Specify the output pixel format.
 
-Currently supported formats are:
-@table @var
-@item p010
-@item nv12
-@end table
-
-Default is nv12.
+Default is nv12 for HDR-to-SDR tone-mapping and p010 for HDR-to-HDR
+tone-mapping.
 
 @item primaries, p
 Set the output color primaries.
 
-Default is same as input.
+Default is bt709 for HDR-to-SDR tone-mapping and same as input for HDR-to-HDR
+tone-mapping.
 
 @item transfer, t
 Set the output transfer characteristics.
 
-Default is bt709.
+Default is bt709 for HDR-to-SDR tone-mapping and same as input for HDR-to-HDR
+tone-mapping.
 
 @item matrix, m
 Set the output colorspace matrix.
 
-Default is same as input.
+Default is bt709 for HDR-to-SDR tone-mapping and same as input for HDR-to-HDR
+tone-mapping.
+
+@item display
+Set the output mastering display colour volume. It is given by a '|'-separated
+list of two values, two values are space separated. It set display primaries
+x & y in G, B, R order, then white point x & y, the nominal minimum & maximum
+display luminances.
+
+HDR-to-HDR tone-mapping will be performed when this option is set.
+
+@item light
+Set the output content light level information. It accepts 2 space-separated
+values, the first input is the maximum light level and the second input is
+the maximum average light level.
+
+It is ignored for HDR-to-SDR tone-mapping, and optional for HDR-to-HDR
+tone-mapping.
 
 @end table
 
@@ -27873,6 +27887,11 @@ Default is same as input.
 Convert HDR(HDR10) video to bt2020-transfer-characteristic p010 format
 @example
 tonemap_vaapi=format=p010:t=bt2020-10
+@end example
+@item
+Convert HDR video to HDR video
+@example
+tonemap_vaapi=display=7500\ 3000|34000\ 16000|13250\ 34500|15635\ 16450|500\ 10000000
 @end example
 @end itemize
 
@@ -27953,6 +27972,168 @@ first input stream. For the syntax of this option, check the
 @item fill
 See @ref{xstack}.
 @end table
+
+@section pad_vaapi
+
+Add paddings to the input image, and place the original input at the
+provided @var{x}, @var{y} coordinates.
+
+It accepts the following options:
+
+@table @option
+@item width, w
+@item height, h
+Specify an expression for the size of the output image with the
+paddings added. If the value for @var{width} or @var{height} is 0, the
+corresponding input size is used for the output.
+
+The @var{width} expression can reference the value set by the
+@var{height} expression, and vice versa.
+
+The default value of @var{width} and @var{height} is 0.
+
+@item x
+@item y
+Specify the offsets to place the input image at within the padded area,
+with respect to the top/left border of the output image.
+
+The @var{x} expression can reference the value set by the @var{y}
+expression, and vice versa.
+
+The default value of @var{x} and @var{y} is 0.
+
+If @var{x} or @var{y} evaluate to a negative number, they'll be changed
+so the input image is centered on the padded area.
+
+@item color
+Specify the color of the padded area. For the syntax of this option,
+check the @ref{color syntax,,"Color" section in the ffmpeg-utils
+manual,ffmpeg-utils}.
+
+@item aspect
+Pad to an aspect instead to a resolution.
+@end table
+
+The value for the @var{width}, @var{height}, @var{x}, and @var{y}
+options are expressions containing the following constants:
+
+@table @option
+@item in_w
+@item in_h
+The input video width and height.
+
+@item iw
+@item ih
+These are the same as @var{in_w} and @var{in_h}.
+
+@item out_w
+@item out_h
+The output width and height (the size of the padded area), as
+specified by the @var{width} and @var{height} expressions.
+
+@item ow
+@item oh
+These are the same as @var{out_w} and @var{out_h}.
+
+@item x
+@item y
+The x and y offsets as specified by the @var{x} and @var{y}
+expressions, or NAN if not yet specified.
+
+@item a
+same as @var{iw} / @var{ih}
+
+@item sar
+input sample aspect ratio
+
+@item dar
+input display aspect ratio, it is the same as (@var{iw} / @var{ih}) * @var{sar}
+@end table
+
+@section drawbox_vaapi
+
+Draw a colored box on the input image.
+
+It accepts the following parameters:
+
+@table @option
+@item x
+@item y
+The expressions which specify the top left corner coordinates of the box. It defaults to 0.
+
+@item width, w
+@item height, h
+The expressions which specify the width and height of the box; if 0 they are interpreted as
+the input width and height. It defaults to 0.
+
+@item color, c
+Specify the color of the box to write. For the general syntax of this option,
+check the @ref{color syntax,,"Color" section in the ffmpeg-utils manual,ffmpeg-utils}.
+
+@item thickness, t
+The expression which sets the thickness of the box edge.
+A value of @code{fill} will create a filled box. Default value is @code{3}.
+
+See below for the list of accepted constants.
+
+@item replace
+With value @code{1}, the pixels of the painted box will overwrite the video's color and alpha pixels.
+Default is @code{0}, which composites the box onto the input video.
+@end table
+
+The parameters for @var{x}, @var{y}, @var{w} and @var{h} and @var{t} are expressions containing the
+following constants:
+
+@table @option
+@item in_h, ih
+@item in_w, iw
+The input width and height.
+
+@item x
+@item y
+The x and y offset coordinates where the box is drawn.
+
+@item w
+@item h
+The width and height of the drawn box.
+
+@item t
+The thickness of the drawn box.
+
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Draw a black box around the edge of the input image:
+@example
+drawbox
+@end example
+
+@item
+Draw a box with color red and an opacity of 50%:
+@example
+drawbox=10:20:200:60:red@@0.5
+@end example
+
+The previous example can be specified as:
+@example
+drawbox=x=10:y=20:w=200:h=60:color=red@@0.5
+@end example
+
+@item
+Fill the box with pink color:
+@example
+drawbox=x=10:y=10:w=100:h=100:color=pink@@0.5:t=fill
+@end example
+
+@item
+Draw a 2-pixel red 2.40:1 mask:
+@example
+drawbox=x=-t:y=0.5*(ih-iw/2.4)-t:w=iw+t*2:h=iw/2.4+t*2:t=2:c=red
+@end example
+@end itemize
 
 @c man end VAAPI VIDEO FILTERS
 
@@ -28717,10 +28898,10 @@ it'll always be captured.
 @item framerate
 Maximum framerate at which the desktop will be captured - the interval between
 successive frames will not be smaller than the inverse of the framerate. When
-the desktop is not being updated often enough, the filter will duplicate
-a previous frame. Note that there is no background buffering going on, so when
-the filter is not polled often enough then the actual inter-frame interval may
-be significantly larger.
+@var{dup_frames} is true (the default) and the desktop is not being updated
+often enough, the filter will duplicate a previous frame. Note that there is no
+background buffering going on, so when the filter is not polled often enough
+then the actual inter-frame interval may be significantly larger.
 
 Defaults to 30 FPS.
 
@@ -28752,6 +28933,13 @@ Passes all supported output formats to DDA and returns what DDA decides to use.
 @item x2bgr10
 Filter initialization will fail if 10 bit format is requested but unavailable.
 @end table
+
+@item dup_frames
+When this option is set to true (the default), the filter will duplicate frames
+when the desktop has not been updated in order to maintain approximately
+constant target framerate. When this option is set to false, the filter will
+wait for the desktop to be updated (inter-frame intervals may vary significantly
+in this case).
 
 @end table
 

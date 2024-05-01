@@ -23,6 +23,7 @@
 #include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
+#include "demux.h"
 #include "internal.h"
 #include "avformat.h"
 
@@ -127,19 +128,20 @@ static const AVOption ser_options[] = {
 
 static const AVClass ser_demuxer_class = {
     .class_name = "ser demuxer",
+    .item_name  = av_default_item_name,
     .option     = ser_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_ser_demuxer = {
-    .name           = "ser",
-    .long_name      = NULL_IF_CONFIG_SMALL("SER (Simple uncompressed video format for astronomical capturing)"),
+const FFInputFormat ff_ser_demuxer = {
+    .p.name         = "ser",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("SER (Simple uncompressed video format for astronomical capturing)"),
+    .p.flags        = AVFMT_GENERIC_INDEX,
+    .p.extensions   = "ser",
+    .p.priv_class   = &ser_demuxer_class,
     .priv_data_size = sizeof(SERDemuxerContext),
     .read_probe     = ser_probe,
     .read_header    = ser_read_header,
     .read_packet    = ser_read_packet,
-    .flags          = AVFMT_GENERIC_INDEX,
-    .extensions     = "ser",
     .raw_codec_id   = AV_CODEC_ID_RAWVIDEO,
-    .priv_class     = &ser_demuxer_class,
 };

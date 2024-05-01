@@ -24,6 +24,7 @@
 
 #include "config_components.h"
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #include "avcodec.h"
@@ -989,6 +990,7 @@ static const AVOption options[] = {
 
 static const AVClass adpcm_encoder_class = {
     .class_name = "ADPCM encoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

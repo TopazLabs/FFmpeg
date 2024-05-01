@@ -20,8 +20,8 @@
  */
 
 
-#include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #include "avformat.h"
@@ -207,6 +207,7 @@ static int icecast_write(URLContext *h, const uint8_t *buf, int size)
 
 static const AVClass icecast_context_class = {
     .class_name     = "icecast",
+    .item_name      = av_default_item_name,
     .option         = options,
     .version        = LIBAVUTIL_VERSION_INT,
 };

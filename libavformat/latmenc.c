@@ -52,6 +52,7 @@ static const AVOption options[] = {
 
 static const AVClass latm_muxer_class = {
     .class_name = "LATM/LOAS muxer",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
@@ -267,6 +268,8 @@ const FFOutputFormat ff_latm_muxer = {
     .priv_data_size = sizeof(LATMContext),
     .p.audio_codec  = AV_CODEC_ID_AAC,
     .p.video_codec  = AV_CODEC_ID_NONE,
+    .p.subtitle_codec = AV_CODEC_ID_NONE,
+    .flags_internal   = FF_OFMT_FLAG_MAX_ONE_OF_EACH,
     .write_header   = latm_write_header,
     .write_packet   = latm_write_packet,
     .p.priv_class   = &latm_muxer_class,

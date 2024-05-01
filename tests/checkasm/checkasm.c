@@ -164,6 +164,12 @@ static const struct {
     #if CONFIG_PIXBLOCKDSP
         { "pixblockdsp", checkasm_check_pixblockdsp },
     #endif
+    #if CONFIG_RV34DSP
+        { "rv34dsp", checkasm_check_rv34dsp },
+    #endif
+    #if CONFIG_SVQ1_ENCODER
+        { "svq1enc", checkasm_check_svq1enc },
+    #endif
     #if CONFIG_TAK_DECODER
         { "takdsp", checkasm_check_takdsp },
     #endif
@@ -190,6 +196,9 @@ static const struct {
     #endif
     #if CONFIG_VORBIS_DECODER
         { "vorbisdsp", checkasm_check_vorbisdsp },
+    #endif
+    #if CONFIG_VVC_DECODER
+        { "vvc_mc", checkasm_check_vvc_mc },
     #endif
 #endif
 #if CONFIG_AVFILTER
@@ -733,6 +742,9 @@ static int bench_init_linux(void)
         .disabled       = 1, // start counting only on demand
         .exclude_kernel = 1,
         .exclude_hv     = 1,
+#if !ARCH_X86
+        .exclude_guest  = 1,
+#endif
     };
 
     printf("benchmarking with Linux Perf Monitoring API\n");
@@ -754,6 +766,14 @@ static int bench_init_kperf(void)
 static int bench_init_ffmpeg(void)
 {
 #ifdef AV_READ_TIME
+    if (!checkasm_save_context()) {
+        checkasm_set_signal_handler_state(1);
+        AV_READ_TIME();
+        checkasm_set_signal_handler_state(0);
+    } else {
+        fprintf(stderr, "checkasm: unable to execute platform specific timer\n");
+        return -1;
+    }
     printf("benchmarking with native FFmpeg timers\n");
     return 0;
 #else
@@ -927,7 +947,9 @@ int checkasm_bench_func(void)
 /* Indicate that the current test has failed */
 void checkasm_fail_func(const char *msg, ...)
 {
-    if (state.current_func_ver->cpu && state.current_func_ver->ok) {
+    if (state.current_func_ver && state.current_func_ver->cpu &&
+        state.current_func_ver->ok)
+    {
         va_list arg;
 
         print_cpu_name();

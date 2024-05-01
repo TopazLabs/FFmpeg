@@ -29,6 +29,7 @@
 #include "libavutil/iamf.h"
 #include "libavutil/internal.h"
 #include "libavutil/intmath.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 /**
@@ -152,13 +153,6 @@ static int io_open_default(AVFormatContext *s, AVIOContext **pb,
     return ffio_open_whitelist(pb, url, flags, &s->interrupt_callback, options, s->protocol_whitelist, s->protocol_blacklist);
 }
 
-#if FF_API_AVFORMAT_IO_CLOSE
-void ff_format_io_close_default(AVFormatContext *s, AVIOContext *pb)
-{
-    avio_close(pb);
-}
-#endif
-
 static int io_close2_default(AVFormatContext *s, AVIOContext *pb)
 {
     return avio_close(pb);
@@ -175,11 +169,6 @@ AVFormatContext *avformat_alloc_context(void)
     s = &si->pub;
     s->av_class = &av_format_context_class;
     s->io_open  = io_open_default;
-#if FF_API_AVFORMAT_IO_CLOSE
-FF_DISABLE_DEPRECATION_WARNINGS
-    s->io_close = ff_format_io_close_default;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     s->io_close2= io_close2_default;
 
     av_opt_set_defaults(s);
@@ -198,38 +187,42 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return s;
 }
 
+#if FF_API_GET_DUR_ESTIMATE_METHOD
 enum AVDurationEstimationMethod av_fmt_ctx_get_duration_estimation_method(const AVFormatContext* ctx)
 {
     return ctx->duration_estimation_method;
 }
+#endif
 
 const AVClass *avformat_get_class(void)
 {
     return &av_format_context_class;
 }
 
-static const AVOption stream_options[] = {
-    { "disposition", NULL, offsetof(AVStream, disposition), AV_OPT_TYPE_FLAGS, { .i64 = 0 },
-        .flags = AV_OPT_FLAG_ENCODING_PARAM, .unit = "disposition" },
-        { "default",            .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DEFAULT           },    .unit = "disposition" },
-        { "dub",                .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DUB               },    .unit = "disposition" },
-        { "original",           .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_ORIGINAL          },    .unit = "disposition" },
-        { "comment",            .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_COMMENT           },    .unit = "disposition" },
-        { "lyrics",             .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_LYRICS            },    .unit = "disposition" },
-        { "karaoke",            .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_KARAOKE           },    .unit = "disposition" },
-        { "forced",             .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_FORCED            },    .unit = "disposition" },
-        { "hearing_impaired",   .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_HEARING_IMPAIRED  },    .unit = "disposition" },
-        { "visual_impaired",    .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_VISUAL_IMPAIRED   },    .unit = "disposition" },
-        { "clean_effects",      .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CLEAN_EFFECTS     },    .unit = "disposition" },
-        { "attached_pic",       .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_ATTACHED_PIC      },    .unit = "disposition" },
-        { "timed_thumbnails",   .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_TIMED_THUMBNAILS  },    .unit = "disposition" },
-        { "non_diegetic",       .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_NON_DIEGETIC      },    .unit = "disposition" },
-        { "captions",           .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CAPTIONS          },    .unit = "disposition" },
-        { "descriptions",       .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DESCRIPTIONS      },    .unit = "disposition" },
-        { "metadata",           .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_METADATA          },    .unit = "disposition" },
-        { "dependent",          .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DEPENDENT         },    .unit = "disposition" },
-        { "still_image",        .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_STILL_IMAGE       },    .unit = "disposition" },
+#define DISPOSITION_OPT(ctx)                                                                                                        \
+    { "disposition", NULL, offsetof(ctx, disposition), AV_OPT_TYPE_FLAGS, { .i64 = 0 },                                             \
+        .flags = AV_OPT_FLAG_ENCODING_PARAM, .unit = "disposition" },                                                               \
+        { "default",            .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DEFAULT           },    .unit = "disposition" }, \
+        { "dub",                .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DUB               },    .unit = "disposition" }, \
+        { "original",           .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_ORIGINAL          },    .unit = "disposition" }, \
+        { "comment",            .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_COMMENT           },    .unit = "disposition" }, \
+        { "lyrics",             .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_LYRICS            },    .unit = "disposition" }, \
+        { "karaoke",            .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_KARAOKE           },    .unit = "disposition" }, \
+        { "forced",             .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_FORCED            },    .unit = "disposition" }, \
+        { "hearing_impaired",   .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_HEARING_IMPAIRED  },    .unit = "disposition" }, \
+        { "visual_impaired",    .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_VISUAL_IMPAIRED   },    .unit = "disposition" }, \
+        { "clean_effects",      .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CLEAN_EFFECTS     },    .unit = "disposition" }, \
+        { "attached_pic",       .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_ATTACHED_PIC      },    .unit = "disposition" }, \
+        { "timed_thumbnails",   .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_TIMED_THUMBNAILS  },    .unit = "disposition" }, \
+        { "non_diegetic",       .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_NON_DIEGETIC      },    .unit = "disposition" }, \
+        { "captions",           .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CAPTIONS          },    .unit = "disposition" }, \
+        { "descriptions",       .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DESCRIPTIONS      },    .unit = "disposition" }, \
+        { "metadata",           .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_METADATA          },    .unit = "disposition" }, \
+        { "dependent",          .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DEPENDENT         },    .unit = "disposition" }, \
+        { "still_image",        .type = AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_STILL_IMAGE       },    .unit = "disposition" }
 
+static const AVOption stream_options[] = {
+    DISPOSITION_OPT(AVStream),
     { "discard", NULL, offsetof(AVStream, discard), AV_OPT_TYPE_INT, { .i64 = AVDISCARD_DEFAULT }, INT_MIN, INT_MAX,
         .flags = AV_OPT_FLAG_DECODING_PARAM, .unit = "avdiscard" },
         { "none",               .type = AV_OPT_TYPE_CONST, {.i64 = AVDISCARD_NONE     }, .unit = "avdiscard" },
@@ -244,6 +237,7 @@ static const AVOption stream_options[] = {
 
 static const AVClass stream_class = {
     .class_name     = "AVStream",
+    .item_name      = av_default_item_name,
     .version        = LIBAVUTIL_VERSION_INT,
     .option         = stream_options,
 };
@@ -282,11 +276,12 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
         goto fail;
 
     sti->fmtctx = s;
-    sti->avctx = avcodec_alloc_context3(NULL);
-    if (!sti->avctx)
-        goto fail;
 
     if (s->iformat) {
+        sti->avctx = avcodec_alloc_context3(NULL);
+        if (!sti->avctx)
+            goto fail;
+
         sti->info = av_mallocz(sizeof(*sti->info));
         if (!sti->info)
             goto fail;
@@ -322,6 +317,7 @@ AVStream *avformat_new_stream(AVFormatContext *s, const AVCodec *c)
         sti->pts_buffer[i] = AV_NOPTS_VALUE;
 
     st->sample_aspect_ratio = (AVRational) { 0, 1 };
+    sti->transferred_mux_tb = (AVRational) { 0, 1 };;
 
 #if FF_API_AVSTREAM_SIDE_DATA
     sti->inject_global_side_data = si->inject_global_side_data;
@@ -336,6 +332,28 @@ fail:
     return NULL;
 }
 
+#define FLAGS AV_OPT_FLAG_ENCODING_PARAM | AV_OPT_FLAG_VIDEO_PARAM
+#define OFFSET(x) offsetof(AVStreamGroupTileGrid, x)
+static const AVOption tile_grid_options[] = {
+    { "grid_size", "size of the output canvas", OFFSET(coded_width),
+        AV_OPT_TYPE_IMAGE_SIZE, { .str = NULL }, 0, INT_MAX, FLAGS },
+    { "output_size", "size of valid pixels in output image meant for presentation", OFFSET(width),
+        AV_OPT_TYPE_IMAGE_SIZE, { .str = NULL }, 0, INT_MAX, FLAGS },
+    { "background_color", "set a background color for unused pixels",
+        OFFSET(background), AV_OPT_TYPE_COLOR, { .str = "black"}, 0, 0, FLAGS },
+    { "horizontal_offset", NULL, OFFSET(horizontal_offset), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, FLAGS },
+    { "vertical_offset",   NULL, OFFSET(vertical_offset),   AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, FLAGS },
+    { NULL },
+};
+#undef FLAGS
+#undef OFFSET
+
+static const AVClass tile_grid_class = {
+    .class_name = "AVStreamGroupTileGrid",
+    .version    = LIBAVUTIL_VERSION_INT,
+    .option     = tile_grid_options,
+};
+
 static void *stream_group_child_next(void *obj, void *prev)
 {
     AVStreamGroup *stg = obj;
@@ -345,6 +363,8 @@ static void *stream_group_child_next(void *obj, void *prev)
             return stg->params.iamf_audio_element;
         case AV_STREAM_GROUP_PARAMS_IAMF_MIX_PRESENTATION:
             return stg->params.iamf_mix_presentation;
+        case AV_STREAM_GROUP_PARAMS_TILE_GRID:
+            return stg->params.tile_grid;
         default:
             break;
         }
@@ -367,6 +387,9 @@ static const AVClass *stream_group_child_iterate(void **opaque)
     case AV_STREAM_GROUP_PARAMS_IAMF_MIX_PRESENTATION:
         ret = av_iamf_mix_presentation_get_class();
         break;
+    case AV_STREAM_GROUP_PARAMS_TILE_GRID:
+        ret = &tile_grid_class;
+        break;
     default:
         break;
     }
@@ -377,12 +400,14 @@ static const AVClass *stream_group_child_iterate(void **opaque)
 }
 
 static const AVOption stream_group_options[] = {
+    DISPOSITION_OPT(AVStreamGroup),
     {"id", "Set group id", offsetof(AVStreamGroup, id), AV_OPT_TYPE_INT64, {.i64 = 0}, 0, INT64_MAX, AV_OPT_FLAG_ENCODING_PARAM },
     { NULL }
 };
 
 static const AVClass stream_group_class = {
     .class_name     = "AVStreamGroup",
+    .item_name      = av_default_item_name,
     .version        = LIBAVUTIL_VERSION_INT,
     .option         = stream_group_options,
     .child_next     = stream_group_child_next,
@@ -426,6 +451,13 @@ AVStreamGroup *avformat_stream_group_create(AVFormatContext *s,
         stg->params.iamf_mix_presentation = av_iamf_mix_presentation_alloc();
         if (!stg->params.iamf_mix_presentation)
             goto fail;
+        break;
+    case AV_STREAM_GROUP_PARAMS_TILE_GRID:
+        stg->params.tile_grid = av_mallocz(sizeof(*stg->params.tile_grid));
+        if (!stg->params.tile_grid)
+            goto fail;
+        stg->params.tile_grid->av_class = &tile_grid_class;
+        av_opt_set_defaults(stg->params.tile_grid);
         break;
     default:
         goto fail;

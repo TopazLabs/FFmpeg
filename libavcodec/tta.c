@@ -32,6 +32,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/crc.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #define BITSTREAM_READER_LE
@@ -420,6 +421,7 @@ static const AVOption options[] = {
 
 static const AVClass tta_decoder_class = {
     .class_name = "TTA Decoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

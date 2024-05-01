@@ -57,6 +57,7 @@ static const AVOption options[] = {
 
 static const AVClass mpjpeg_muxer_class = {
     .class_name = "mpjpeg_muxer",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
@@ -69,6 +70,8 @@ const FFOutputFormat ff_mpjpeg_muxer = {
     .priv_data_size    = sizeof(MPJPEGContext),
     .p.audio_codec     = AV_CODEC_ID_NONE,
     .p.video_codec     = AV_CODEC_ID_MJPEG,
+    .p.subtitle_codec  = AV_CODEC_ID_NONE,
+    .flags_internal    = FF_OFMT_FLAG_ONLY_DEFAULT_CODECS,
     .write_header      = mpjpeg_write_header,
     .write_packet      = mpjpeg_write_packet,
     .p.flags           = AVFMT_NOTIMESTAMPS,

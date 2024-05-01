@@ -23,7 +23,7 @@ FFMPEG=ffmpeg$(PROGSSUF)$(EXESUF)
 $(AREF): CMP=
 
 APITESTSDIR := tests/api
-FATE_OUTDIRS = tests/data tests/data/fate tests/data/filtergraphs tests/data/maps tests/data/lavf tests/data/lavf-fate tests/data/pixfmt tests/vsynth1 $(APITESTSDIR)
+FATE_OUTDIRS = tests/data tests/data/fate tests/data/filtergraphs tests/data/maps tests/data/streamgroups tests/data/lavf tests/data/lavf-fate tests/data/pixfmt tests/vsynth1 $(APITESTSDIR)
 OUTDIRS += $(FATE_OUTDIRS)
 
 $(VREF): tests/videogen$(HOSTEXESUF) | tests/vsynth1
@@ -51,15 +51,6 @@ tests/test_copy.ffmeta: TAG = COPY
 tests/test_copy.ffmeta: tests/data
 	$(M)cp -f $(SRC_PATH)/tests/test.ffmeta tests/test_copy.ffmeta
 
-tests/data/ffprobe-test.nut: ffmpeg$(PROGSSUF)$(EXESUF) tests/test_copy.ffmeta
-	$(M)$(TARGET_EXEC) $(TARGET_PATH)/$< -nostdin \
-        -f lavfi -i "aevalsrc=sin(400*PI*2*t):d=0.125[out0]; testsrc=d=0.125[out1]; testsrc=s=100x100:d=0.125[out2]" \
-        -f ffmetadata -i $(TARGET_PATH)/tests/test_copy.ffmeta \
-        -flags +bitexact -fflags +bitexact -map 0:0 -map 0:1 -map 0:2 -map_metadata 1 \
-        -map_metadata:s:0 1:s:0 -map_metadata:s:1 1:s:1 \
-        -vcodec rawvideo -acodec pcm_s16le \
-        -y $(TARGET_PATH)/$@ 2>/dev/null
-
 tests/data/%.sw tests/data/asynth% tests/data/vsynth%.yuv tests/vsynth%/00.pgm tests/data/%.nut: TAG = GEN
 
 tests/data/filtergraphs/%: TAG = COPY
@@ -68,6 +59,10 @@ tests/data/filtergraphs/%: $(SRC_PATH)/tests/filtergraphs/% | tests/data/filterg
 
 tests/data/maps/%: TAG = COPY
 tests/data/maps/%: $(SRC_PATH)/tests/maps/% | tests/data/maps
+	$(M)cp $< $@
+
+tests/data/streamgroups/%: TAG = COPY
+tests/data/streamgroups/%: $(SRC_PATH)/tests/streamgroups/% | tests/data/streamgroups
 	$(M)cp $< $@
 
 RUNNING_FATE := $(filter check fate%,$(filter-out fate-rsync,$(MAKECMDGOALS)))
@@ -199,6 +194,7 @@ include $(SRC_PATH)/tests/fate/hap.mak
 include $(SRC_PATH)/tests/fate/hevc.mak
 include $(SRC_PATH)/tests/fate/hlsenc.mak
 include $(SRC_PATH)/tests/fate/hw.mak
+include $(SRC_PATH)/tests/fate/iamf.mak
 include $(SRC_PATH)/tests/fate/id3v2.mak
 include $(SRC_PATH)/tests/fate/image.mak
 include $(SRC_PATH)/tests/fate/imf.mak
@@ -249,6 +245,7 @@ include $(SRC_PATH)/tests/fate/voice.mak
 include $(SRC_PATH)/tests/fate/vorbis.mak
 include $(SRC_PATH)/tests/fate/vpx.mak
 include $(SRC_PATH)/tests/fate/vqf.mak
+include $(SRC_PATH)/tests/fate/vvc.mak
 include $(SRC_PATH)/tests/fate/wavpack.mak
 include $(SRC_PATH)/tests/fate/webm-dash-manifest.mak
 include $(SRC_PATH)/tests/fate/wma.mak
@@ -256,6 +253,7 @@ include $(SRC_PATH)/tests/fate/xvid.mak
 
 FATE_FFMPEG += $(FATE_FFMPEG-yes) $(FATE_AVCONV) $(FATE_AVCONV-yes)
 FATE-$(CONFIG_FFMPEG) += $(FATE_FFMPEG)
+FATE_FFPROBE += $(FATE_FFPROBE-yes)
 FATE-$(CONFIG_FFPROBE) += $(FATE_FFPROBE)
 FATE-$(call ALLYES, FFMPEG FFPROBE) += $(FATE_FFMPEG_FFPROBE)
 

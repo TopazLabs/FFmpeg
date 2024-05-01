@@ -101,6 +101,7 @@ typedef struct FileLogContext {
 
 static const AVClass file_log_ctx_class = {
     .class_name                = "TEMPFILE",
+    .item_name                 = av_default_item_name,
     .option                    = NULL,
     .version                   = LIBAVUTIL_VERSION_INT,
     .log_level_offset_offset   = offsetof(FileLogContext, log_offset),
@@ -188,10 +189,3 @@ FILE *avpriv_fopen_utf8(const char *path, const char *mode)
         return NULL;
     return fdopen(fd, mode);
 }
-
-#if FF_API_AV_FOPEN_UTF8
-FILE *av_fopen_utf8(const char *path, const char *mode)
-{
-    return avpriv_fopen_utf8(path, mode);
-}
-#endif

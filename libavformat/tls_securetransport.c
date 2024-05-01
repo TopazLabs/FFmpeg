@@ -30,6 +30,7 @@
 #include "tls.h"
 #include "libavcodec/internal.h"
 #include "libavutil/avstring.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/parseutils.h"
 
@@ -409,6 +410,7 @@ static const AVOption options[] = {
 
 static const AVClass tls_class = {
     .class_name = "tls",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

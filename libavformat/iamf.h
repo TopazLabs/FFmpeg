@@ -22,13 +22,14 @@
 #ifndef AVFORMAT_IAMF_H
 #define AVFORMAT_IAMF_H
 
+#include <stddef.h>
 #include <stdint.h>
 
+#include "libavutil/attributes_internal.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/iamf.h"
 #include "libavcodec/codec_id.h"
 #include "libavcodec/codec_par.h"
-#include "avformat.h"
 
 #define MAX_IAMF_OBU_HEADER_SIZE (1 + 8 * 3)
 
@@ -86,6 +87,11 @@ typedef struct IAMFSubStream {
 } IAMFSubStream;
 
 typedef struct IAMFAudioElement {
+    const AVIAMFAudioElement *celement;
+    /**
+     * element backs celement iff the AVIAMFAudioElement
+     * is owned by this structure.
+     */
     AVIAMFAudioElement *element;
     unsigned int audio_element_id;
 
@@ -94,12 +100,16 @@ typedef struct IAMFAudioElement {
 
     unsigned int codec_config_id;
 
-    // mux
     IAMFLayer *layers;
     unsigned int nb_layers;
 } IAMFAudioElement;
 
 typedef struct IAMFMixPresentation {
+    const AVIAMFMixPresentation *cmix;
+    /**
+     * mix backs cmix iff the AVIAMFMixPresentation
+     * is owned by this structure.
+     */
     AVIAMFMixPresentation *mix;
     unsigned int mix_presentation_id;
 
@@ -153,11 +163,40 @@ struct IAMFSoundSystemMap {
     AVChannelLayout layout;
 };
 
+FF_VISIBILITY_PUSH_HIDDEN
 extern const AVChannelLayout ff_iamf_scalable_ch_layouts[10];
 extern const struct IAMFSoundSystemMap ff_iamf_sound_system_map[13];
+
+static inline IAMFCodecConfig *ff_iamf_get_codec_config(const IAMFContext *c,
+                                                        unsigned int codec_config_id)
+{
+    IAMFCodecConfig *codec_config = NULL;
+
+    for (int i = 0; i < c->nb_codec_configs; i++) {
+        if (c->codec_configs[i]->codec_config_id == codec_config_id)
+            codec_config = c->codec_configs[i];
+    }
+
+    return codec_config;
+}
+
+static inline IAMFParamDefinition *ff_iamf_get_param_definition(const IAMFContext *iamf,
+                                                                unsigned int parameter_id)
+{
+    IAMFParamDefinition *param_definition = NULL;
+
+    for (int i = 0; i < iamf->nb_param_definitions; i++)
+        if (iamf->param_definitions[i]->param->parameter_id == parameter_id) {
+            param_definition = iamf->param_definitions[i];
+            break;
+        }
+
+    return param_definition;
+}
 
 void ff_iamf_free_audio_element(IAMFAudioElement **paudio_element);
 void ff_iamf_free_mix_presentation(IAMFMixPresentation **pmix_presentation);
 void ff_iamf_uninit_context(IAMFContext *c);
+FF_VISIBILITY_POP_HIDDEN
 
 #endif /* AVFORMAT_IAMF_H */

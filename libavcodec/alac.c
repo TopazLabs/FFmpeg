@@ -48,6 +48,7 @@
 #include <inttypes.h>
 
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "get_bits.h"
@@ -611,6 +612,7 @@ static const AVOption options[] = {
 
 static const AVClass alac_class = {
     .class_name = "alac",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

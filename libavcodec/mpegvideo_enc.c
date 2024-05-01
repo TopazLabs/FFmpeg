@@ -39,6 +39,7 @@
 #include "libavutil/internal.h"
 #include "libavutil/intmath.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/thread.h"
@@ -99,6 +100,7 @@ static const AVOption mpv_generic_options[] = {
 
 const AVClass ff_mpv_enc_class = {
     .class_name = "generic mpegvideo encoder",
+    .item_name  = av_default_item_name,
     .option     = mpv_generic_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
@@ -249,7 +251,6 @@ static void update_duplicate_context_after_me(MpegEncContext *dst,
 {
 #define COPY(a) dst->a= src->a
     COPY(pict_type);
-    COPY(current_picture);
     COPY(f_code);
     COPY(b_code);
     COPY(qscale);

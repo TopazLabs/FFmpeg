@@ -27,9 +27,11 @@
 #include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/fifo.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavformat/avformat.h"
+#include "libavformat/demux.h"
 #include "libavformat/internal.h"
 #include "timefilter.h"
 #include "avdevice.h"
@@ -335,18 +337,19 @@ static const AVOption options[] = {
 
 static const AVClass jack_indev_class = {
     .class_name     = "JACK indev",
+    .item_name      = av_default_item_name,
     .option         = options,
     .version        = LIBAVUTIL_VERSION_INT,
     .category       = AV_CLASS_CATEGORY_DEVICE_AUDIO_INPUT,
 };
 
-const AVInputFormat ff_jack_demuxer = {
-    .name           = "jack",
-    .long_name      = NULL_IF_CONFIG_SMALL("JACK Audio Connection Kit"),
+const FFInputFormat ff_jack_demuxer = {
+    .p.name         = "jack",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("JACK Audio Connection Kit"),
+    .p.flags        = AVFMT_NOFILE,
+    .p.priv_class   = &jack_indev_class,
     .priv_data_size = sizeof(JackData),
     .read_header    = audio_read_header,
     .read_packet    = audio_read_packet,
     .read_close     = audio_read_close,
-    .flags          = AVFMT_NOFILE,
-    .priv_class     = &jack_indev_class,
 };

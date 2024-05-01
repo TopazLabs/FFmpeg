@@ -23,6 +23,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/internal.h"
+#include "libavutil/mem.h"
 #include "libavutil/parseutils.h"
 #include "avformat.h"
 #include "internal.h"
@@ -92,6 +93,7 @@ static const AVOption options[] = {
 
 static const AVClass ftp_context_class = {
     .class_name     = "ftp",
+    .item_name      = av_default_item_name,
     .option         = options,
     .version        = LIBAVUTIL_VERSION_INT,
 };

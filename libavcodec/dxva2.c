@@ -26,6 +26,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/time.h"
 
 #include "avcodec.h"
@@ -795,7 +796,7 @@ unsigned ff_dxva2_get_surface_index(const AVCodecContext *avctx,
     }
 #endif
 
-    av_log(avctx, AV_LOG_WARNING, "Could not get surface index. Using 0 instead.\n");
+    av_log((AVCodecContext *)avctx, AV_LOG_WARNING, "Could not get surface index. Using 0 instead.\n");
     return 0;
 }
 

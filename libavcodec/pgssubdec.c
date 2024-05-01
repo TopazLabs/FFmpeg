@@ -31,6 +31,7 @@
 #include "mathops.h"
 
 #include "libavutil/colorspace.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #define RGBA(r,g,b,a) (((unsigned)(a) << 24) | ((r) << 16) | ((g) << 8) | (b))
@@ -684,6 +685,7 @@ static const AVOption options[] = {
 
 static const AVClass pgsdec_class = {
     .class_name = "PGS subtitle decoder",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

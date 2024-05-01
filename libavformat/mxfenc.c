@@ -40,6 +40,7 @@
 #include <inttypes.h>
 #include <time.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/timecode.h"
@@ -1487,7 +1488,6 @@ static void mxf_write_jpeg2000_subdesc(AVFormatContext *s, AVStream *st)
     AVIOContext *pb = s->pb;
     int64_t pos;
     int component_count = av_pix_fmt_count_planes(st->codecpar->format);
-    int comp = 0;
 
     /* JPEG2000 subdescriptor key */
     avio_write(pb, mxf_jpeg2000_subdescriptor_key, 16);
@@ -2640,11 +2640,9 @@ static int mxf_parse_jpeg2000_frame(AVFormatContext *s, AVStream *st, AVPacket *
 {
     MXFContext *mxf = s->priv_data;
     MXFStreamContext *sc = st->priv_data;
-    AVIOContext *pb = s->pb;
     int component_count = av_pix_fmt_count_planes(st->codecpar->format);
     GetByteContext g;
     uint32_t j2k_ncomponents;
-    int comp;
 
     if (mxf->header_written)
         return 1;
@@ -2656,13 +2654,13 @@ static int mxf_parse_jpeg2000_frame(AVFormatContext *s, AVStream *st, AVPacket *
 
     if (bytestream2_get_be16u(&g) != JPEG2000_SOC) {
         av_log(s, AV_LOG_ERROR, "Mandatory SOC marker is not present\n");
-        return AVERROR(AVERROR_INVALIDDATA);
+        return AVERROR_INVALIDDATA;
     }
 
     /* Extract usefull size information from the SIZ marker */
     if (bytestream2_get_be16u(&g) != JPEG2000_SIZ) {
         av_log(s, AV_LOG_ERROR, "Mandatory SIZ marker is not present\n");
-        return AVERROR(AVERROR_INVALIDDATA);
+        return AVERROR_INVALIDDATA;
     }
     bytestream2_skip(&g, 2); // Skip Lsiz
     sc->j2k_info.j2k_cap = bytestream2_get_be16u(&g);
@@ -2677,7 +2675,7 @@ static int mxf_parse_jpeg2000_frame(AVFormatContext *s, AVStream *st, AVPacket *
     j2k_ncomponents = bytestream2_get_be16u(&g);
     if (j2k_ncomponents != component_count) {
         av_log(s, AV_LOG_ERROR, "Incoherence about components image number.\n");
-        return AVERROR(AVERROR_INVALIDDATA);
+        return AVERROR_INVALIDDATA;
     }
     bytestream2_get_bufferu(&g, sc->j2k_info.j2k_comp_desc, 3 * j2k_ncomponents);
 
@@ -3545,23 +3543,33 @@ static int mxf_interleave(AVFormatContext *s, AVPacket *pkt,
     return mxf_interleave_get_packet(s, pkt, flush);
 }
 
+static int mxf_check_bitstream(AVFormatContext *s, AVStream *st, const AVPacket *pkt)
+{
+    if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
+        if (pkt->size >= 5 && AV_RB32(pkt->data) != 0x0000001 &&
+                              AV_RB24(pkt->data) != 0x000001)
+            return ff_stream_add_bitstream_filter(st, "h264_mp4toannexb", NULL);
+    }
+    return 1;
+}
+
 #define MXF_COMMON_OPTIONS \
     { "signal_standard", "Force/set Signal Standard",\
-      offsetof(MXFContext, signal_standard), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      offsetof(MXFContext, signal_standard), AV_OPT_TYPE_INT, {.i64 = -1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "bt601", "ITU-R BT.601 and BT.656, also SMPTE 125M (525 and 625 line interlaced)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 1}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "bt1358", "ITU-R BT.1358 and ITU-R BT.799-3, also SMPTE 293M (525 and 625 line progressive)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 2}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 2}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte347m", "SMPTE 347M (540 Mbps mappings)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 3}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 3}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte274m", "SMPTE 274M (1125 line)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 4}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 4}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte296m", "SMPTE 296M (750 line progressive)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 5}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 5}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte349m", "SMPTE 349M (1485 Mbps mappings)",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 6}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},\
+      0, AV_OPT_TYPE_CONST, {.i64 = 6}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},\
     { "smpte428", "SMPTE 428-1 DCDM",\
-      0, AV_OPT_TYPE_CONST, {.i64 = 7}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, "signal_standard"},
+      0, AV_OPT_TYPE_CONST, {.i64 = 7}, -1, 7, AV_OPT_FLAG_ENCODING_PARAM, .unit = "signal_standard"},
 
 
 
@@ -3574,6 +3582,7 @@ static const AVOption mxf_options[] = {
 
 static const AVClass mxf_muxer_class = {
     .class_name     = "MXF muxer",
+    .item_name      = av_default_item_name,
     .option         = mxf_options,
     .version        = LIBAVUTIL_VERSION_INT,
 };
@@ -3589,6 +3598,7 @@ static const AVOption d10_options[] = {
 
 static const AVClass mxf_d10_muxer_class = {
     .class_name     = "MXF-D10 muxer",
+    .item_name      = av_default_item_name,
     .option         = d10_options,
     .version        = LIBAVUTIL_VERSION_INT,
 };
@@ -3604,6 +3614,7 @@ static const AVOption opatom_options[] = {
 
 static const AVClass mxf_opatom_muxer_class = {
     .class_name     = "MXF-OPAtom muxer",
+    .item_name      = av_default_item_name,
     .option         = opatom_options,
     .version        = LIBAVUTIL_VERSION_INT,
 };
@@ -3623,6 +3634,7 @@ const FFOutputFormat ff_mxf_muxer = {
     .p.flags           = AVFMT_NOTIMESTAMPS,
     .interleave_packet = mxf_interleave,
     .p.priv_class      = &mxf_muxer_class,
+    .check_bitstream   = mxf_check_bitstream,
 };
 
 const FFOutputFormat ff_mxf_d10_muxer = {
@@ -3656,4 +3668,5 @@ const FFOutputFormat ff_mxf_opatom_muxer = {
     .p.flags           = AVFMT_NOTIMESTAMPS,
     .interleave_packet = mxf_interleave,
     .p.priv_class      = &mxf_opatom_muxer_class,
+    .check_bitstream   = mxf_check_bitstream,
 };

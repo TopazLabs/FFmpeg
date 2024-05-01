@@ -25,10 +25,9 @@
  */
 
 #include "libavutil/avstring.h"
-#include "libavutil/intfloat.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
-#include "internal.h"
 #include "http.h"
 #include "rtmp.h"
 
@@ -268,6 +267,7 @@ static const AVOption ffrtmphttp_options[] = {
 
 static const AVClass ffrtmphttp_class = {
     .class_name = "ffrtmphttp",
+    .item_name  = av_default_item_name,
     .option     = ffrtmphttp_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

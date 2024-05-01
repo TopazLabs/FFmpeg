@@ -25,7 +25,6 @@
 #include "internal.h"
 #include "avi.h"
 #include "avio_internal.h"
-#include "config_components.h"
 #include "riff.h"
 #include "mpegts.h"
 #include "mux.h"
@@ -36,6 +35,7 @@
 #include "libavutil/internal.h"
 #include "libavutil/dict.h"
 #include "libavutil/avassert.h"
+#include "libavutil/mem.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -999,6 +999,7 @@ static const AVOption options[] = {
 
 static const AVClass avi_muxer_class = {
     .class_name = "AVI muxer",
+    .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

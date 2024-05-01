@@ -29,6 +29,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "thread.h"
 
 typedef struct ThreadData {
@@ -227,6 +228,7 @@ static const AVOption v210dec_options[] = {
 
 static const AVClass v210dec_class = {
     .class_name = "V210 Decoder",
+    .item_name  = av_default_item_name,
     .option     = v210dec_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };

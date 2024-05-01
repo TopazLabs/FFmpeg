@@ -22,6 +22,7 @@
  */
 
 #include "libavutil/file_open.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "filters.h"
 #include "dnn_filter_common.h"
@@ -62,21 +63,21 @@ typedef struct DnnDetectContext {
 #define OFFSET2(x) offsetof(DnnDetectContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption dnn_detect_options[] = {
-    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = DNN_OV },    INT_MIN, INT_MAX, FLAGS, "backend" },
+    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = DNN_OV },    INT_MIN, INT_MAX, FLAGS, .unit = "backend" },
 #if (CONFIG_LIBTENSORFLOW == 1)
-    { "tensorflow",  "tensorflow backend flag",    0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_TF },    0, 0, FLAGS, "backend" },
+    { "tensorflow",  "tensorflow backend flag",    0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_TF },    0, 0, FLAGS, .unit = "backend" },
 #endif
 #if (CONFIG_LIBOPENVINO == 1)
-    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, "backend" },
+    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, .unit = "backend" },
 #endif
     DNN_COMMON_OPTIONS
     { "confidence",  "threshold of confidence",    OFFSET2(confidence),      AV_OPT_TYPE_FLOAT,     { .dbl = 0.5 },  0, 1, FLAGS},
     { "labels",      "path to labels file",        OFFSET2(labels_filename), AV_OPT_TYPE_STRING,    { .str = NULL }, 0, 0, FLAGS },
-    { "model_type",  "DNN detection model type",   OFFSET2(model_type),      AV_OPT_TYPE_INT,       { .i64 = DDMT_SSD },    INT_MIN, INT_MAX, FLAGS, "model_type" },
-        { "ssd",     "output shape [1, 1, N, 7]",  0,                        AV_OPT_TYPE_CONST,       { .i64 = DDMT_SSD },    0, 0, FLAGS, "model_type" },
-        { "yolo",    "output shape [1, N*Cx*Cy*DetectionBox]",  0,           AV_OPT_TYPE_CONST,       { .i64 = DDMT_YOLOV1V2 },    0, 0, FLAGS, "model_type" },
-        { "yolov3",  "outputs shape [1, N*D, Cx, Cy]",  0,                   AV_OPT_TYPE_CONST,       { .i64 = DDMT_YOLOV3 },      0, 0, FLAGS, "model_type" },
-        { "yolov4",  "outputs shape [1, N*D, Cx, Cy]",  0,                   AV_OPT_TYPE_CONST,       { .i64 = DDMT_YOLOV4 },    0, 0, FLAGS, "model_type" },
+    { "model_type",  "DNN detection model type",   OFFSET2(model_type),      AV_OPT_TYPE_INT,       { .i64 = DDMT_SSD },    INT_MIN, INT_MAX, FLAGS, .unit = "model_type" },
+        { "ssd",     "output shape [1, 1, N, 7]",  0,                        AV_OPT_TYPE_CONST,       { .i64 = DDMT_SSD },    0, 0, FLAGS, .unit = "model_type" },
+        { "yolo",    "output shape [1, N*Cx*Cy*DetectionBox]",  0,           AV_OPT_TYPE_CONST,       { .i64 = DDMT_YOLOV1V2 },    0, 0, FLAGS, .unit = "model_type" },
+        { "yolov3",  "outputs shape [1, N*D, Cx, Cy]",  0,                   AV_OPT_TYPE_CONST,       { .i64 = DDMT_YOLOV3 },      0, 0, FLAGS, .unit = "model_type" },
+        { "yolov4",  "outputs shape [1, N*D, Cx, Cy]",  0,                   AV_OPT_TYPE_CONST,       { .i64 = DDMT_YOLOV4 },    0, 0, FLAGS, .unit = "model_type" },
     { "cell_w",      "cell width",                 OFFSET2(cell_w),          AV_OPT_TYPE_INT,       { .i64 = 0 },    0, INTMAX_MAX, FLAGS },
     { "cell_h",      "cell height",                OFFSET2(cell_h),          AV_OPT_TYPE_INT,       { .i64 = 0 },    0, INTMAX_MAX, FLAGS },
     { "nb_classes",  "The number of class",        OFFSET2(nb_classes),      AV_OPT_TYPE_INT,       { .i64 = 0 },    0, INTMAX_MAX, FLAGS },
@@ -166,14 +167,14 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
         scale_w = cell_w;
         scale_h = cell_h;
     } else {
-        if (output[output_index].height != output[output_index].width &&
-            output[output_index].height == output[output_index].channels) {
+        if (output[output_index].dims[2] != output[output_index].dims[3] &&
+            output[output_index].dims[2] == output[output_index].dims[1]) {
             is_NHWC = 1;
-            cell_w = output[output_index].height;
-            cell_h = output[output_index].channels;
+            cell_w = output[output_index].dims[2];
+            cell_h = output[output_index].dims[1];
         } else {
-            cell_w = output[output_index].width;
-            cell_h = output[output_index].height;
+            cell_w = output[output_index].dims[3];
+            cell_h = output[output_index].dims[2];
         }
         scale_w = ctx->scale_width;
         scale_h = ctx->scale_height;
@@ -205,14 +206,14 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
         return AVERROR(EINVAL);
     }
 
-    if (output[output_index].channels * output[output_index].width *
-            output[output_index].height % (box_size * cell_w * cell_h)) {
+    if (output[output_index].dims[1] * output[output_index].dims[2] *
+            output[output_index].dims[3] % (box_size * cell_w * cell_h)) {
         av_log(filter_ctx, AV_LOG_ERROR, "wrong cell_w, cell_h or nb_classes\n");
         return AVERROR(EINVAL);
     }
-    detection_boxes = output[output_index].channels *
-                      output[output_index].height *
-                      output[output_index].width / box_size / cell_w / cell_h;
+    detection_boxes = output[output_index].dims[1] *
+                      output[output_index].dims[2] *
+                      output[output_index].dims[3] / box_size / cell_w / cell_h;
 
     anchors = anchors + (detection_boxes * output_index * 2);
     /**
@@ -236,9 +237,6 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
                     conf = post_process_raw_data(
                                 detection_boxes_data[cy * cell_w + cx + 4 * cell_w * cell_h]);
                 }
-                if (conf < conf_threshold) {
-                    continue;
-                }
 
                 if (is_NHWC) {
                     x = post_process_raw_data(detection_boxes_data[0]);
@@ -256,6 +254,9 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
                         detection_boxes_data + cy * cell_w + cx + 5 * cell_w * cell_h);
                     conf = conf * post_process_raw_data(
                                 detection_boxes_data[cy * cell_w + cx + (label_id + 5) * cell_w * cell_h]);
+                }
+                if (conf < conf_threshold) {
+                    continue;
                 }
 
                 bbox = av_mallocz(sizeof(*bbox));
@@ -373,18 +374,18 @@ static int dnn_detect_post_proc_ssd(AVFrame *frame, DNNData *output, int nb_outp
     int scale_w = ctx->scale_width;
     int scale_h = ctx->scale_height;
 
-    if (nb_outputs == 1 && output->width == 7) {
-        proposal_count = output->height;
-        detect_size = output->width;
+    if (nb_outputs == 1 && output->dims[3] == 7) {
+        proposal_count = output->dims[2];
+        detect_size = output->dims[3];
         detections = output->data;
-    } else if (nb_outputs == 2 && output[0].width == 5) {
-        proposal_count = output[0].height;
-        detect_size = output[0].width;
+    } else if (nb_outputs == 2 && output[0].dims[3] == 5) {
+        proposal_count = output[0].dims[2];
+        detect_size = output[0].dims[3];
         detections = output[0].data;
         labels = output[1].data;
-    } else if (nb_outputs == 2 && output[1].width == 5) {
-        proposal_count = output[1].height;
-        detect_size = output[1].width;
+    } else if (nb_outputs == 2 && output[1].dims[3] == 5) {
+        proposal_count = output[1].dims[2];
+        detect_size = output[1].dims[3];
         detections = output[1].data;
         labels = output[0].data;
     } else {
@@ -821,15 +822,19 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *context     = inlink->dst;
     DnnDetectContext *ctx = context->priv;
     DNNData model_input;
-    int ret;
+    int ret, width_idx, height_idx;
 
     ret = ff_dnn_get_input(&ctx->dnnctx, &model_input);
     if (ret != 0) {
         av_log(ctx, AV_LOG_ERROR, "could not get input from the model\n");
         return ret;
     }
-    ctx->scale_width = model_input.width == -1 ? inlink->w : model_input.width;
-    ctx->scale_height = model_input.height ==  -1 ? inlink->h : model_input.height;
+    width_idx = dnn_get_width_idx_by_layout(model_input.layout);
+    height_idx = dnn_get_height_idx_by_layout(model_input.layout);
+    ctx->scale_width = model_input.dims[width_idx] == -1 ? inlink->w :
+        model_input.dims[width_idx];
+    ctx->scale_height = model_input.dims[height_idx] ==  -1 ? inlink->h :
+        model_input.dims[height_idx];
 
     return 0;
 }

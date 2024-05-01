@@ -24,6 +24,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/dict.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavcodec/codec_desc.h"
 #include "avformat.h"
@@ -1121,6 +1122,7 @@ static const AVOption asf_options[] = {
 
 static const AVClass asf_muxer_class = {
     .class_name     = "ASF (stream) muxer",
+    .item_name      = av_default_item_name,
     .option         = asf_options,
     .version        = LIBAVUTIL_VERSION_INT,
 };
