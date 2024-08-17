@@ -134,7 +134,6 @@ int ff_tvai_copy_entries(AVDictionary* dict, DictionaryItem* pDictInfo) {
     while ((entry = av_dict_get(dict, "", entry, AV_DICT_IGNORE_SUFFIX))) {
         pDictInfo[i].pKey = entry->key;
         pDictInfo[i].pValue = entry->value;
-        av_log(NULL, AV_LOG_INFO, "%d Key: %s, Value: %s\n", i++, entry->key, entry->value);
     }  
     return i;
 }
@@ -142,7 +141,7 @@ int ff_tvai_copy_entries(AVDictionary* dict, DictionaryItem* pDictInfo) {
 void ff_av_dict_log(AVFilterContext *ctx, const char* msg, const AVDictionary *dict) {
     AVDictionaryEntry *entry = NULL;
     while ((entry = av_dict_get(dict, "", entry, AV_DICT_IGNORE_SUFFIX))) {
-        av_log(ctx, AV_LOG_INFO, "%s %s: %s\n", msg, entry->key, entry->value);
+        av_log(ctx, AV_LOG_DEBUG, "%s %s: %s\n", msg, entry->key, entry->value);
     }
 }
 
