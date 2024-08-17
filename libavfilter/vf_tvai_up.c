@@ -105,9 +105,7 @@ static int config_props(AVFilterLink *outlink) {
     av_dict_set_float(&tvai->parameters, "blend", tvai->blend, 0);
     
     av_dict_set_int(&tvai->parameters, "canKeepColor", tvai->canKeepColor, 0);
-    ff_av_dict_log(ctx, "Parameters", tvai->parameters);
     tvai->modelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &(tvai->modelParameterCount));
-    av_log(ctx, AV_LOG_DEBUG, "AAAAAAAA AVDICTIONARY STATUS %d %d\n", (tvai->parameters == NULL), tvai->modelParameterCount);
     VideoProcessorInfo info;
     double sar = av_q2d(inlink->sample_aspect_ratio) > 0 ? av_q2d(inlink->sample_aspect_ratio) : 1;
     if(tvai->basicInfo.scale == 0) {
