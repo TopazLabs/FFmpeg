@@ -1,4 +1,5 @@
 #include "tvai_common.h"
+#include <libavutil/mem.h>
 
 int ff_tvai_checkDevice(int deviceIndex, AVFilterContext* ctx) {
   char devices[1024];
@@ -25,7 +26,7 @@ int ff_tvai_checkScale(char* modelName, int scale, AVFilterContext* ctx) {
 
 void ff_tvai_handleLogging() {
   int logLevel = av_log_get_level();
-  tvai_set_logging(logLevel == AV_LOG_DEBUG || logLevel == AV_LOG_VERBOSE);
+  tvai_set_logging(logLevel > AV_LOG_INFO);
 }
 
 int ff_tvai_checkModel(char* modelName, ModelType modelType, AVFilterContext* ctx) {
@@ -59,7 +60,7 @@ AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer)
   return out;
 }
 
-int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, BasicProcessorInfo* pBasic, int procIndex, float *pParameters, int parameterCount) {
+int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, BasicProcessorInfo* pBasic, int procIndex, DictionaryItem *pParameters, int parameterCount) {
   ff_tvai_handleLogging();
   AVFilterContext *pCtx = pOutlink->src;
   AVFilterLink *pInlink = pCtx->inputs[0];
@@ -76,9 +77,8 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
   pProcessorInfo->basic.framerate = av_q2d(pInlink->frame_rate);
   pProcessorInfo->outputWidth = pOutlink->w = pInlink->w*pProcessorInfo->basic.scale;
   pProcessorInfo->outputHeight = pOutlink->h = pInlink->h*pProcessorInfo->basic.scale;
-  if(pParameters != NULL && parameterCount > 0) {
-    memcpy(pProcessorInfo->modelParameters, pParameters, sizeof(float)*parameterCount);
-  }
+  pProcessorInfo->basic.pParameters = pParameters;
+  pProcessorInfo->basic.parameterCount = parameterCount;
   pOutlink->time_base = pInlink->time_base;
   pOutlink->frame_rate = pInlink->frame_rate;
   pOutlink->sample_aspect_ratio = pInlink->sample_aspect_ratio;
@@ -126,6 +126,37 @@ void ff_tvai_ignore_output(void *pProcessor) {
         tvai_output_frame(pProcessor, &oBuffer);
         av_log(NULL, AV_LOG_DEBUG, "Ignoring output frame %d %d\n", i, n);
     }
+}
+
+int ff_tvai_copy_entries(AVDictionary* dict, DictionaryItem* pDictInfo) {
+    AVDictionaryEntry *entry = NULL;
+    int i=0;
+    while ((entry = av_dict_get(dict, "", entry, AV_DICT_IGNORE_SUFFIX))) {
+        pDictInfo[i].pKey = entry->key;
+        pDictInfo[i].pValue = entry->value;
+        av_log(NULL, AV_LOG_INFO, "%d Key: %s, Value: %s\n", i++, entry->key, entry->value);
+    }  
+    return i;
+}
+
+void ff_av_dict_log(AVFilterContext *ctx, const char* msg, const AVDictionary *dict) {
+    AVDictionaryEntry *entry = NULL;
+    while ((entry = av_dict_get(dict, "", entry, AV_DICT_IGNORE_SUFFIX))) {
+        av_log(ctx, AV_LOG_INFO, "%s %s: %s\n", msg, entry->key, entry->value);
+    }
+}
+
+void av_dict_set_float(AVDictionary **dict, const char *key, float value, int flag) {
+    char valueStr[32];
+    snprintf(valueStr, sizeof(valueStr), "%f", value);
+    av_dict_set(dict, key, valueStr, flag);
+}
+
+DictionaryItem* ff_tvai_alloc_copy_entries(AVDictionary* dict, int *pCount) {
+    int count = av_dict_count(dict);
+    DictionaryItem *pDictInfo = (DictionaryItem*)av_malloc(sizeof(DictionaryItem) + sizeof(DictionaryItem)*count);
+    pCount = ff_tvai_copy_entries(dict, pDictInfo);
+    return pDictInfo;
 }
 
 int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame) {

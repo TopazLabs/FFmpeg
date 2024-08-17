@@ -33,7 +33,6 @@
 #include "formats.h"
 #include "internal.h"
 #include "video.h"
-#include "tvai.h"
 #include "tvai_common.h"
 
 typedef struct TVAIUpContext {
@@ -44,6 +43,9 @@ typedef struct TVAIUpContext {
     double prenoise, grain, grainSize, blend;
     void* pFrameProcessor;
     AVFrame* previousFrame;
+    AVDictionary *parameters;
+    DictionaryItem* modelParameters;
+    int modelParameterCount;
 } TVAIUpContext;
 
 #define OFFSET(x) offsetof(TVAIUpContext, x)
@@ -52,7 +54,7 @@ typedef struct TVAIUpContext {
 
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_up_options[] = {
-    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="amq-13"}, .flags = FLAGS },
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="ahq-12"}, .flags = FLAGS },
     { "scale",  "Output scale",  BASIC_OFFSET(scale),  AV_OPT_TYPE_INT, {.i64=1}, 0, 4, FLAGS, "scale" },
     { "w",  "Estimate scale based on output width",  OFFSET(w),  AV_OPT_TYPE_INT, {.i64=0}, 0, 100000, FLAGS, "w" },
     { "h",  "Estimate scale based on output height",  OFFSET(h),  AV_OPT_TYPE_INT, {.i64=0}, 0, 100000, FLAGS, "h" },
@@ -60,7 +62,7 @@ static const AVOption tvai_up_options[] = {
     { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
-    { "estimate",  "Number of frames for auto parameter estimation, 0 to disable auto parameter estimation",  OFFSET(estimateFrameCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 1000000, FLAGS, "estimateParamNthFrame" },
+    { "estimate",  "Number of frames for auto parameter estimation, 0 to disable auto parameter estimation",  OFFSET(estimateFrameCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 100, FLAGS, "estimateParamNthFrame" },
     { "preblur",  "Adjusts both the antialiasing and deblurring strength relative to the amount of aliasing and blurring in the input video. \nNegative values are better if the input video has aliasing artifacts such as moire patterns or staircasing. Positive values are better if the input video has more lens blurring than aliasing artifacts. ",  OFFSET(preBlur),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, -1.0, 1.0, FLAGS, "preblur" },
     { "noise",  "Removes ISO noise from the input video. Higher values remove more noise but may also remove fine details. \nNote that this value is relative to the amount of noise found in the input video - higher values on videos with low amounts of ISO noise may introduce more artifacts.",  OFFSET(noise),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, -1.0, 1.0, FLAGS, "noise" },
     { "details",  "Used to recover fine texture and detail lost due to in-camera noise suppression. \nThis value is relative to the amount of noise suppression in the camera used for the input video, and higher values may introduce artifacts if the input video has little to no in-camera noise suppression.",  OFFSET(details),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, -1.0, 1.0, FLAGS, "details" },
@@ -72,6 +74,7 @@ static const AVOption tvai_up_options[] = {
     { "gsize",  "The size of grain to be added",  OFFSET(grainSize),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 5.0, FLAGS, "gsize" },
     { "kcolor",  "Run extra color correction if required by model",  OFFSET(canKeepColor),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "kcolor" },
     { "blend",  "The amount of input to be blended with output",  OFFSET(blend),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 1.0, FLAGS, "blend" },
+    { "parameters", TVAI_UPSCALE_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
     { NULL }
 };
 
@@ -90,7 +93,21 @@ static int config_props(AVFilterLink *outlink) {
     AVFilterContext *ctx = outlink->src;
     TVAIUpContext *tvai = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
-    float parameterValues[12] = {tvai->preBlur, tvai->noise, tvai->details, tvai->halo, tvai->blur, tvai->compression, 0, tvai->prenoise, tvai->grain, tvai->grainSize, tvai->canKeepColor, tvai->blend};
+    av_dict_set_float(&tvai->parameters, "preBlur", tvai->preBlur, 0);
+    av_dict_set_float(&tvai->parameters, "noise", tvai->noise, 0);
+    av_dict_set_float(&tvai->parameters, "details", tvai->details, 0);
+    av_dict_set_float(&tvai->parameters, "halo", tvai->halo, 0);
+    av_dict_set_float(&tvai->parameters, "blur", tvai->blur, 0);
+    av_dict_set_float(&tvai->parameters, "compression", tvai->compression, 0);
+    av_dict_set_float(&tvai->parameters, "prenoise", tvai->prenoise, 0);
+    av_dict_set_float(&tvai->parameters, "grain", tvai->grain, 0);
+    av_dict_set_float(&tvai->parameters, "grainSize", tvai->grainSize, 0);
+    av_dict_set_float(&tvai->parameters, "blend", tvai->blend, 0);
+    
+    av_dict_set_int(&tvai->parameters, "canKeepColor", tvai->canKeepColor, 0);
+    ff_av_dict_log(ctx, "Parameters", tvai->parameters);
+    tvai->modelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &(tvai->modelParameterCount));
+    av_log(ctx, AV_LOG_DEBUG, "AAAAAAAA AVDICTIONARY STATUS %d %d\n", (tvai->parameters == NULL), tvai->modelParameterCount);
     VideoProcessorInfo info;
     double sar = av_q2d(inlink->sample_aspect_ratio) > 0 ? av_q2d(inlink->sample_aspect_ratio) : 1;
     if(tvai->basicInfo.scale == 0) {
@@ -102,7 +119,9 @@ static int config_props(AVFilterLink *outlink) {
     info.frameCount = tvai->estimateFrameCount;
     av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", info.basic.modelName, info.basic.scale, 
             info.basic.device.index, info.basic.device.maxMemory, info.basic.device.extraThreadCount, info.basic.canDownloadModel);
-    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeUpscaling, outlink, &(tvai->basicInfo), tvai->estimateFrameCount > 0, parameterValues, 12)) {
+    ff_av_dict_log(ctx, "Parameters", tvai->parameters);
+    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeUpscaling, outlink, &(tvai->basicInfo), tvai->estimateFrameCount > 0, tvai->modelParameters, tvai->modelParameterCount)) {
+        return AVERROR(EINVAL);
       return AVERROR(EINVAL);  
     }
     tvai->pFrameProcessor = tvai_create(&info);
