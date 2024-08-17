@@ -44,6 +44,9 @@ typedef struct  {
     void* pFrameProcessor;
     AVRational frame_rate;
     AVFrame* previousFrame;
+    AVDictionary *parameters;
+    DictionaryItem *pModelParameters;
+    int modelParametersCount;
 } TVAIFIContext;
 
 #define OFFSET(x) offsetof(TVAIFIContext, x)
@@ -59,6 +62,7 @@ static const AVOption tvai_fi_options[] = {
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
     { "rdt",  "Replace duplicate threshold. (0 or below means do not remove, high value will detect more duplicates)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.2, FLAGS, "rdt" },
     { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
+    { "parameters", TVAI_FRAME_INTERPOLATION_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
     { NULL }
 };
 
@@ -89,8 +93,13 @@ static int config_props(AVFilterLink *outlink) {
     }
     VideoProcessorInfo info;
     threshold = fpsFactor*0.3;
-    float parameterValues[4] = {threshold, fpsFactor, tvai->slowmo, tvai->rdt};
-    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeFrameInterpolation, outlink, &(tvai->basicInfo), 0, parameterValues, 4)) {
+    av_dict_set_float(&tvai->parameters, "threshold", threshold, 0);
+    av_dict_set_float(&tvai->parameters, "fpsFactor", fpsFactor, 0);
+    av_dict_set_float(&tvai->parameters, "slowmo", tvai->slowmo, 0);
+    av_dict_set_float(&tvai->parameters, "rdt", tvai->rdt, 0);
+    tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
+
+    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeFrameInterpolation, outlink, &(tvai->basicInfo), 0, tvai->pModelParameters, tvai->modelParametersCount)) {
         return AVERROR(EINVAL);
     }
     tvai->previousFrame = NULL;
