@@ -54,7 +54,7 @@ typedef struct  {
 #define DEVICE_OFFSET(x) BASIC_OFFSET(device) + offsetof(DeviceSetting, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_fi_options[] = {
-    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="chr-1"}, .flags = FLAGS },
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="chr-2"}, .flags = FLAGS },
     { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
     { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
@@ -98,7 +98,7 @@ static int config_props(AVFilterLink *outlink) {
     av_dict_set_float(&tvai->parameters, "slowmo", tvai->slowmo, 0);
     av_dict_set_float(&tvai->parameters, "rdt", tvai->rdt, 0);
     tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
-
+    ff_av_dict_log(ctx, "Parameters", tvai->parameters);
     if(ff_tvai_prepareProcessorInfo(&info, ModelTypeFrameInterpolation, outlink, &(tvai->basicInfo), 0, tvai->pModelParameters, tvai->modelParametersCount)) {
         return AVERROR(EINVAL);
     }
