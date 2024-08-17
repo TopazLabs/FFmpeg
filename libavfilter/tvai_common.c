@@ -133,7 +133,8 @@ int ff_tvai_copy_entries(AVDictionary* dict, DictionaryItem* pDictInfo) {
     int i=0;
     while ((entry = av_dict_get(dict, "", entry, AV_DICT_IGNORE_SUFFIX))) {
         pDictInfo[i].pKey = entry->key;
-        pDictInfo[i].pValue = entry->value;
+        pDictInfo[i++].pValue = entry->value;
+        av_log(NULL, AV_LOG_DEBUG, "COPYING %d %s: %s\n", i, entry->key, entry->value);
     }  
     return i;
 }
@@ -154,7 +155,7 @@ void av_dict_set_float(AVDictionary **dict, const char *key, float value, int fl
 DictionaryItem* ff_tvai_alloc_copy_entries(AVDictionary* dict, int *pCount) {
     int count = av_dict_count(dict);
     DictionaryItem *pDictInfo = (DictionaryItem*)av_malloc(sizeof(DictionaryItem) + sizeof(DictionaryItem)*count);
-    pCount = ff_tvai_copy_entries(dict, pDictInfo);
+    *pCount = ff_tvai_copy_entries(dict, pDictInfo);
     return pDictInfo;
 }
 
