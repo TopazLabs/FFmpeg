@@ -13,11 +13,11 @@
 #include "tvai.h"
 #include "tvai_messages.h"
 
-int ff_tvai_checkDevice(int deviceIndex, AVFilterContext* ctx);
+int ff_tvai_checkDevice(char* deviceString, DeviceSetting* pDevice, AVFilterContext* ctx);
 int ff_tvai_checkScale(char* modelName, int scale, AVFilterContext* ctx);
 int ff_tvai_checkModel(char* modelName, ModelType modelType, AVFilterContext* ctx);
 void ff_tvai_handleLogging(void);
-int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, 
+int ff_tvai_prepareProcessorInfo(char *deviceString, VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, 
         BasicProcessorInfo* pBasic, int procIndex, DictionaryItem *pParameters, int parameterCount);
 void ff_tvai_prepareBufferInput(TVAIBuffer* ioBuffer, AVFrame *in);
 AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer);

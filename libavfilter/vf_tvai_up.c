@@ -46,6 +46,7 @@ typedef struct TVAIUpContext {
     AVDictionary *parameters;
     DictionaryItem* modelParameters;
     int modelParameterCount;
+    char *deviceString;    
 } TVAIUpContext;
 
 #define OFFSET(x) offsetof(TVAIUpContext, x)
@@ -58,7 +59,7 @@ static const AVOption tvai_up_options[] = {
     { "scale",  "Output scale",  BASIC_OFFSET(scale),  AV_OPT_TYPE_INT, {.i64=1}, 0, 4, FLAGS, "scale" },
     { "w",  "Estimate scale based on output width",  OFFSET(w),  AV_OPT_TYPE_INT, {.i64=0}, 0, 100000, FLAGS, "w" },
     { "h",  "Estimate scale based on output height",  OFFSET(h),  AV_OPT_TYPE_INT, {.i64=0}, 0, 100000, FLAGS, "h" },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ... or a . separated list of GPU indices e.g. 0.1.3)",  OFFSET(deviceString),  AV_OPT_TYPE_STRING, {.str="-2"}, .flags = FLAGS, "device" },
     { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
@@ -118,7 +119,7 @@ static int config_props(AVFilterLink *outlink) {
     av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", info.basic.modelName, info.basic.scale, 
             info.basic.device.index, info.basic.device.maxMemory, info.basic.device.extraThreadCount, info.basic.canDownloadModel);
     ff_av_dict_log(ctx, "Parameters", tvai->parameters);
-    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeUpscaling, outlink, &(tvai->basicInfo), tvai->estimateFrameCount > 0, tvai->modelParameters, tvai->modelParameterCount)) {
+    if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeUpscaling, outlink, &(tvai->basicInfo), tvai->estimateFrameCount > 0, tvai->modelParameters, tvai->modelParameterCount)) {
         return AVERROR(EINVAL);
       return AVERROR(EINVAL);  
     }

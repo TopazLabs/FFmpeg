@@ -50,6 +50,7 @@ typedef struct TVAIStbContext {
     AVDictionary *parameters;
     DictionaryItem *pModelParameters;
     int modelParametersCount;
+    char *deviceString;    
 } TVAIStbContext;
 
 #define OFFSET(x) offsetof(TVAIStbContext, x)
@@ -58,7 +59,7 @@ typedef struct TVAIStbContext {
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_stb_options[] = {
     { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="ref-2"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ... or a . separated list of GPU indices e.g. 0.1.3)",  OFFSET(deviceString),  AV_OPT_TYPE_STRING, {.str="-2"}, .flags = FLAGS, "device" },
     { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
@@ -108,7 +109,7 @@ static int config_props(AVFilterLink *outlink) {
     av_dict_set_float(&tvai->parameters, "reduceMotion", tvai->reduceMotion, 0);
     tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
   
-  if(ff_tvai_prepareProcessorInfo(&info, ModelTypeStabilization, outlink, &(tvai->basicInfo), tvai->enableFullFrame > 0, tvai->pModelParameters, tvai->modelParametersCount)) {
+  if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeStabilization, outlink, &(tvai->basicInfo), tvai->enableFullFrame > 0, tvai->pModelParameters, tvai->modelParametersCount)) {
     return AVERROR(EINVAL);  
   }
   tvai->pFrameProcessor = tvai_create(&info);

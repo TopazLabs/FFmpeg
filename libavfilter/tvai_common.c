@@ -1,11 +1,11 @@
 #include "tvai_common.h"
 #include <libavutil/mem.h>
 
-int ff_tvai_checkDevice(int deviceIndex, AVFilterContext* ctx) {
-  char devices[1024];
-  int device_count = tvai_device_list(devices, 1024);
-  if(deviceIndex < -2 || deviceIndex > device_count ) {
-      av_log(ctx, AV_LOG_ERROR, "Invalid value %d for device, device should be in the following list:\n-2 : AUTO \n-1 : CPU\n%s\n%d : ALL GPUs\n", deviceIndex, devices, device_count);
+int ff_tvai_checkDevice(char* deviceString, DeviceSetting* pDevice, AVFilterContext* ctx) {
+  if(tvai_set_device_settings(deviceString, pDevice)) {
+      char devices[1024];
+      int device_count = tvai_device_list(devices, 1024);
+      av_log(ctx, AV_LOG_ERROR, "Invalid value %s for device, device should be in the following list:\n-2 : AUTO \n-1 : CPU\n%s\n%d : ALL GPUs\n", deviceString, devices, device_count);
       return AVERROR(EINVAL);
   }
   return 0;
@@ -60,16 +60,15 @@ AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer)
   return out;
 }
 
-int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, BasicProcessorInfo* pBasic, int procIndex, DictionaryItem *pParameters, int parameterCount) {
+int ff_tvai_prepareProcessorInfo(char *deviceString, VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, BasicProcessorInfo* pBasic, int procIndex, DictionaryItem *pParameters, int parameterCount) {
   ff_tvai_handleLogging();
   AVFilterContext *pCtx = pOutlink->src;
   AVFilterLink *pInlink = pCtx->inputs[0];
   pProcessorInfo->basic = *pBasic;
-  if(ff_tvai_checkModel(pProcessorInfo->basic.modelName, modelType, pCtx) || ff_tvai_checkDevice(pProcessorInfo->basic.device.index, pCtx) || ff_tvai_checkScale(pProcessorInfo->basic.modelName, pProcessorInfo->basic.scale, pCtx)) {
+  if(ff_tvai_checkModel(pProcessorInfo->basic.modelName, modelType, pCtx) || ff_tvai_checkDevice(deviceString, &(pProcessorInfo->basic.device), pCtx) || ff_tvai_checkScale(pProcessorInfo->basic.modelName, pProcessorInfo->basic.scale, pCtx)) {
     return 1;
   }
   tvai_vp_name(pProcessorInfo->basic.modelName, procIndex, (char*)pProcessorInfo->basic.processorName);
-  pProcessorInfo->basic.device.useMultipleDevices = 0;
   pProcessorInfo->basic.preflight = 0;
   pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGB16;
   pProcessorInfo->basic.inputWidth = pInlink->w;

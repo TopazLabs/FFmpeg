@@ -45,6 +45,7 @@ typedef struct TVAICPEContext {
     AVDictionary *parameters;
     DictionaryItem *pModelParameters;
     int modelParametersCount;
+    char *deviceString;
 } TVAICPEContext;
 
 #define OFFSET(x) offsetof(TVAICPEContext, x)
@@ -55,7 +56,7 @@ typedef struct TVAICPEContext {
 static const AVOption tvai_cpe_options[] = {
     { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="cpe-1"}, .flags = FLAGS },
     { "filename", "CPE output filename", OFFSET(filename), AV_OPT_TYPE_STRING, {.str="cpe.json"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ... or a . separated list of GPU indices e.g. 0.1.3)",  OFFSET(deviceString),  AV_OPT_TYPE_STRING, {.str="-2"}, .flags = FLAGS, "device" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "parameters", TVAI_CAM_POSE_ESTIMATION_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
     { NULL }
@@ -82,7 +83,7 @@ static int config_props(AVFilterLink *outlink) {
     tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
 
     av_log(ctx, AV_LOG_INFO, "Model: %s RSC: %f\n", tvai->basicInfo.modelName, rsc);
-    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeCamPoseEstimation, outlink, &(tvai->basicInfo), 0, 
+    if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeCamPoseEstimation, outlink, &(tvai->basicInfo), 0, 
         tvai->pModelParameters, tvai->modelParametersCount)) {
         av_log(ctx, AV_LOG_ERROR, "The processing has failed\n");
       return AVERROR(EINVAL);  
