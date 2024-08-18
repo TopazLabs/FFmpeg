@@ -100,7 +100,7 @@ static int config_props(AVFilterLink *outlink) {
     av_dict_set_float(&tvai->parameters, "postFlight", tvai->postFlight, 0);
     av_dict_set_float(&tvai->parameters, "canvasScaleX", tvai->canvasScaleX, 0);
     av_dict_set_float(&tvai->parameters, "canvasScaleY", tvai->canvasScaleY, 0);
-    av_dict_set_float(&tvai->parameters, "cacheSize", tvai->cacheSize, 0);
+    av_dict_set_float(&tvai->parameters, "cacheAfter", tvai->cacheSize, 0);
     av_dict_set_float(&tvai->parameters, "stabDOF", tvai->stabDOF, 0);
     av_dict_set_float(&tvai->parameters, "enableRSC", tvai->enableRSC, 0);
     av_dict_set_float(&tvai->parameters, "readStartTime", tvai->readStartTime, 0);
