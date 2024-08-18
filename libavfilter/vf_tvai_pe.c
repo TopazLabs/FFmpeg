@@ -62,7 +62,7 @@ static int config_props(AVFilterLink *outlink) {
     DeviceSetting device = {.index = -1, .maxMemory = 1, .extraThreadCount = 0};
     tvai->basicInfo.device = device;
     VideoProcessorInfo info;
-    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeParameterEstimation, outlink, &(tvai->basicInfo), 0, NULL, 0)) {
+    if(ff_tvai_prepareProcessorInfo("-1", &info, ModelTypeParameterEstimation, outlink, &(tvai->basicInfo), 0, NULL, 0)) {
       return AVERROR(EINVAL);  
     }
     tvai->pParamEstimator = tvai_create(&info);
