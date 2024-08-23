@@ -2,6 +2,94 @@ The last version increases of all libraries were on 2024-03-07
 
 API changes, most recent first:
 
+2024-08-xx - xxxxxxxxx - lavc 61.11.100- avcodec.h
+  Clarify the documentation for get_buffer*() functions, making it
+  clear that the memory returned by them should not contain sensitive
+  information. This is not a change in the API, it is how it already worked
+  before.
+
+2024-08-10 - xxxxxxxxx - lavu 59.34.100 - hwcontext_vulkan.h
+  Add qf and nb_qf to AVVulkanDeviceContext.
+  Deprecate queue_family_index, nb_graphics_queues,
+  queue_family_tx_index, nb_tx_queues.
+  queue_family_comp_index, nb_comp_queues.
+  queue_family_encode_index, nb_encode_queues.
+  queue_family_decode_index, and nb_decode_queues,
+  from AVVulkanDeviceContext.
+
+2024-07-30 - xxxxxxxxx - lavu 59.32.100 - cpu.h
+  Deprecate AV_CPU_FLAG_RVF and AV_CPU_FLAG_RVD without replacement.
+  Deprecate AV_CPU_FLAG_RVB_ADDR, subsumed into AV_CPU_FLAG_RVB.
+
+2024-07-29 - xxxxxxxxx - lavu 59.31.100 - intreadwrite.h
+  Add AV_{R,W}{L,B}{16,32}A and AV_{R,W}B64A.
+
+2024-07-28 - xxxxxxxxxx - lavu 59.30.100 - dovi_meta.h
+  Add AVDOVIDecoderConfigurationRecord.dv_md_compression.
+
+2024-07-25 - xxxxxxxxx - lavu 59.29.100 - cpu.h
+  Add AV_CPU_FLAG_RVB.
+
+2024-07-xx - xxxxxxxxxx - lavf 61 - avformat.h
+  Deprecate avformat_transfer_internal_stream_timing_info()
+  and av_stream_get_codec_timebase() without replacement.
+
+2024-07-08 - xxxxxxxxxx - lavc 61.10.100 - packet.h
+  Add AV_PKT_DATA_FRAME_CROPPING.
+
+2024-07-07 - xxxxxxxxxx - lavf 61.5.100 - avformat.h
+  Add AV_DISPOSITION_MULTILAYER
+
+2024-07-02 - xxxxxxxxxx - lavu 59.28.100 - hwcontext_d3d12va.h
+  Add AVD3D12VAFramesContext.flags
+
+2024-06-28 - xxxxxxxxxx - lavu 59.27.100 - stereo3d.h
+  Add AV_STEREO3D_UNSPEC and AV_STEREO3D_VIEW_UNSPEC.
+
+2024-06-25 - xxxxxxxxxx - lavu 59.26.100 - stereo3d.h
+  Add av_stereo3d_alloc_size().
+
+2024-06-19 - xxxxxxxxxx - lavu 59.25.100 - dovi_meta.h
+  Add AVDOVIRpuDataHeader.ext_mapping_idc_0_4 and ext_mapping_idc_5_7.
+
+2024-06-18 - xxxxxxxxxx - lavu 59.24.100 - stereo3d.h
+  Add primary_eye, baseline, horizontal_disparity_adjustment, and
+  horizontal_field_of_view fields to AVStereo3D.
+  Add AVStereo3DPrimaryEye.
+  Add av_stereo3d_view_name.
+  Add av_stereo3d_view_from_name.
+  Add av_stereo3d_primary_eye_name.
+  Add av_stereo3d_primary_eye_from_name.
+
+2024-06-18 - xxxxxxxxxx - lavu 59.23.100 - spherical.h
+  Add AV_SPHERICAL_HALF_EQUIRECTANGULAR, AV_SPHERICAL_RECTILINEAR, and
+  AV_SPHERICAL_FISHEYE values to AVSphericalProjection, and initialize
+  to AV_SPHERICAL_RECTILINEAR on alloc.
+
+2024-06-13 - xxxxxxxxxx - lavu 59.22.100 - common.h
+  Deprecate av_mod_uintp2[_c]() and replace it with av_zero_extend[_c]().
+
+2024-06-08 - xxxxxxxxxx - lavc 61.7.100 - defs.h
+  Add AV_PROFILE_AAC_USAC.
+
+2024-06-02 - xxxxxxxxxx - lavu 59.21.100 - channel_layout.h
+  Add AV_CHAN_SIDE_SURROUND_RIGHT and AV_CH_SIDE_SURROUND_LEFT.
+  Add AV_CHAN_SIDE_SURROUND_RIGHT and AV_CH_SIDE_SURROUND_RIGHT.
+  Add AV_CHAN_TOP_SURROUND_LEFT and AV_CH_TOP_SURROUND_LEFT.
+  Add AV_CHAN_TOP_SURROUND_RIGHT and AV_CH_TOP_SURROUND_RIGHT.
+
+2024-05-23 - xxxxxxxxxx - lavu 59.20.100 - channel_layout.h
+  Add av_channel_layout_ambisonic_order().
+
+2024-05-xx - xxxxxxxxxx - lavu 59.19.100 - hwcontext_qsv.h
+  Add AVQSVFramesContext.info
+
+2024-05-10 - xxxxxxxxx - lavu 59.18.100 - cpu.h
+  Add AV_CPU_FLAG_RV_ZVBB.
+
+2024-05-04 - xxxxxxxxxx - lavu 59.17.100 - opt.h
+  Add AV_OPT_TYPE_UINT and av_opt_eval_uint().
+
 2024-04-24 - 8616cfe0890 - lavu 59.16.100 - opt.h
   Add AV_OPT_SERIALIZE_SEARCH_CHILDREN.
 

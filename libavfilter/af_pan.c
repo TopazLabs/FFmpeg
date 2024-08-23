@@ -35,8 +35,8 @@
 #include "libswresample/swresample.h"
 #include "audio.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 
 #define MAX_CHANNELS 64
 
@@ -118,6 +118,14 @@ static av_cold int init(AVFilterContext *ctx)
                                   &pan->nb_output_channels, arg, ctx);
     if (ret < 0)
         goto fail;
+
+    if (pan->nb_output_channels > MAX_CHANNELS) {
+        av_log(ctx, AV_LOG_ERROR,
+               "af_pan supports a maximum of %d channels. "
+               "Feel free to ask for a higher limit.\n", MAX_CHANNELS);
+        ret = AVERROR_PATCHWELCOME;
+        goto fail;
+    }
 
     /* parse channel specifications */
     while ((arg = arg0 = av_strtok(NULL, "|", &tokenizer))) {

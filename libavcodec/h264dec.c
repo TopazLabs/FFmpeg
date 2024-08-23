@@ -612,8 +612,8 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
             h->is_avc = 1;
     }
 
-    ret = ff_h2645_packet_split(&h->pkt, buf, buf_size, avctx, h->is_avc, h->nal_length_size,
-                                avctx->codec_id, 0, 0);
+    ret = ff_h2645_packet_split(&h->pkt, buf, buf_size, avctx, h->nal_length_size,
+                                avctx->codec_id, !!h->is_avc * H2645_FLAG_IS_NALFF);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR,
                "Error splitting the input into NAL units.\n");
@@ -979,7 +979,7 @@ static int finalize_frame(H264Context *h, AVFrame *dst, H264Picture *out, int *g
         *got_frame = 1;
 
         if (CONFIG_MPEGVIDEODEC) {
-            ff_print_debug_info2(h->avctx, dst, NULL,
+            ff_print_debug_info2(h->avctx, dst,
                                  out->mb_type,
                                  out->qscale_table,
                                  out->motion_val,

@@ -168,7 +168,7 @@ int enc_open(void *opaque, const AVFrame *frame)
     InputStream *ist = ost->ist;
     Encoder              *e = ost->enc;
     AVCodecContext *enc_ctx = ost->enc_ctx;
-    Decoder            *dec;
+    Decoder            *dec = NULL;
     const AVCodec      *enc = enc_ctx->codec;
     OutputFile          *of = ost->file;
     FrameData *fd;
@@ -307,16 +307,10 @@ int enc_open(void *opaque, const AVFrame *frame)
     if (ost->bitexact)
         enc_ctx->flags |= AV_CODEC_FLAG_BITEXACT;
 
-    if (!av_dict_get(ost->encoder_opts, "threads", NULL, 0))
-        av_dict_set(&ost->encoder_opts, "threads", "auto", 0);
+    if (enc->capabilities & AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE)
+        enc_ctx->flags |= AV_CODEC_FLAG_COPY_OPAQUE;
 
-    if (enc->capabilities & AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE) {
-        ret = av_dict_set(&ost->encoder_opts, "flags", "+copy_opaque", AV_DICT_MULTIKEY);
-        if (ret < 0)
-            return ret;
-    }
-
-    av_dict_set(&ost->encoder_opts, "flags", "+frame_duration", AV_DICT_MULTIKEY);
+    enc_ctx->flags |= AV_CODEC_FLAG_FRAME_DURATION;
 
     ret = hw_device_setup_for_encode(ost, frame ? frame->hw_frames_ctx : NULL);
     if (ret < 0) {
@@ -325,7 +319,7 @@ int enc_open(void *opaque, const AVFrame *frame)
         return ret;
     }
 
-    if ((ret = avcodec_open2(ost->enc_ctx, enc, &ost->encoder_opts)) < 0) {
+    if ((ret = avcodec_open2(ost->enc_ctx, enc, NULL)) < 0) {
         if (ret != AVERROR_EXPERIMENTAL)
             av_log(ost, AV_LOG_ERROR, "Error while opening encoder - maybe "
                    "incorrect parameters such as bit_rate, rate, width or height.\n");
@@ -336,10 +330,6 @@ int enc_open(void *opaque, const AVFrame *frame)
 
     if (ost->enc_ctx->frame_size)
         frame_samples = ost->enc_ctx->frame_size;
-
-    ret = check_avoptions(ost->encoder_opts);
-    if (ret < 0)
-        return ret;
 
     if (ost->enc_ctx->bit_rate && ost->enc_ctx->bit_rate < 1000 &&
         ost->enc_ctx->codec_id != AV_CODEC_ID_CODEC2 /* don't complain about 700 bit/s modes */)
@@ -474,9 +464,9 @@ void enc_stats_write(OutputStream *ost, EncStats *es,
     AVRational  tbi = (AVRational){ 0, 1};
     int64_t    ptsi = INT64_MAX;
 
-    const FrameData *fd;
+    const FrameData *fd = NULL;
 
-    if ((frame && frame->opaque_ref) || (pkt && pkt->opaque_ref)) {
+    if (frame ? frame->opaque_ref : pkt->opaque_ref) {
         fd   = (const FrameData*)(frame ? frame->opaque_ref->data : pkt->opaque_ref->data);
         tbi  = fd->dec.tb;
         ptsi = fd->dec.pts;

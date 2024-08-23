@@ -1379,6 +1379,21 @@ Note that forcing too many keyframes is very harmful for the lookahead
 algorithms of certain encoders: using fixed-GOP options or similar
 would be more efficient.
 
+@item -apply_cropping[:@var{stream_specifier}] @var{source} (@emph{input,per-stream})
+Automatically crop the video after decoding according to file metadata.
+Default is @emph{all}.
+
+@table @option
+@item none (0)
+Don't apply any cropping metadata.
+@item all (1)
+Apply both codec and container level croppping. This is the default mode.
+@item codec (2)
+Apply codec level croppping.
+@item container (3)
+Apply container level croppping.
+@end table
+
 @item -copyinkf[:@var{stream_specifier}] (@emph{output,per-stream})
 When doing stream copy, copy also non-key frames found at the
 beginning.
@@ -1443,6 +1458,11 @@ The following options are recognized:
 When @var{device} is not specified, use this option to specify the name of the kernel
 driver associated with the desired device. This option is available only when
 the hardware acceleration method @emph{drm} and @emph{vaapi} are enabled.
+@item vendor_id
+When @var{device} and @var{kernel_driver} are not specified, use this option to specify
+the vendor id associated with the desired device. This option is available only when the
+hardware acceleration method @emph{drm} and @emph{vaapi} are enabled and @emph{kernel_driver}
+is not specified.
 @end table
 
 Examples:
@@ -1458,6 +1478,9 @@ Create a vaapi device on DirectX adapter 1.
 
 @item -init_hw_device vaapi:,kernel_driver=i915
 Create a vaapi device on a device associated with kernel driver @samp{i915}.
+
+@item -init_hw_device vaapi:,vendor_id=0x8086
+Create a vaapi device on a device associated with vendor id @samp{0x8086}.
 @end table
 
 @item vdpau
@@ -1719,12 +1742,21 @@ This is an alias for @code{-filter:a}, see the @ref{filter_option,,-filter optio
 @table @option
 @item -atag @var{fourcc/tag} (@emph{output})
 Force audio tag/fourcc. This is an alias for @code{-tag:a}.
+@item -ch_layout[:@var{stream_specifier}] @var{layout} (@emph{input/output,per-stream})
+Alias for @code{-channel_layout}.
+@item -channel_layout[:@var{stream_specifier}] @var{layout} (@emph{input/output,per-stream})
+Set the audio channel layout. For output streams it is set by default to the
+input channel layout. For input streams it overrides the channel layout of the
+input. Not all decoders respect the overridden channel layout. This option
+also sets the channel layout for audio grabbing devices and raw demuxers
+and is mapped to the corresponding demuxer option.
 @item -guess_layout_max @var{channels} (@emph{input,per-stream})
 If some input channel layout is not known, try to guess only if it
 corresponds to at most the specified number of channels. For example, 2
 tells to @command{ffmpeg} to recognize 1 channel as mono and 2 channels as
 stereo but not 6 channels as 5.1. The default is to always try to guess. Use
-0 to disable all guessing.
+0 to disable all guessing. Using the @code{-channel_layout} option to
+explicitly specify an input layout also disables guessing.
 @end table
 
 @section Subtitle options

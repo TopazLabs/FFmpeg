@@ -33,11 +33,12 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "get_bits.h"
-#include "hevc.h"
-#include "hevcdec.h"
 #include "h2645_parse.h"
 #include "qsv.h"
 #include "qsvenc.h"
+
+#include "hevc/hevc.h"
+#include "hevc/ps.h"
 
 enum LoadPlugin {
     LOAD_PLUGIN_NONE,
@@ -108,7 +109,7 @@ static int generate_fake_vps(QSVEncContext *q, AVCodecContext *avctx)
     /* generate the VPS */
     vps.vps_max_layers     = 1;
     vps.vps_max_sub_layers = sps.max_sub_layers;
-    vps.vps_temporal_id_nesting_flag = sps.temporal_id_nesting_flag;
+    vps.vps_temporal_id_nesting_flag = sps.temporal_id_nesting;
     memcpy(&vps.ptl, &sps.ptl, sizeof(vps.ptl));
     vps.vps_sub_layer_ordering_info_present_flag = 1;
     for (i = 0; i < HEVC_MAX_SUB_LAYERS; i++) {
