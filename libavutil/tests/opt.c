@@ -32,6 +32,7 @@ typedef struct TestContext {
     const AVClass *class;
     struct ChildContext *child;
     int num;
+    int unum;
     int toggle;
     char *string;
     int flags;
@@ -86,7 +87,8 @@ static const AVOptionArrayDef array_dict = {
 };
 
 static const AVOption test_options[]= {
-    {"num",        "set num",            OFFSET(num),            AV_OPT_TYPE_INT,            { .i64 = 0 },                      0,       100, 1 },
+    {"num",        "set num",            OFFSET(num),            AV_OPT_TYPE_INT,            { .i64 = 0 },                     -1,       100, 1 },
+    {"unum",       "set unum",           OFFSET(unum),           AV_OPT_TYPE_UINT,           { .i64 = 1U << 31 },               0,  1U << 31, 1 },
     {"toggle",     "set toggle",         OFFSET(toggle),         AV_OPT_TYPE_INT,            { .i64 = 1 },                      0,         1, 1 },
     {"rational",   "set rational",       OFFSET(rational),       AV_OPT_TYPE_RATIONAL,       { .dbl = 1 },                      0,        10, 1 },
     {"string",     "set string",         OFFSET(string),         AV_OPT_TYPE_STRING,         { .str = "default" },       CHAR_MIN,  CHAR_MAX, 1 },
@@ -105,7 +107,7 @@ static const AVOption test_options[]= {
     {"bin",        "set binary value",   OFFSET(binary),         AV_OPT_TYPE_BINARY,         { .str="62696e00" },               0,         0, 1 },
     {"bin1",       "set binary value",   OFFSET(binary1),        AV_OPT_TYPE_BINARY,         { .str=NULL },                     0,         0, 1 },
     {"bin2",       "set binary value",   OFFSET(binary2),        AV_OPT_TYPE_BINARY,         { .str="" },                       0,         0, 1 },
-    {"num64",      "set num 64bit",      OFFSET(num64),          AV_OPT_TYPE_INT64,          { .i64 = 1 },                      0,       100, 1 },
+    {"num64",      "set num 64bit",      OFFSET(num64),          AV_OPT_TYPE_INT64,          { .i64 = 1LL << 32 },             -1, 1LL << 32, 1 },
     {"flt",        "set float",          OFFSET(flt),            AV_OPT_TYPE_FLOAT,          { .dbl = 1.0 / 3 },                0,       100, 1 },
     {"dbl",        "set double",         OFFSET(dbl),            AV_OPT_TYPE_DOUBLE,         { .dbl = 1.0 / 3 },                0,       100, 1 },
     {"bool1",      "set boolean value",  OFFSET(bool1),          AV_OPT_TYPE_BOOL,           { .i64 = -1 },                    -1,         1, 1 },
@@ -186,6 +188,7 @@ int main(void)
         av_opt_set_defaults(&test_ctx);
 
         printf("num=%d\n", test_ctx.num);
+        printf("unum=%u\n", test_ctx.unum);
         printf("toggle=%d\n", test_ctx.toggle);
         printf("string=%s\n", test_ctx.string);
         printf("escape=%s\n", test_ctx.escape);
@@ -301,6 +304,7 @@ int main(void)
     {
         TestContext test_ctx = { 0 };
         char *buf;
+        int ret;
         test_ctx.class = &test_class;
 
         av_log_set_level(AV_LOG_QUIET);
@@ -311,8 +315,10 @@ int main(void)
             av_opt_free(&test_ctx);
             memset(&test_ctx, 0, sizeof(test_ctx));
             test_ctx.class = &test_class;
-            av_set_options_string(&test_ctx, buf, "=", ",");
+            ret = av_set_options_string(&test_ctx, buf, "=", ",");
             av_free(buf);
+            if (ret < 0)
+                printf("Error ret '%d'\n", ret);
             if (av_opt_serialize(&test_ctx, 0, 0, &buf, '=', ',') >= 0) {
                 ChildContext child_ctx = { 0 };
                 printf("%s\n", buf);
@@ -380,11 +386,25 @@ int main(void)
             "bin=boguss",
             "bin=111",
             "bin=ffff",
+            "num=bogus",
+            "num=44",
+            "num=44.4",
+            "num=-1",
+            "num=-2",
+            "num=101",
+            "unum=bogus",
+            "unum=44",
+            "unum=44.4",
+            "unum=-1",
+            "unum=2147483648",
+            "unum=2147483649",
             "num64=bogus",
             "num64=44",
             "num64=44.4",
             "num64=-1",
-            "num64=101",
+            "num64=-2",
+            "num64=4294967296",
+            "num64=4294967297",
             "flt=bogus",
             "flt=2",
             "flt=2.2",

@@ -30,8 +30,8 @@
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 
 #define HISTOGRAM_SLOTS 12000
 #define BUTTER_ORDER        2
@@ -349,6 +349,7 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_input(AVFilterLink *inlink)
 {
+    FilterLink *l = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     ReplayGainContext *s = ctx->priv;
     int i;
@@ -366,8 +367,8 @@ static int config_input(AVFilterLink *inlink)
 
     s->yule_hist_i   = 20;
     s->butter_hist_i = 4;
-    inlink->min_samples =
-    inlink->max_samples = inlink->sample_rate / 20;
+    l->min_samples =
+    l->max_samples = inlink->sample_rate / 20;
 
     return 0;
 }

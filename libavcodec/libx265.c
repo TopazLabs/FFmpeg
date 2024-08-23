@@ -495,8 +495,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     {
-        AVDictionaryEntry *en = NULL;
-        while ((en = av_dict_get(ctx->x265_opts, "", en, AV_DICT_IGNORE_SUFFIX))) {
+        const AVDictionaryEntry *en = NULL;
+        while ((en = av_dict_iterate(ctx->x265_opts, en))) {
             int parse_ret = ctx->api->param_parse(ctx->params, en->key, en->value);
 
             switch (parse_ret) {
@@ -661,7 +661,13 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 {
     libx265Context *ctx = avctx->priv_data;
     x265_picture x265pic;
-    x265_picture x265pic_out = { 0 };
+#if X265_BUILD >= 210
+    x265_picture x265pic_layers_out[MAX_SCALABLE_LAYERS];
+    x265_picture* x265pic_lyrptr_out[MAX_SCALABLE_LAYERS];
+#else
+    x265_picture x265pic_solo_out = { 0 };
+#endif
+    x265_picture* x265pic_out;
     x265_nal *nal;
     x265_sei *sei;
     uint8_t *dst;
@@ -783,7 +789,8 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         sd = av_frame_get_side_data(pic, AV_FRAME_DATA_DOVI_METADATA);
         if (ctx->dovi.cfg.dv_profile && sd) {
             const AVDOVIMetadata *metadata = (const AVDOVIMetadata *)sd->data;
-            ret = ff_dovi_rpu_generate(&ctx->dovi, metadata, &x265pic.rpu.payload,
+            ret = ff_dovi_rpu_generate(&ctx->dovi, metadata, FF_DOVI_WRAP_NAL,
+                                       &x265pic.rpu.payload,
                                        &x265pic.rpu.payloadSize);
             if (ret < 0) {
                 free_picture(ctx, &x265pic);
@@ -798,8 +805,16 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 #endif
     }
 
+#if X265_BUILD >= 210
+    for (i = 0; i < MAX_SCALABLE_LAYERS; i++)
+        x265pic_lyrptr_out[i] = &x265pic_layers_out[i];
+
     ret = ctx->api->encoder_encode(ctx->encoder, &nal, &nnal,
-                                   pic ? &x265pic : NULL, &x265pic_out);
+                                   pic ? &x265pic : NULL, x265pic_lyrptr_out);
+#else
+    ret = ctx->api->encoder_encode(ctx->encoder, &nal, &nnal,
+                                   pic ? &x265pic : NULL, &x265pic_solo_out);
+#endif
 
     for (i = 0; i < sei->numPayloads; i++)
         av_free(sei->payloads[i].payload);
@@ -829,10 +844,16 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             pkt->flags |= AV_PKT_FLAG_KEY;
     }
 
-    pkt->pts = x265pic_out.pts;
-    pkt->dts = x265pic_out.dts;
+#if X265_BUILD >= 210
+    x265pic_out = x265pic_lyrptr_out[0];
+#else
+    x265pic_out = &x265pic_solo_out;
+#endif
 
-    switch (x265pic_out.sliceType) {
+    pkt->pts = x265pic_out->pts;
+    pkt->dts = x265pic_out->dts;
+
+    switch (x265pic_out->sliceType) {
     case X265_TYPE_IDR:
     case X265_TYPE_I:
         pict_type = AV_PICTURE_TYPE_I;
@@ -850,16 +871,16 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
 #if X265_BUILD >= 130
-    if (x265pic_out.sliceType == X265_TYPE_B)
+    if (x265pic_out->sliceType == X265_TYPE_B)
 #else
-    if (x265pic_out.frameData.sliceType == 'b')
+    if (x265pic_out->frameData.sliceType == 'b')
 #endif
         pkt->flags |= AV_PKT_FLAG_DISPOSABLE;
 
-    ff_side_data_set_encoder_stats(pkt, x265pic_out.frameData.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
+    ff_side_data_set_encoder_stats(pkt, x265pic_out->frameData.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
 
-    if (x265pic_out.userData) {
-        int idx = (int)(intptr_t)x265pic_out.userData - 1;
+    if (x265pic_out->userData) {
+        int idx = (int)(intptr_t)x265pic_out->userData - 1;
         ReorderedData *rd = &ctx->rd[idx];
 
         pkt->duration           = rd->duration;
@@ -948,7 +969,7 @@ static const AVOption options[] = {
     { "tune",        "set the x265 tune parameter",                                                 OFFSET(tune),      AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "profile",     "set the x265 profile",                                                        OFFSET(profile),   AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "udu_sei",     "Use user data unregistered SEI if available",                                 OFFSET(udu_sei),   AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
-    { "a53cc",       "Use A53 Closed Captions (if available)",                                      OFFSET(a53_cc),    AV_OPT_TYPE_BOOL,   { .i64 = 1 }, 0, 1, VE },
+    { "a53cc",       "Use A53 Closed Captions (if available)",                                      OFFSET(a53_cc),    AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
     { "x265-params", "set the x265 configuration using a :-separated list of key=value parameters", OFFSET(x265_opts), AV_OPT_TYPE_DICT,   { 0 }, 0, 0, VE },
 #if X265_BUILD >= 167
     { "dolbyvision", "Enable Dolby Vision RPU coding", OFFSET(dovi.enable), AV_OPT_TYPE_BOOL, {.i64 = FF_DOVI_AUTOMATIC }, -1, 1, VE, .unit = "dovi" },

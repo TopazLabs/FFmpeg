@@ -22,7 +22,7 @@
 #include "libavutil/mastering_display_metadata.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "vaapi_vpp.h"
 #include "video.h"
 

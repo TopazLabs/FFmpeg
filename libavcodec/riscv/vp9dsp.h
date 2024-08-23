@@ -60,6 +60,20 @@ void ff_dc_129_16x16_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
                          const uint8_t *a);
 void ff_dc_129_8x8_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
                        const uint8_t *a);
+void ff_h_32x32_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                    const uint8_t *a);
+void ff_h_16x16_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                    const uint8_t *a);
+void ff_h_8x8_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                  const uint8_t *a);
+void ff_tm_32x32_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                     const uint8_t *a);
+void ff_tm_16x16_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                     const uint8_t *a);
+void ff_tm_8x8_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                   const uint8_t *a);
+void ff_tm_4x4_rvv(uint8_t *dst, ptrdiff_t stride, const uint8_t *l,
+                   const uint8_t *a);
 
 #define VP9_8TAP_RISCV_RVV_FUNC(SIZE, type, type_idx)                         \
 void ff_put_8tap_##type##_##SIZE##h_rvv(uint8_t *dst, ptrdiff_t dststride,   \
@@ -93,36 +107,36 @@ void ff_avg_8tap_##type##_##SIZE##hv_rvv(uint8_t *dst, ptrdiff_t dststride,  \
                                          int h, int mx, int my);
 
 #define VP9_BILINEAR_RISCV_RVV_FUNC(SIZE)                                   \
-void ff_put_bilin_##SIZE##h_rvv(uint8_t *dst, ptrdiff_t dststride,         \
+void ff_put_vp9_bilin_##SIZE##h_rvv(uint8_t *dst, ptrdiff_t dststride,     \
                                 const uint8_t *src, ptrdiff_t srcstride,   \
                                 int h, int mx, int my);                    \
                                                                            \
-void ff_put_bilin_##SIZE##v_rvv(uint8_t *dst, ptrdiff_t dststride,         \
+void ff_put_vp9_bilin_##SIZE##v_rvv(uint8_t *dst, ptrdiff_t dststride,     \
                                 const uint8_t *src, ptrdiff_t srcstride,   \
                                 int h, int mx, int my);                    \
                                                                            \
-void ff_put_bilin_##SIZE##hv_rvv(uint8_t *dst, ptrdiff_t dststride,        \
+void ff_put_vp9_bilin_##SIZE##hv_rvv(uint8_t *dst, ptrdiff_t dststride,    \
                                  const uint8_t *src, ptrdiff_t srcstride,  \
                                  int h, int mx, int my);                   \
                                                                            \
-void ff_avg_bilin_##SIZE##h_rvv(uint8_t *dst, ptrdiff_t dststride,         \
+void ff_avg_vp9_bilin_##SIZE##h_rvv(uint8_t *dst, ptrdiff_t dststride,     \
                                 const uint8_t *src, ptrdiff_t srcstride,   \
                                 int h, int mx, int my);                    \
                                                                            \
-void ff_avg_bilin_##SIZE##v_rvv(uint8_t *dst, ptrdiff_t dststride,         \
+void ff_avg_vp9_bilin_##SIZE##v_rvv(uint8_t *dst, ptrdiff_t dststride,     \
                                 const uint8_t *src, ptrdiff_t srcstride,   \
                                 int h, int mx, int my);                    \
                                                                            \
-void ff_avg_bilin_##SIZE##hv_rvv(uint8_t *dst, ptrdiff_t dststride,        \
+void ff_avg_vp9_bilin_##SIZE##hv_rvv(uint8_t *dst, ptrdiff_t dststride,    \
                                  const uint8_t *src, ptrdiff_t srcstride,  \
                                  int h, int mx, int my);
 
 #define VP9_COPY_AVG_RISCV_RVV_FUNC(SIZE)                           \
-void ff_copy##SIZE##_rvv(uint8_t *dst, ptrdiff_t dststride,        \
+void ff_vp9_copy##SIZE##_rvv(uint8_t *dst, ptrdiff_t dststride,    \
                          const uint8_t *src, ptrdiff_t srcstride,  \
                          int h, int mx, int my);                   \
                                                                    \
-void ff_avg##SIZE##_rvv(uint8_t *dst, ptrdiff_t dststride,         \
+void ff_vp9_avg##SIZE##_rvv(uint8_t *dst, ptrdiff_t dststride,     \
                         const uint8_t *src, ptrdiff_t srcstride,   \
                         int h, int mx, int my);
 
@@ -161,6 +175,9 @@ void ff_copy##SIZE##_rvi(uint8_t *dst, ptrdiff_t dststride,        \
                          const uint8_t *src, ptrdiff_t srcstride,  \
                          int h, int mx, int my);
 
+VP9_COPY_RISCV_RVI_FUNC(64);
+VP9_COPY_RISCV_RVI_FUNC(32);
+VP9_COPY_RISCV_RVI_FUNC(16);
 VP9_COPY_RISCV_RVI_FUNC(8);
 VP9_COPY_RISCV_RVI_FUNC(4);
 
