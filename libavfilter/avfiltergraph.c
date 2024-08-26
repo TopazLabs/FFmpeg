@@ -36,10 +36,9 @@
 #include "avfilter.h"
 #include "avfilter_internal.h"
 #include "buffersink.h"
-#include "filters.h"
 #include "formats.h"
 #include "framequeue.h"
-#include "video.h"
+#include "internal.h"
 
 #define OFFSET(x) offsetof(AVFilterGraph, x)
 #define F AV_OPT_FLAG_FILTERING_PARAM
@@ -107,7 +106,7 @@ void ff_filter_graph_remove_filter(AVFilterGraph *graph, AVFilterContext *filter
             filter->graph = NULL;
             for (j = 0; j<filter->nb_outputs; j++)
                 if (filter->outputs[j])
-                    ff_filter_link(filter->outputs[j])->graph = NULL;
+                    filter->outputs[j]->graph = NULL;
 
             return;
         }
@@ -1209,9 +1208,11 @@ static int graph_config_pointers(AVFilterGraph *graph, void *log_ctx)
     for (i = 0; i < graph->nb_filters; i++) {
         f = graph->filters[i];
         for (j = 0; j < f->nb_inputs; j++) {
+            f->inputs[j]->graph     = graph;
             ff_link_internal(f->inputs[j])->age_index  = -1;
         }
         for (j = 0; j < f->nb_outputs; j++) {
+            f->outputs[j]->graph    = graph;
             ff_link_internal(f->outputs[j])->age_index = -1;
         }
         if (!f->nb_outputs) {
@@ -1373,13 +1374,13 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
 {
     FFFilterGraph *graphi = fffiltergraph(graph);
     FilterLinkInternal *oldesti = graphi->sink_links[0];
-    AVFilterLink *oldest = &oldesti->l.pub;
+    AVFilterLink *oldest = &oldesti->l;
     int64_t frame_count;
     int r;
 
     while (graphi->sink_links_count) {
         oldesti = graphi->sink_links[0];
-        oldest  = &oldesti->l.pub;
+        oldest  = &oldesti->l;
         if (oldest->dst->filter->activate) {
             r = av_buffersink_get_frame_flags(oldest->dst, NULL,
                                               AV_BUFFERSINK_FLAG_PEEK);
@@ -1403,11 +1404,11 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
         return AVERROR_EOF;
     av_assert1(!oldest->dst->filter->activate);
     av_assert1(oldesti->age_index >= 0);
-    frame_count = oldesti->l.frame_count_out;
-    while (frame_count == oldesti->l.frame_count_out) {
+    frame_count = oldest->frame_count_out;
+    while (frame_count == oldest->frame_count_out) {
         r = ff_filter_graph_run_once(graph);
         if (r == AVERROR(EAGAIN) &&
-            !oldesti->frame_wanted_out && !oldesti->frame_blocked_in &&
+            !oldest->frame_wanted_out && !oldesti->frame_blocked_in &&
             !oldesti->status_in)
             (void)ff_request_frame(oldest);
         else if (r < 0)

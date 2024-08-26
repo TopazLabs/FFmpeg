@@ -419,7 +419,6 @@ static av_cold int aom_free(AVCodecContext *avctx)
 #endif
 
     aom_codec_destroy(&ctx->encoder);
-    aom_img_remove_metadata(&ctx->rawimg);
     av_freep(&ctx->twopass_stats.buf);
     av_freep(&avctx->stats_out);
     free_frame_list(ctx->coded_frame_list);
@@ -970,9 +969,9 @@ static av_cold int aom_init(AVCodecContext *avctx,
 
 #if AOM_ENCODER_ABI_VERSION >= 23
     {
-        const AVDictionaryEntry *en = NULL;
+        AVDictionaryEntry *en = NULL;
 
-        while ((en = av_dict_iterate(ctx->aom_params, en))) {
+        while ((en = av_dict_get(ctx->aom_params, "", en, AV_DICT_IGNORE_SUFFIX))) {
             int ret = aom_codec_set_option(&ctx->encoder, en->key, en->value);
             if (ret != AOM_CODEC_OK) {
                 log_encoder_error(avctx, en->key);
@@ -1288,14 +1287,12 @@ FF_ENABLE_DEPRECATION_WARNINGS
             break;
         }
 
-        aom_img_remove_metadata(rawimg);
         sd = av_frame_get_side_data(frame, AV_FRAME_DATA_DOVI_METADATA);
         if (ctx->dovi.cfg.dv_profile && sd) {
             const AVDOVIMetadata *metadata = (const AVDOVIMetadata *)sd->data;
             uint8_t *t35;
             int size;
-            if ((res = ff_dovi_rpu_generate(&ctx->dovi, metadata, FF_DOVI_WRAP_T35,
-                                            &t35, &size)) < 0)
+            if ((res = ff_dovi_rpu_generate(&ctx->dovi, metadata, &t35, &size)) < 0)
                 return res;
             res = aom_img_add_metadata(rawimg, OBU_METADATA_TYPE_ITUT_T35,
                                        t35, size, AOM_MIF_ANY_FRAME);

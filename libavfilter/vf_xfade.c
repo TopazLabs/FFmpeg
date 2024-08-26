@@ -23,6 +23,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 #include "avfilter.h"
+#include "internal.h"
 #include "filters.h"
 #include "video.h"
 
@@ -955,7 +956,7 @@ static void vertopen##name##_transition(AVFilterContext *ctx,                   
 {                                                                                    \
     XFadeContext *s = ctx->priv;                                                     \
     const int width = out->width;                                                    \
-    const float w2 = out->width / 2.0;                                                 \
+    const float w2 = out->width / 2;                                                 \
                                                                                      \
     for (int y = slice_start; y < slice_end; y++) {                                  \
         for (int x = 0; x < width; x++) {                                            \
@@ -983,7 +984,7 @@ static void vertclose##name##_transition(AVFilterContext *ctx,                  
     XFadeContext *s = ctx->priv;                                                     \
     const int nb_planes = s->nb_planes;                                              \
     const int width = out->width;                                                    \
-    const float w2 = out->width / 2.0;                                                 \
+    const float w2 = out->width / 2;                                                 \
                                                                                      \
     for (int y = slice_start; y < slice_end; y++) {                                  \
         for (int x = 0; x < width; x++) {                                            \
@@ -1011,7 +1012,7 @@ static void horzopen##name##_transition(AVFilterContext *ctx,                   
     XFadeContext *s = ctx->priv;                                                     \
     const int nb_planes = s->nb_planes;                                              \
     const int width = out->width;                                                    \
-    const float h2 = out->height / 2.0;                                                \
+    const float h2 = out->height / 2;                                                \
                                                                                      \
     for (int y = slice_start; y < slice_end; y++) {                                  \
         const float smooth = 2.f - fabsf((y - h2) / h2) - progress * 2.f;            \
@@ -1039,7 +1040,7 @@ static void horzclose##name##_transition(AVFilterContext *ctx,                  
     XFadeContext *s = ctx->priv;                                                     \
     const int nb_planes = s->nb_planes;                                              \
     const int width = out->width;                                                    \
-    const float h2 = out->height / 2.0;                                                \
+    const float h2 = out->height / 2;                                                \
                                                                                      \
     for (int y = slice_start; y < slice_end; y++) {                                  \
         const float smooth = 1.f + fabsf((y - h2) / h2) - progress * 2.f;            \
@@ -2040,9 +2041,6 @@ static int config_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink0 = ctx->inputs[0];
     AVFilterLink *inlink1 = ctx->inputs[1];
-    FilterLink      *inl0 = ff_filter_link(inlink0);
-    FilterLink      *inl1 = ff_filter_link(inlink1);
-    FilterLink        *ol = ff_filter_link(outlink);
     XFadeContext *s = ctx->priv;
     const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(inlink0->format);
 
@@ -2065,19 +2063,19 @@ static int config_output(AVFilterLink *outlink)
         return AVERROR(EINVAL);
     }
 
-    if (!inl0->frame_rate.num || !inl0->frame_rate.den) {
+    if (!inlink0->frame_rate.num || !inlink0->frame_rate.den) {
         av_log(ctx, AV_LOG_ERROR, "The inputs needs to be a constant frame rate; "
-               "current rate of %d/%d is invalid\n", inl0->frame_rate.num, inl0->frame_rate.den);
+               "current rate of %d/%d is invalid\n", inlink0->frame_rate.num, inlink0->frame_rate.den);
         return AVERROR(EINVAL);
     }
 
-    if (inl0->frame_rate.num != inl1->frame_rate.num ||
-        inl0->frame_rate.den != inl1->frame_rate.den) {
+    if (inlink0->frame_rate.num != inlink1->frame_rate.num ||
+        inlink0->frame_rate.den != inlink1->frame_rate.den) {
         av_log(ctx, AV_LOG_ERROR, "First input link %s frame rate "
                "(%d/%d) do not match the corresponding "
                "second input link %s frame rate (%d/%d)\n",
-               ctx->input_pads[0].name, inl0->frame_rate.num, inl0->frame_rate.den,
-               ctx->input_pads[1].name, inl1->frame_rate.num, inl1->frame_rate.den);
+               ctx->input_pads[0].name, inlink0->frame_rate.num, inlink0->frame_rate.den,
+               ctx->input_pads[1].name, inlink1->frame_rate.num, inlink1->frame_rate.den);
         return AVERROR(EINVAL);
     }
 
@@ -2085,7 +2083,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = inlink0->h;
     outlink->time_base = inlink0->time_base;
     outlink->sample_aspect_ratio = inlink0->sample_aspect_ratio;
-    ol->frame_rate = inl0->frame_rate;
+    outlink->frame_rate = inlink0->frame_rate;
 
     s->depth = pix_desc->comp[0].depth;
     s->is_rgb = !!(pix_desc->flags & AV_PIX_FMT_FLAG_RGB);
@@ -2290,11 +2288,8 @@ static int xfade_activate(AVFilterContext *avctx)
         // Check if we are not yet transitioning, in which case
         // just request and forward the input frame.
         if (s->start_pts > s->pts) {
-            int ret;
             s->passthrough = 1;
-            ret = ff_inlink_consume_frame(in_a, &s->xf[0]);
-            if (ret < 0)
-                return ret;
+            ff_inlink_consume_frame(in_a, &s->xf[0]);
             return ff_filter_frame(outlink, s->xf[0]);
         }
         s->passthrough = 0;
@@ -2302,14 +2297,8 @@ static int xfade_activate(AVFilterContext *avctx)
         // We are transitioning, so we need a frame from second input
         if (ff_inlink_check_available_frame(in_b)) {
             int ret;
-            ret = ff_inlink_consume_frame(avctx->inputs[0], &s->xf[0]);
-            if (ret < 0)
-                return ret;
-            ret = ff_inlink_consume_frame(avctx->inputs[1], &s->xf[1]);
-            if (ret < 0) {
-                av_frame_free(&s->xf[0]);
-                return ret;
-            }
+            ff_inlink_consume_frame(avctx->inputs[0], &s->xf[0]);
+            ff_inlink_consume_frame(avctx->inputs[1], &s->xf[1]);
 
             // Calculate PTS offset to first input
             if (s->inputs_offset_pts == AV_NOPTS_VALUE)

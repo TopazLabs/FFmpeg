@@ -35,6 +35,7 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
+#include "internal.h"
 
 #define MAX_SPLITS 16
 #define MAX_BANDS MAX_SPLITS + 1

@@ -724,13 +724,10 @@ int show_codecs(void *optctx, const char *opt, const char *arg)
     return 0;
 }
 
-static int print_codecs(int encoder)
+static void print_codecs(int encoder)
 {
     const AVCodecDescriptor **codecs;
-    int i, nb_codecs = get_codecs_sorted(&codecs);
-
-    if (nb_codecs < 0)
-        return nb_codecs;
+    unsigned i, nb_codecs = get_codecs_sorted(&codecs);
 
     printf("%s:\n"
            " V..... = Video\n"
@@ -765,17 +762,18 @@ static int print_codecs(int encoder)
         }
     }
     av_free(codecs);
-    return 0;
 }
 
 int show_decoders(void *optctx, const char *opt, const char *arg)
 {
-    return print_codecs(0);
+    print_codecs(0);
+    return 0;
 }
 
 int show_encoders(void *optctx, const char *opt, const char *arg)
 {
-    return print_codecs(1);
+    print_codecs(1);
+    return 0;
 }
 
 int show_bsfs(void *optctx, const char *opt, const char *arg)

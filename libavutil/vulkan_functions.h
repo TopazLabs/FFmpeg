@@ -46,13 +46,6 @@ typedef enum FFVulkanExtensions {
     FF_VK_EXT_VIDEO_DECODE_AV1       = 1ULL << 14, /* VK_KHR_video_decode_av1 */
     FF_VK_EXT_ATOMIC_FLOAT           = 1ULL << 15, /* VK_EXT_shader_atomic_float */
     FF_VK_EXT_COOP_MATRIX            = 1ULL << 16, /* VK_KHR_cooperative_matrix */
-    FF_VK_EXT_OPTICAL_FLOW           = 1ULL << 17, /* VK_NV_optical_flow */
-    FF_VK_EXT_SHADER_OBJECT          = 1ULL << 18, /* VK_EXT_shader_object */
-
-    FF_VK_EXT_VIDEO_MAINTENANCE_1    = 1ULL << 27, /* VK_KHR_video_maintenance1 */
-    FF_VK_EXT_VIDEO_ENCODE_QUEUE     = 1ULL << 28, /* VK_KHR_video_encode_queue */
-    FF_VK_EXT_VIDEO_ENCODE_H264      = 1ULL << 29, /* VK_KHR_video_encode_h264 */
-    FF_VK_EXT_VIDEO_ENCODE_H265      = 1ULL << 30, /* VK_KHR_video_encode_h265 */
 
     FF_VK_EXT_NO_FLAG                = 1ULL << 31,
 } FFVulkanExtensions;
@@ -201,11 +194,6 @@ typedef enum FFVulkanExtensions {
                                                                                            \
     /* Video decoding */                                                                   \
     MACRO(1, 1, FF_VK_EXT_VIDEO_DECODE_QUEUE,   CmdDecodeVideoKHR)                         \
-                                                                                           \
-    /* Video encoding */                                                                   \
-    MACRO(1, 1, FF_VK_EXT_VIDEO_ENCODE_QUEUE,   CmdEncodeVideoKHR)                         \
-    MACRO(1, 1, FF_VK_EXT_VIDEO_ENCODE_QUEUE,   GetEncodedVideoSessionParametersKHR)       \
-    MACRO(1, 0, FF_VK_EXT_VIDEO_ENCODE_QUEUE,   GetPhysicalDeviceVideoEncodeQualityLevelPropertiesKHR) \
                                                                                          \
     /* Pipeline */                                                                       \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CreatePipelineLayout)                    \
@@ -220,21 +208,10 @@ typedef enum FFVulkanExtensions {
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              DestroySamplerYcbcrConversion)             \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CreateSampler)                           \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              DestroySampler)                          \
-                                                                                           \
-    /* Optical flow */                                                                     \
-    MACRO(1, 1, FF_VK_EXT_OPTICAL_FLOW,         BindOpticalFlowSessionImageNV)             \
-    MACRO(1, 1, FF_VK_EXT_OPTICAL_FLOW,         CmdOpticalFlowExecuteNV)                   \
-    MACRO(1, 1, FF_VK_EXT_OPTICAL_FLOW,         CreateOpticalFlowSessionNV)                \
-    MACRO(1, 1, FF_VK_EXT_OPTICAL_FLOW,         DestroyOpticalFlowSessionNV)               \
-    MACRO(1, 0, FF_VK_EXT_OPTICAL_FLOW,         GetPhysicalDeviceOpticalFlowImageFormatsNV)\
                                                                                          \
     /* Shaders */                                                                        \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CreateShaderModule)                      \
-    MACRO(1, 1, FF_VK_EXT_NO_FLAG,              DestroyShaderModule)                       \
-    MACRO(1, 1, FF_VK_EXT_SHADER_OBJECT,        CmdBindShadersEXT)                         \
-    MACRO(1, 1, FF_VK_EXT_SHADER_OBJECT,        CreateShadersEXT)                          \
-    MACRO(1, 1, FF_VK_EXT_SHADER_OBJECT,        DestroyShaderEXT)                          \
-    MACRO(1, 1, FF_VK_EXT_SHADER_OBJECT,        GetShaderBinaryDataEXT)
+    MACRO(1, 1, FF_VK_EXT_NO_FLAG,              DestroyShaderModule)
 
 /* Macro containing every win32 specific function that we utilize in our codebase */
 #define FN_LIST_WIN32(MACRO)                                                             \

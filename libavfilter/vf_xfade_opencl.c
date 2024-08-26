@@ -22,6 +22,7 @@
 
 #include "avfilter.h"
 #include "filters.h"
+#include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -215,8 +216,6 @@ static int xfade_opencl_config_output(AVFilterLink *outlink)
     XFadeOpenCLContext *ctx = avctx->priv;
     AVFilterLink *inlink0 = avctx->inputs[0];
     AVFilterLink *inlink1 = avctx->inputs[1];
-    FilterLink *il = ff_filter_link(inlink0);
-    FilterLink *ol = ff_filter_link(outlink);
     int err;
 
     err = ff_opencl_filter_config_output(outlink);
@@ -246,7 +245,7 @@ static int xfade_opencl_config_output(AVFilterLink *outlink)
 
     outlink->time_base = inlink0->time_base;
     outlink->sample_aspect_ratio = inlink0->sample_aspect_ratio;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = inlink0->frame_rate;
 
     if (ctx->duration)
         ctx->duration_pts = av_rescale_q(ctx->duration, AV_TIME_BASE_Q, outlink->time_base);
@@ -294,9 +293,7 @@ static int xfade_opencl_activate(AVFilterContext *avctx)
             if (ctx->first_pts + ctx->offset_pts > ctx->xf[0]->pts) {
                 ctx->xf[0] = NULL;
                 ctx->need_second = 0;
-                ret = ff_inlink_consume_frame(avctx->inputs[0], &in);
-                if (ret < 0)
-                    return ret;
+                ff_inlink_consume_frame(avctx->inputs[0], &in);
                 return ff_filter_frame(outlink, in);
             }
 
@@ -305,14 +302,8 @@ static int xfade_opencl_activate(AVFilterContext *avctx)
     }
 
     if (ctx->xf[0] && ff_inlink_queued_frames(avctx->inputs[1]) > 0) {
-        ret = ff_inlink_consume_frame(avctx->inputs[0], &ctx->xf[0]);
-        if (ret < 0)
-            return ret;
-        ret = ff_inlink_consume_frame(avctx->inputs[1], &ctx->xf[1]);
-        if (ret < 0) {
-            av_frame_free(&ctx->xf[0]);
-            return ret;
-        }
+        ff_inlink_consume_frame(avctx->inputs[0], &ctx->xf[0]);
+        ff_inlink_consume_frame(avctx->inputs[1], &ctx->xf[1]);
 
         ctx->last_pts = ctx->xf[1]->pts;
         ctx->pts = ctx->xf[0]->pts;

@@ -41,8 +41,8 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "filters.h"
 #include "framesync.h"
+#include "internal.h"
 #include "ssim.h"
 
 typedef struct SSIMContext {
@@ -507,8 +507,6 @@ static int config_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     SSIMContext *s = ctx->priv;
     AVFilterLink *mainlink = ctx->inputs[0];
-    FilterLink *il = ff_filter_link(mainlink);
-    FilterLink *ol = ff_filter_link(outlink);
     int ret;
 
     ret = ff_framesync_init_dualinput(&s->fs, ctx);
@@ -518,7 +516,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = mainlink->h;
     outlink->time_base = mainlink->time_base;
     outlink->sample_aspect_ratio = mainlink->sample_aspect_ratio;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = mainlink->frame_rate;
 
     if ((ret = ff_framesync_configure(&s->fs)) < 0)
         return ret;

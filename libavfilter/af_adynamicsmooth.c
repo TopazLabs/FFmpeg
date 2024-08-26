@@ -20,7 +20,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "filters.h"
 
 typedef struct AudioDynamicSmoothContext {
     const AVClass *class;

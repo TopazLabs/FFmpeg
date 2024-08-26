@@ -85,13 +85,11 @@ void checkasm_check_blockdsp(void);
 void checkasm_check_bswapdsp(void);
 void checkasm_check_colorspace(void);
 void checkasm_check_exrdsp(void);
-void checkasm_check_fdctdsp(void);
 void checkasm_check_fixed_dsp(void);
 void checkasm_check_flacdsp(void);
 void checkasm_check_float_dsp(void);
 void checkasm_check_fmtconvert(void);
 void checkasm_check_g722dsp(void);
-void checkasm_check_h263dsp(void);
 void checkasm_check_h264chroma(void);
 void checkasm_check_h264dsp(void);
 void checkasm_check_h264pred(void);
@@ -105,7 +103,6 @@ void checkasm_check_huffyuvdsp(void);
 void checkasm_check_idctdsp(void);
 void checkasm_check_jpeg2000dsp(void);
 void checkasm_check_llauddsp(void);
-void checkasm_check_lls(void);
 void checkasm_check_llviddsp(void);
 void checkasm_check_llviddspenc(void);
 void checkasm_check_lpc(void);
@@ -115,14 +112,11 @@ void checkasm_check_opusdsp(void);
 void checkasm_check_pixblockdsp(void);
 void checkasm_check_sbrdsp(void);
 void checkasm_check_rv34dsp(void);
-void checkasm_check_rv40dsp(void);
 void checkasm_check_svq1enc(void);
 void checkasm_check_synth_filter(void);
 void checkasm_check_sw_gbrp(void);
-void checkasm_check_sw_range_convert(void);
 void checkasm_check_sw_rgb(void);
 void checkasm_check_sw_scale(void);
-void checkasm_check_sw_yuv2rgb(void);
 void checkasm_check_takdsp(void);
 void checkasm_check_utvideodsp(void);
 void checkasm_check_v210dec(void);
@@ -138,7 +132,6 @@ void checkasm_check_vp8dsp(void);
 void checkasm_check_vp9dsp(void);
 void checkasm_check_videodsp(void);
 void checkasm_check_vorbisdsp(void);
-void checkasm_check_vvc_alf(void);
 void checkasm_check_vvc_mc(void);
 
 struct CheckasmPerf;
@@ -171,7 +164,7 @@ extern AVLFG checkasm_lfg;
 
 static av_unused void *func_ref, *func_new;
 
-extern uint64_t bench_runs;
+#define BENCH_RUNS 1000 /* Trade-off between accuracy and speed */
 
 /* Decide whether or not the specified function needs to be tested */
 #define check_func(func, ...) (checkasm_save_context(), func_ref = checkasm_check_func((func_new = func), __VA_ARGS__))
@@ -340,11 +333,10 @@ typedef struct CheckasmPerf {
             av_unused const int sysfd = perf->sysfd;\
             func_type *tfunc = func_new;\
             uint64_t tsum = 0;\
-            uint64_t ti, tcount = 0;\
+            int ti, tcount = 0;\
             uint64_t t = 0; \
-            const uint64_t truns = bench_runs;\
             checkasm_set_signal_handler_state(1);\
-            for (ti = 0; ti < truns; ti++) {\
+            for (ti = 0; ti < BENCH_RUNS; ti++) {\
                 PERF_START(t);\
                 tfunc(__VA_ARGS__);\
                 tfunc(__VA_ARGS__);\

@@ -290,7 +290,7 @@ static int mux_packet_filter(Muxer *mux, MuxThreadContext *mt,
 {
     MuxStream *ms = ms_from_ost(ost);
     const char *err_msg;
-    int ret;
+    int ret = 0;
 
     if (pkt && !ost->enc) {
         ret = of_streamcopy(&mux->of, ost, pkt);
@@ -299,6 +299,7 @@ static int mux_packet_filter(Muxer *mux, MuxThreadContext *mt,
         else if (ret == AVERROR_EOF) {
             av_packet_unref(pkt);
             pkt = NULL;
+            ret = 0;
             *stream_eof = 1;
         } else if (ret < 0)
             goto fail;
@@ -812,6 +813,7 @@ static void ost_free(OutputStream **post)
     av_packet_free(&ms->bsf_pkt);
 
     av_packet_free(&ms->pkt);
+    av_dict_free(&ost->encoder_opts);
 
     av_freep(&ost->kf.pts);
     av_expr_free(ost->kf.pexpr);
@@ -863,7 +865,6 @@ void of_free(OutputFile **pof)
     av_freep(&mux->sch_stream_idx);
 
     av_dict_free(&mux->opts);
-    av_dict_free(&mux->enc_opts_used);
 
     av_packet_free(&mux->sq_pkt);
 

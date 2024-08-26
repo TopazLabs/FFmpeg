@@ -73,7 +73,6 @@ int ff_vaapi_decode_make_param_buffer(AVCodecContext *avctx,
 int ff_vaapi_decode_make_slice_buffer(AVCodecContext *avctx,
                                       VAAPIDecodePicture *pic,
                                       const void *params_data,
-                                      int nb_params,
                                       size_t params_size,
                                       const void *slice_data,
                                       size_t slice_size);

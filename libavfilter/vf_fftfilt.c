@@ -24,7 +24,7 @@
  * FFT domain filtering.
  */
 
-#include "filters.h"
+#include "internal.h"
 #include "video.h"
 #include "libavutil/common.h"
 #include "libavutil/cpu.h"
@@ -284,11 +284,10 @@ static av_cold int initialize(AVFilterContext *ctx)
 
 static void do_eval(FFTFILTContext *s, AVFilterLink *inlink, int plane)
 {
-    FilterLink *l = ff_filter_link(inlink);
     double values[VAR_VARS_NB];
     int i, j;
 
-    values[VAR_N] = l->frame_count_out;
+    values[VAR_N] = inlink->frame_count_out;
     values[VAR_W] = s->planewidth[plane];
     values[VAR_H] = s->planeheight[plane];
     values[VAR_WS] = s->rdft_hlen[plane];
@@ -383,9 +382,11 @@ static int config_props(AVFilterLink *inlink)
     if (s->depth <= 8) {
         s->rdft_horizontal = rdft_horizontal8;
         s->irdft_horizontal = irdft_horizontal8;
-    } else {
+    } else if (s->depth > 8) {
         s->rdft_horizontal = rdft_horizontal16;
         s->irdft_horizontal = irdft_horizontal16;
+    } else {
+        return AVERROR_BUG;
     }
     return 0;
 }

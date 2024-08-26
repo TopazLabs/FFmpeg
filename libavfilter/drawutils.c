@@ -61,7 +61,6 @@ int ff_fill_rgba_map(uint8_t *rgba_map, enum AVPixelFormat pix_fmt)
 
             had0 |= pos == 0;
             rgba_map[i] = pos;
-            depthb = db;
         }
 
         if (desc->nb_components == 3)

@@ -23,8 +23,7 @@
 #include "libavutil/opt.h"
 #include "vulkan_filter.h"
 #include "vulkan_spirv.h"
-
-#include "filters.h"
+#include "internal.h"
 #include "video.h"
 
 enum FlipType {

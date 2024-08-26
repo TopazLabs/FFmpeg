@@ -99,7 +99,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [STREAM]
 index=1
@@ -122,7 +121,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [STREAM]
 index=2
@@ -145,7 +143,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [STREAM]
 index=3
@@ -168,7 +165,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [/STREAM_GROUP]
 [STREAM_GROUP]
@@ -242,7 +238,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [STREAM]
 index=1
@@ -265,7 +260,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [STREAM]
 index=2
@@ -288,7 +282,6 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [STREAM]
 index=3
@@ -311,6 +304,5 @@ DISPOSITION:descriptions=0
 DISPOSITION:metadata=0
 DISPOSITION:dependent=1
 DISPOSITION:still_image=0
-DISPOSITION:multilayer=0
 [/STREAM]
 [/STREAM_GROUP]

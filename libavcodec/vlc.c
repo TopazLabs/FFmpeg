@@ -529,7 +529,7 @@ int ff_vlc_init_multi_from_lengths(VLC *vlc, VLC_MULTI *multi, int nb_bits, int 
 
     multi->table = av_malloc(sizeof(*multi->table) << nb_bits);
     if (!multi->table)
-        goto fail;
+        return AVERROR(ENOMEM);
 
     j = code = 0;
     for (int i = 0; i < nb_codes; i++, lens += lens_wrap) {

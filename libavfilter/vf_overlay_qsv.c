@@ -29,7 +29,7 @@
 #include "libavutil/hwcontext.h"
 #include "libavutil/mathematics.h"
 
-#include "filters.h"
+#include "internal.h"
 #include "avfilter.h"
 #include "formats.h"
 
@@ -156,13 +156,12 @@ release:
 
 static int have_alpha_planar(AVFilterLink *link)
 {
-    FilterLink              *l = ff_filter_link(link);
     enum AVPixelFormat pix_fmt = link->format;
     const AVPixFmtDescriptor *desc;
     AVHWFramesContext *fctx;
 
     if (link->format == AV_PIX_FMT_QSV) {
-        fctx    = (AVHWFramesContext *)l->hw_frames_ctx->data;
+        fctx    = (AVHWFramesContext *)link->hw_frames_ctx->data;
         pix_fmt = fctx->sw_format;
     }
 
@@ -274,9 +273,6 @@ static int config_output(AVFilterLink *outlink)
     QSVOverlayContext *vpp = ctx->priv;
     AVFilterLink      *in0 = ctx->inputs[0];
     AVFilterLink      *in1 = ctx->inputs[1];
-    FilterLink         *l0 = ff_filter_link(in0);
-    FilterLink         *l1 = ff_filter_link(in1);
-    FilterLink         *ol = ff_filter_link(outlink);
     int ret;
 
     av_log(ctx, AV_LOG_DEBUG, "Output is of %s.\n", av_get_pix_fmt_name(outlink->format));
@@ -286,8 +282,8 @@ static int config_output(AVFilterLink *outlink)
         av_log(ctx, AV_LOG_ERROR, "Mixing hardware and software pixel formats is not supported.\n");
         return AVERROR(EINVAL);
     } else if (in0->format == AV_PIX_FMT_QSV) {
-        AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)l0->hw_frames_ctx->data;
-        AVHWFramesContext *hw_frame1 = (AVHWFramesContext *)l1->hw_frames_ctx->data;
+        AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)in0->hw_frames_ctx->data;
+        AVHWFramesContext *hw_frame1 = (AVHWFramesContext *)in1->hw_frames_ctx->data;
 
         if (hw_frame0->device_ctx != hw_frame1->device_ctx) {
             av_log(ctx, AV_LOG_ERROR, "Inputs with different underlying QSV devices are forbidden.\n");
@@ -298,8 +294,8 @@ static int config_output(AVFilterLink *outlink)
 
     outlink->w          = vpp->var_values[VAR_MW];
     outlink->h          = vpp->var_values[VAR_MH];
-    ol->frame_rate      = l0->frame_rate;
-    outlink->time_base  = av_inv_q(ol->frame_rate);
+    outlink->frame_rate = in0->frame_rate;
+    outlink->time_base  = av_inv_q(outlink->frame_rate);
 
     ret = init_framesync(ctx);
     if (ret < 0)

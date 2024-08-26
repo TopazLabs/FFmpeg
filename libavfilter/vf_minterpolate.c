@@ -26,7 +26,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "filters.h"
+#include "internal.h"
 #include "video.h"
 #include "scene_sad.h"
 
@@ -398,9 +398,8 @@ static int config_input(AVFilterLink *inlink)
 static int config_output(AVFilterLink *outlink)
 {
     MIContext *mi_ctx = outlink->src->priv;
-    FilterLink     *l = ff_filter_link(outlink);
 
-    l->frame_rate       = mi_ctx->frame_rate;
+    outlink->frame_rate = mi_ctx->frame_rate;
     outlink->time_base  = av_inv_q(mi_ctx->frame_rate);
 
     return 0;

@@ -573,8 +573,7 @@
                 "descriptions": 0,
                 "metadata": 0,
                 "dependent": 0,
-                "still_image": 0,
-                "multilayer": 0
+                "still_image": 0
             },
             "tags": {
                 "E": "mc²",
@@ -624,8 +623,7 @@
                 "descriptions": 0,
                 "metadata": 0,
                 "dependent": 0,
-                "still_image": 0,
-                "multilayer": 0
+                "still_image": 0
             },
             "tags": {
                 "title": "foobar",
@@ -676,8 +674,7 @@
                 "descriptions": 0,
                 "metadata": 0,
                 "dependent": 0,
-                "still_image": 0,
-                "multilayer": 0
+                "still_image": 0
             },
             "tags": {
                 "encoder": "Lavc rawvideo"

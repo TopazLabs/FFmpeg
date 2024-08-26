@@ -46,6 +46,8 @@
 
 #define MAX_FILTER_SIZE SWS_MAX_FILTER_SIZE
 
+#define DITHER1XBPP
+
 #if HAVE_BIGENDIAN
 #define ALT32_CORR (-1)
 #else
@@ -695,9 +697,7 @@ void ff_yuv2rgb_init_tables_ppc(SwsContext *c, const int inv_table[4],
 void ff_updateMMXDitherTables(SwsContext *c, int dstY);
 
 av_cold void ff_sws_init_range_convert(SwsContext *c);
-av_cold void ff_sws_init_range_convert_aarch64(SwsContext *c);
 av_cold void ff_sws_init_range_convert_loongarch(SwsContext *c);
-av_cold void ff_sws_init_range_convert_x86(SwsContext *c);
 
 SwsFunc ff_yuv2rgb_init_x86(SwsContext *c);
 SwsFunc ff_yuv2rgb_init_ppc(SwsContext *c);
@@ -988,7 +988,6 @@ void ff_sws_init_swscale_x86(SwsContext *c);
 void ff_sws_init_swscale_aarch64(SwsContext *c);
 void ff_sws_init_swscale_arm(SwsContext *c);
 void ff_sws_init_swscale_loongarch(SwsContext *c);
-void ff_sws_init_swscale_riscv(SwsContext *c);
 
 void ff_hyscale_fast_c(SwsContext *c, int16_t *dst, int dstWidth,
                        const uint8_t *src, int srcW, int xInc);

@@ -63,7 +63,6 @@ int ff_vaapi_decode_make_param_buffer(AVCodecContext *avctx,
 int ff_vaapi_decode_make_slice_buffer(AVCodecContext *avctx,
                                       VAAPIDecodePicture *pic,
                                       const void *params_data,
-                                      int nb_params,
                                       size_t params_size,
                                       const void *slice_data,
                                       size_t slice_size)
@@ -74,14 +73,13 @@ int ff_vaapi_decode_make_slice_buffer(AVCodecContext *avctx,
 
     av_assert0(pic->nb_slices <= pic->slices_allocated);
     if (pic->nb_slices == pic->slices_allocated) {
-        VABufferID *tmp =
+        pic->slice_buffers =
             av_realloc_array(pic->slice_buffers,
                              pic->slices_allocated ? pic->slices_allocated * 2 : 64,
                              2 * sizeof(*pic->slice_buffers));
-        if (!tmp)
+        if (!pic->slice_buffers)
             return AVERROR(ENOMEM);
 
-        pic->slice_buffers    = tmp;
         pic->slices_allocated = pic->slices_allocated ? pic->slices_allocated * 2 : 64;
     }
     av_assert0(pic->nb_slices + 1 <= pic->slices_allocated);
@@ -90,7 +88,7 @@ int ff_vaapi_decode_make_slice_buffer(AVCodecContext *avctx,
 
     vas = vaCreateBuffer(ctx->hwctx->display, ctx->va_context,
                          VASliceParameterBufferType,
-                         params_size, nb_params, (void*)params_data,
+                         params_size, 1, (void*)params_data,
                          &pic->slice_buffers[index]);
     if (vas != VA_STATUS_SUCCESS) {
         av_log(avctx, AV_LOG_ERROR, "Failed to create slice "
@@ -157,11 +155,6 @@ int ff_vaapi_decode_issue(AVCodecContext *avctx,
     VAAPIDecodeContext *ctx = avctx->internal->hwaccel_priv_data;
     VAStatus vas;
     int err;
-
-    if (pic->nb_slices <= 0) {
-        err = AVERROR(EINVAL);
-        goto fail;
-    }
 
     av_log(avctx, AV_LOG_DEBUG, "Decode to surface %#x.\n",
            pic->output_surface);

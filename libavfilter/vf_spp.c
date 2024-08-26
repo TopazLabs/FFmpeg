@@ -37,8 +37,7 @@
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-
-#include "filters.h"
+#include "internal.h"
 #include "qp_table.h"
 #include "vf_spp.h"
 #include "video.h"

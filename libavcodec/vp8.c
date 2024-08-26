@@ -247,16 +247,8 @@ int update_dimensions(VP8Context *s, int width, int height, int is_vp7)
             return AVERROR(ENOMEM);
         }
 #if HAVE_THREADS
-        ret = pthread_mutex_init(&s->thread_data[i].lock, NULL);
-        if (ret) {
-            free_buffers(s);
-            return AVERROR(ret);
-        }
-        ret = pthread_cond_init(&s->thread_data[i].cond, NULL);
-        if (ret) {
-            free_buffers(s);
-            return AVERROR(ret);
-        }
+        pthread_mutex_init(&s->thread_data[i].lock, NULL);
+        pthread_cond_init(&s->thread_data[i].cond, NULL);
 #endif
     }
 
@@ -349,8 +341,9 @@ static int setup_partitions(VP8Context *s, const uint8_t *buf, int buf_size)
     }
 
     s->coeff_partition_size[i] = buf_size;
+    ff_vpx_init_range_decoder(&s->coeff_partition[i], buf, buf_size);
 
-    return ff_vpx_init_range_decoder(&s->coeff_partition[i], buf, buf_size);
+    return 0;
 }
 
 static void vp7_get_quants(VP8Context *s)

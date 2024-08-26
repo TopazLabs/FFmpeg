@@ -663,7 +663,7 @@ static av_always_inline uint32_t quant_band_template(CeltPVQ *pvq, CeltFrame *f,
         if (itheta == 0) {
             imid = 32767;
             iside = 0;
-            fill = av_zero_extend(fill, blocks);
+            fill = av_mod_uintp2(fill, blocks);
             delta = -16384;
         } else if (itheta == 16384) {
             imid = 0;
@@ -878,7 +878,7 @@ static av_always_inline uint32_t quant_band_template(CeltPVQ *pvq, CeltFrame *f,
             for (i = 0; i < N0; i++)
                 lowband_out[i] = n * X[i];
         }
-        cm = av_zero_extend(cm, blocks);
+        cm = av_mod_uintp2(cm, blocks);
     }
 
     return cm;

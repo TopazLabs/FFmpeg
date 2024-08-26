@@ -31,8 +31,8 @@
 
 #include "avfilter.h"
 #include "drawutils.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "video.h"
 
 typedef struct ELBGFilterContext {
@@ -195,7 +195,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         p0 = (uint8_t *)out->data[0];
 
         for (i = 0; i < elbg->codebook_length; i++) {
-            const unsigned al =  elbg->use_alpha ? elbg->codebook[i*4+3] : 0xff;
+            const int al =  elbg->use_alpha ? elbg->codebook[i*4+3] : 0xff;
             pal[i] =  al                    << 24  |
                      (elbg->codebook[i*4+2] << 16) |
                      (elbg->codebook[i*4+1] <<  8) |

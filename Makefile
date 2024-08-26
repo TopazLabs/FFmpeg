@@ -70,8 +70,6 @@ tools/target_io_dem_fuzzer$(EXESUF): tools/target_io_dem_fuzzer.o $(FF_DEP_LIBS)
 tools/target_sws_fuzzer$(EXESUF): tools/target_sws_fuzzer.o $(FF_DEP_LIBS)
 	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ $(ELIBS) $(FF_EXTRALIBS) $(LIBFUZZER_PATH)
 
-tools/target_swr_fuzzer$(EXESUF): tools/target_swr_fuzzer.o $(FF_DEP_LIBS)
-	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ $(ELIBS) $(FF_EXTRALIBS) $(LIBFUZZER_PATH)
 
 tools/enum_options$(EXESUF): ELIBS = $(FF_EXTRALIBS)
 tools/enum_options$(EXESUF): $(FF_DEP_LIBS)
@@ -103,7 +101,7 @@ SUBDIR_VARS := CLEANFILES FFLIBS HOSTPROGS TESTPROGS TOOLS               \
                ARMV5TE-OBJS ARMV6-OBJS ARMV8-OBJS VFP-OBJS NEON-OBJS     \
                ALTIVEC-OBJS VSX-OBJS MMX-OBJS X86ASM-OBJS                \
                MIPSFPU-OBJS MIPSDSPR2-OBJS MIPSDSP-OBJS MSA-OBJS         \
-               MMI-OBJS LSX-OBJS LASX-OBJS RV-OBJS RVV-OBJS RVVB-OBJS    \
+               MMI-OBJS LSX-OBJS LASX-OBJS RV-OBJS RVV-OBJS              \
                OBJS SLIBOBJS SHLIBOBJS STLIBOBJS HOSTOBJS TESTOBJS
 
 define RESET

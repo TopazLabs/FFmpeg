@@ -21,13 +21,11 @@
 #include "libavutil/riscv/asm.S"
 
 func ff_shuffle_bytes_0321_rvv, zve32x
-        lpad    0
         li      t1, 0x00ff00ff
         j       1f
 endfunc
 
-func ff_shuffle_bytes_2103_rvv, zve32x, zba
-        lpad    0
+func ff_shuffle_bytes_2103_rvv, zve32x
         li      t1, ~0x00ff00ff
 1:
         not     t2, t1
@@ -51,14 +49,12 @@ func ff_shuffle_bytes_2103_rvv, zve32x, zba
 endfunc
 
 func ff_shuffle_bytes_1230_rvv, zve32x
-        lpad    0
         li      t1, 24
         li      t2, 8
         j       3f
 endfunc
 
-func ff_shuffle_bytes_3012_rvv, zve32x, zba
-        lpad    0
+func ff_shuffle_bytes_3012_rvv, zve32x
         li      t1, 8
         li      t2, 24
 3:
@@ -78,8 +74,7 @@ func ff_shuffle_bytes_3012_rvv, zve32x, zba
         ret
 endfunc
 
-func ff_interleave_bytes_rvv, zve32x, zba
-        lpad    0
+func ff_interleave_bytes_rvv, zve32x
 1:
         mv      t0, a0
         mv      t1, a1
@@ -105,8 +100,7 @@ func ff_interleave_bytes_rvv, zve32x, zba
         ret
 endfunc
 
-func ff_deinterleave_bytes_rvv, zve32x, zba
-        lpad    0
+func ff_deinterleave_bytes_rvv, zve32x
 1:
         mv      t0, a0
         mv      t1, a1
@@ -133,7 +127,6 @@ func ff_deinterleave_bytes_rvv, zve32x, zba
 endfunc
 
 .macro yuy2_to_i422p luma, chroma
-        lpad    0
         srai    t4, a4, 1 // pixel width -> chroma width
         lw      t6, (sp)
         slli    t5, a4, 1 // pixel width -> (source) byte width
@@ -172,10 +165,10 @@ endfunc
         ret
 .endm
 
-func ff_uyvytoyuv422_rvv, zve32x, b
+func ff_uyvytoyuv422_rvv, zve32x
         yuy2_to_i422p v20, v16
 endfunc
 
-func ff_yuyvtoyuv422_rvv, zve32x, b
+func ff_yuyvtoyuv422_rvv, zve32x
         yuy2_to_i422p v16, v20
 endfunc

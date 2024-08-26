@@ -26,7 +26,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/tx.h"
 #include "avfilter.h"
-#include "filters.h"
+#include "internal.h"
 #include "audio.h"
 
 #define RDFT_BITS_MIN 4
@@ -725,7 +725,6 @@ static int generate_kernel(AVFilterContext *ctx, const char *gain, const char *g
 
 static int config_input(AVFilterLink *inlink)
 {
-    FilterLink *l = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     FIREqualizerContext *s = ctx->priv;
     float iscale, scale = 1.f;
@@ -825,7 +824,7 @@ static int config_input(AVFilterLink *inlink)
            inlink->sample_rate, inlink->ch_layout.nb_channels, s->analysis_rdft_len, s->rdft_len, s->fir_len, s->nsamples_max);
 
     if (s->fixed)
-        l->min_samples = l->max_samples = s->nsamples_max;
+        inlink->min_samples = inlink->max_samples = s->nsamples_max;
 
     return generate_kernel(ctx, SELECT_GAIN(s), SELECT_GAIN_ENTRY(s));
 }

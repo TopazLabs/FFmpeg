@@ -1198,10 +1198,10 @@ int init_simple_filtergraph(InputStream *ist, OutputStream *ost,
     FilterGraphPriv *fgp;
     int ret;
 
-    ret = fg_create(&ost->fg_simple, graph_desc, sch);
+    ret = fg_create(&fg, graph_desc, sch);
     if (ret < 0)
         return ret;
-    fg  = ost->fg_simple;
+    ost->fg_simple = fg;
     fgp = fgp_from_fg(fg);
 
     fgp->is_simple = 1;
@@ -1700,17 +1700,6 @@ static int configure_input_video_filter(FilterGraph *fg, AVFilterGraph *graph,
 
     desc = av_pix_fmt_desc_get(ifp->format);
     av_assert0(desc);
-
-    if ((ifp->opts.flags & IFILTER_FLAG_CROP)) {
-        char crop_buf[64];
-        snprintf(crop_buf, sizeof(crop_buf), "w=iw-%u-%u:h=ih-%u-%u:x=%u:y=%u",
-                 ifp->opts.crop_left, ifp->opts.crop_right,
-                 ifp->opts.crop_top, ifp->opts.crop_bottom,
-                 ifp->opts.crop_left, ifp->opts.crop_top);
-        ret = insert_filter(&last_filter, &pad_idx, "crop", crop_buf);
-        if (ret < 0)
-            return ret;
-    }
 
     // TODO: insert hwaccel enabled filters like transpose_vaapi into the graph
     ifp->displaymatrix_applied = 0;

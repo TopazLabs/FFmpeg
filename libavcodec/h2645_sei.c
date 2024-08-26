@@ -619,14 +619,10 @@ static int h2645_sei_to_side_data(AVCodecContext *avctx, H2645SEI *sei,
 
             metadata->min_luminance.num = sei->mastering_display.min_luminance;
             metadata->min_luminance.den = luma_den;
-            metadata->has_luminance &= sei->mastering_display.min_luminance <= 50000 &&
+            metadata->has_luminance &= sei->mastering_display.min_luminance >= 1 &&
+                                       sei->mastering_display.min_luminance <= 50000 &&
                                        sei->mastering_display.min_luminance <
                                        sei->mastering_display.max_luminance;
-
-            /* Real (blu-ray) releases in the wild come with minimum luminance
-             * values of 0.000 cd/m2, so permit this edge case */
-            if (avctx->strict_std_compliance >= FF_COMPLIANCE_STRICT)
-                metadata->has_luminance &= sei->mastering_display.min_luminance >= 1;
 
             if (metadata->has_luminance || metadata->has_primaries)
                 av_log(avctx, AV_LOG_DEBUG, "Mastering Display Metadata:\n");
@@ -761,7 +757,8 @@ int ff_h2645_sei_to_frame(AVFrame *frame, H2645SEI *sei,
         if (!sd)
             av_buffer_unref(&a53->buf_ref);
         a53->buf_ref = NULL;
-        avctx->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+        if (avctx)
+            avctx->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
     }
 
     ret = h2645_sei_to_side_data(avctx, sei, &frame->side_data, &frame->nb_side_data);
@@ -847,7 +844,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
         else
             fgc->present = fgc->persistence_flag;
 
-        avctx->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
+        if (avctx)
+            avctx->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
     }
 
 #if CONFIG_HEVC_SEI

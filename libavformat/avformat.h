@@ -713,11 +713,6 @@ typedef struct AVIndexEntry {
  * The video stream contains still images.
  */
 #define AV_DISPOSITION_STILL_IMAGE          (1 << 20)
-/**
- * The video stream contains multiple layers, e.g. stereoscopic views (cf. H.264
- * Annex G/H, or HEVC Annex F).
- */
-#define AV_DISPOSITION_MULTILAYER           (1 << 21)
 
 /**
  * @return The AV_DISPOSITION_* flag corresponding to disp or a negative error
@@ -3047,7 +3042,6 @@ int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
 
 int avformat_queue_attached_pictures(AVFormatContext *s);
 
-#if FF_API_INTERNAL_TIMING
 enum AVTimebaseSource {
     AVFMT_TBCF_AUTO = -1,
     AVFMT_TBCF_DECODER,
@@ -3058,20 +3052,25 @@ enum AVTimebaseSource {
 };
 
 /**
- * @deprecated do not call this function
+ * Transfer internal timing information from one stream to another.
+ *
+ * This function is useful when doing stream copy.
+ *
+ * @param ofmt     target output format for ost
+ * @param ost      output stream which needs timings copy and adjustments
+ * @param ist      reference input stream to copy timings from
+ * @param copy_tb  define from where the stream codec timebase needs to be imported
  */
-attribute_deprecated
 int avformat_transfer_internal_stream_timing_info(const AVOutputFormat *ofmt,
                                                   AVStream *ost, const AVStream *ist,
                                                   enum AVTimebaseSource copy_tb);
 
 /**
- * @deprecated do not call this function
+ * Get the internal codec timebase from a stream.
+ *
+ * @param st  input stream to extract the timebase from
  */
-attribute_deprecated
 AVRational av_stream_get_codec_timebase(const AVStream *st);
-#endif
-
 
 /**
  * @}
