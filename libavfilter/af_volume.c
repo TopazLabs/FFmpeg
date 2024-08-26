@@ -35,8 +35,8 @@
 
 #include "audio.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "af_volume.h"
 
 static const char * const precision_str[] = {
@@ -127,6 +127,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     VolumeContext *vol = ctx->priv;
     av_expr_free(vol->volume_pexpr);
+    av_opt_free(vol);
     av_freep(&vol->fdsp);
 }
 
@@ -328,7 +329,6 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 {
-    FilterLink      *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     VolumeContext *vol    = inlink->dst->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
@@ -381,7 +381,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
     }
     vol->var_values[VAR_PTS] = TS2D(buf->pts);
     vol->var_values[VAR_T  ] = TS2T(buf->pts, inlink->time_base);
-    vol->var_values[VAR_N  ] = inl->frame_count_out;
+    vol->var_values[VAR_N  ] = inlink->frame_count_out;
 
 #if FF_API_FRAME_PKT
 FF_DISABLE_DEPRECATION_WARNINGS

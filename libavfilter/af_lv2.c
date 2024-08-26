@@ -34,8 +34,8 @@
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 
 typedef struct URITable {
     char    **uris;
@@ -381,7 +381,7 @@ static int config_output(AVFilterLink *outlink)
         (lilv_plugin_has_feature(s->plugin, s->powerOf2BlockLength) ||
          lilv_plugin_has_feature(s->plugin, s->fixedBlockLength) ||
          lilv_plugin_has_feature(s->plugin, s->boundedBlockLength))) {
-        FilterLink *inlink = ff_filter_link(ctx->inputs[0]);
+        AVFilterLink *inlink = ctx->inputs[0];
 
         inlink->min_samples = inlink->max_samples = 4096;
     }

@@ -87,48 +87,6 @@ AVG_PROTOTYPES( 8, avx2)
 AVG_PROTOTYPES(10, avx2)
 AVG_PROTOTYPES(12, avx2)
 
-
-#define DMVR_PROTOTYPES(bd, opt)                                                                    \
-void ff_vvc_dmvr_##bd##_##opt(int16_t *dst, const uint8_t *src, ptrdiff_t src_stride,               \
-     int height, intptr_t mx, intptr_t my, int width);                                              \
-void ff_vvc_dmvr_h_##bd##_##opt(int16_t *dst, const uint8_t *src, ptrdiff_t src_stride,             \
-     int height, intptr_t mx, intptr_t my, int width);                                              \
-void ff_vvc_dmvr_v_##bd##_##opt(int16_t *dst, const uint8_t *src, ptrdiff_t src_stride,             \
-     int height, intptr_t mx, intptr_t my, int width);                                              \
-void ff_vvc_dmvr_hv_##bd##_##opt(int16_t *dst, const uint8_t *src, ptrdiff_t src_stride,            \
-     int height, intptr_t mx, intptr_t my, int width);                                              \
-
-DMVR_PROTOTYPES( 8, avx2)
-DMVR_PROTOTYPES(10, avx2)
-DMVR_PROTOTYPES(12, avx2)
-
-#define ALF_BPC_PROTOTYPES(bpc, opt)                                                                                     \
-void BF(ff_vvc_alf_filter_luma, bpc, opt)(uint8_t *dst, ptrdiff_t dst_stride,                                            \
-    const uint8_t *src, ptrdiff_t src_stride, ptrdiff_t width, ptrdiff_t height,                                         \
-    const int16_t *filter, const int16_t *clip, ptrdiff_t stride, ptrdiff_t vb_pos, ptrdiff_t pixel_max);                \
-void BF(ff_vvc_alf_filter_chroma, bpc, opt)(uint8_t *dst, ptrdiff_t dst_stride,                                          \
-    const uint8_t *src, ptrdiff_t src_stride, ptrdiff_t width, ptrdiff_t height,                                         \
-    const int16_t *filter, const int16_t *clip, ptrdiff_t stride, ptrdiff_t vb_pos, ptrdiff_t pixel_max);                \
-void BF(ff_vvc_alf_classify_grad, bpc, opt)(int *gradient_sum,                                                           \
-    const uint8_t *src, ptrdiff_t src_stride, intptr_t width, intptr_t height, intptr_t vb_pos);                         \
-void BF(ff_vvc_alf_classify, bpc, opt)(int *class_idx, int *transpose_idx, const int *gradient_sum,                      \
-    intptr_t width, intptr_t height, intptr_t vb_pos, intptr_t bit_depth);                                               \
-
-#define ALF_PROTOTYPES(bpc, bd, opt)                                                                                     \
-void bf(ff_vvc_alf_filter_luma, bd, opt)(uint8_t *dst, ptrdiff_t dst_stride, const uint8_t *src, ptrdiff_t src_stride,   \
-    int width, int height, const int16_t *filter, const int16_t *clip, const int vb_pos);                                \
-void bf(ff_vvc_alf_filter_chroma, bd, opt)(uint8_t *dst, ptrdiff_t dst_stride, const uint8_t *src, ptrdiff_t src_stride, \
-    int width, int height, const int16_t *filter, const int16_t *clip, const int vb_pos);                                \
-void bf(ff_vvc_alf_classify, bd, opt)(int *class_idx, int *transpose_idx,                                                \
-    const uint8_t *src, ptrdiff_t src_stride, int width, int height, int vb_pos, int *gradient_tmp);                     \
-
-ALF_BPC_PROTOTYPES(8,  avx2)
-ALF_BPC_PROTOTYPES(16, avx2)
-
-ALF_PROTOTYPES(8,  8,  avx2)
-ALF_PROTOTYPES(16, 10, avx2)
-ALF_PROTOTYPES(16, 12, avx2)
-
 #if ARCH_X86_64
 #if HAVE_SSE4_EXTERNAL
 #define FW_PUT(name, depth, opt) \
@@ -223,32 +181,6 @@ void bf(ff_vvc_w_avg, bd, opt)(uint8_t *dst, ptrdiff_t dst_stride,              
 AVG_FUNCS(8,  8,  avx2)
 AVG_FUNCS(16, 10, avx2)
 AVG_FUNCS(16, 12, avx2)
-
-#define ALF_FUNCS(bpc, bd, opt)                                                                                          \
-void bf(ff_vvc_alf_filter_luma, bd, opt)(uint8_t *dst, ptrdiff_t dst_stride, const uint8_t *src, ptrdiff_t src_stride,   \
-    int width, int height, const int16_t *filter, const int16_t *clip, const int vb_pos)                                 \
-{                                                                                                                        \
-    const int param_stride  = (width >> 2) * ALF_NUM_COEFF_LUMA;                                                         \
-    BF(ff_vvc_alf_filter_luma, bpc, opt)(dst, dst_stride, src, src_stride, width, height,                                \
-        filter, clip, param_stride, vb_pos, (1 << bd)  - 1);                                                             \
-}                                                                                                                        \
-void bf(ff_vvc_alf_filter_chroma, bd, opt)(uint8_t *dst, ptrdiff_t dst_stride, const uint8_t *src, ptrdiff_t src_stride, \
-    int width, int height, const int16_t *filter, const int16_t *clip, const int vb_pos)                                 \
-{                                                                                                                        \
-    BF(ff_vvc_alf_filter_chroma, bpc, opt)(dst, dst_stride, src, src_stride, width, height,                              \
-        filter, clip, 0, vb_pos,(1 << bd)  - 1);                                                                         \
-}                                                                                                                        \
-void bf(ff_vvc_alf_classify, bd, opt)(int *class_idx, int *transpose_idx,                                                \
-    const uint8_t *src, ptrdiff_t src_stride, int width, int height, int vb_pos, int *gradient_tmp)                      \
-{                                                                                                                        \
-    BF(ff_vvc_alf_classify_grad, bpc, opt)(gradient_tmp, src, src_stride, width, height, vb_pos);                        \
-    BF(ff_vvc_alf_classify, bpc, opt)(class_idx, transpose_idx, gradient_tmp, width, height, vb_pos, bd);                \
-}                                                                                                                        \
-
-ALF_FUNCS(8,  8,  avx2)
-ALF_FUNCS(16, 10, avx2)
-ALF_FUNCS(16, 12, avx2)
-
 #endif
 
 #define PEL_LINK(dst, C, W, idx1, idx2, name, D, opt)                              \
@@ -320,22 +252,6 @@ ALF_FUNCS(16, 12, avx2)
     c->inter.avg    = bf(ff_vvc_avg, bd, opt);                       \
     c->inter.w_avg  = bf(ff_vvc_w_avg, bd, opt);                     \
 } while (0)
-
-#define DMVR_INIT(bd) do {                                           \
-    c->inter.dmvr[0][0]   = ff_vvc_dmvr_##bd##_avx2;                 \
-    c->inter.dmvr[0][1]   = ff_vvc_dmvr_h_##bd##_avx2;               \
-    c->inter.dmvr[1][0]   = ff_vvc_dmvr_v_##bd##_avx2;               \
-    c->inter.dmvr[1][1]   = ff_vvc_dmvr_hv_##bd##_avx2;              \
-} while (0)
-
-#define ALF_INIT(bd) do {                                            \
-    c->alf.filter[LUMA]   = ff_vvc_alf_filter_luma_##bd##_avx2;      \
-    c->alf.filter[CHROMA] = ff_vvc_alf_filter_chroma_##bd##_avx2;    \
-    c->alf.classify       = ff_vvc_alf_classify_##bd##_avx2;         \
-} while (0)
-
-int ff_vvc_sad_avx2(const int16_t *src0, const int16_t *src1, int dx, int dy, int block_w, int block_h);
-#define SAD_INIT() c->inter.sad = ff_vvc_sad_avx2
 #endif
 
 void ff_vvc_dsp_init_x86(VVCDSPContext *const c, const int bd)
@@ -343,47 +259,45 @@ void ff_vvc_dsp_init_x86(VVCDSPContext *const c, const int bd)
 #if ARCH_X86_64
     const int cpu_flags = av_get_cpu_flags();
 
-    switch (bd) {
-    case 8:
+    if (bd == 8) {
         if (EXTERNAL_SSE4(cpu_flags)) {
             MC_LINK_SSE4(8);
         }
         if (EXTERNAL_AVX2_FAST(cpu_flags)) {
-            ALF_INIT(8);
-            AVG_INIT(8, avx2);
             MC_LINKS_AVX2(8);
-            DMVR_INIT(8);
-            SAD_INIT();
         }
-        break;
-    case 10:
+    } else if (bd == 10) {
         if (EXTERNAL_SSE4(cpu_flags)) {
             MC_LINK_SSE4(10);
         }
         if (EXTERNAL_AVX2_FAST(cpu_flags)) {
-            ALF_INIT(10);
-            AVG_INIT(10, avx2);
             MC_LINKS_AVX2(10);
             MC_LINKS_16BPC_AVX2(10);
-            DMVR_INIT(10);
-            SAD_INIT();
         }
-        break;
-    case 12:
+    } else if (bd == 12) {
         if (EXTERNAL_SSE4(cpu_flags)) {
             MC_LINK_SSE4(12);
         }
         if (EXTERNAL_AVX2_FAST(cpu_flags)) {
-            ALF_INIT(12);
-            AVG_INIT(12, avx2);
             MC_LINKS_AVX2(12);
             MC_LINKS_16BPC_AVX2(12);
-            DMVR_INIT(12);
-            SAD_INIT();
         }
-        break;
-    default:
-        break;
+    }
+
+    if (EXTERNAL_AVX2(cpu_flags)) {
+        switch (bd) {
+            case 8:
+                AVG_INIT(8, avx2);
+                break;
+            case 10:
+                AVG_INIT(10, avx2);
+                break;
+            case 12:
+                AVG_INIT(12, avx2);
+                break;
+            default:
+                break;
+        }
     }
 #endif
 }

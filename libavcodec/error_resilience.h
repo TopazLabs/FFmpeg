@@ -40,7 +40,6 @@
 typedef struct ERPicture {
     AVFrame *f;
     const struct ThreadFrame *tf;
-    const struct ThreadProgress *progress;
 
     // it is the caller's responsibility to allocate these buffers
     int16_t (*motion_val[2])[2];

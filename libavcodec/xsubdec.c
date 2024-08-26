@@ -60,7 +60,6 @@ static int decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
     int64_t packet_time = 0;
     GetBitContext gb;
     int has_alpha = avctx->codec_tag == MKTAG('D','X','S','A');
-    int64_t start_display_time, end_display_time;
 
     // check that at least header fits
     if (buf_size < 27 + 7 * 2 + 4 * (3 + has_alpha)) {
@@ -75,14 +74,8 @@ static int decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
     }
     if (avpkt->pts != AV_NOPTS_VALUE)
         packet_time = av_rescale_q(avpkt->pts, AV_TIME_BASE_Q, (AVRational){1, 1000});
-
-    sub->start_display_time = start_display_time = parse_timecode(buf +  1, packet_time);
-    sub->end_display_time   = end_display_time   = parse_timecode(buf + 14, packet_time);
-    if (sub->start_display_time != start_display_time ||
-        sub->  end_display_time !=   end_display_time) {
-        av_log(avctx, AV_LOG_ERROR, "time code not representable in 32bit\n");
-        return -1;
-    }
+    sub->start_display_time = parse_timecode(buf +  1, packet_time);
+    sub->end_display_time   = parse_timecode(buf + 14, packet_time);
     buf += 27;
 
     // read header

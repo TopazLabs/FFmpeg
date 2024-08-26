@@ -34,6 +34,7 @@
 #include "audio.h"
 #include "filters.h"
 #include "formats.h"
+#include "internal.h"
 
 typedef struct AResampleContext {
     const AVClass *class;
@@ -194,11 +195,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamplesref)
     av_frame_copy_props(outsamplesref, insamplesref);
     outsamplesref->format                = outlink->format;
     ret = av_channel_layout_copy(&outsamplesref->ch_layout, &outlink->ch_layout);
-    if (ret < 0) {
-        av_frame_free(&outsamplesref);
-        av_frame_free(&insamplesref);
+    if (ret < 0)
         return ret;
-    }
     outsamplesref->sample_rate           = outlink->sample_rate;
 
     if(insamplesref->pts != AV_NOPTS_VALUE) {

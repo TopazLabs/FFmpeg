@@ -422,13 +422,13 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
 
     /* Decide how we should decide blocks */
     switch (avctx->mb_decision) {
-    case FF_MB_DECISION_RD:
+    case 2:
         x->vop_flags |=  XVID_VOP_MODEDECISION_RD;
         x->me_flags  |=  XVID_ME_HALFPELREFINE8_RD    |
                          XVID_ME_QUARTERPELREFINE8_RD |
                          XVID_ME_EXTSEARCH_RD         |
                          XVID_ME_CHECKPREDICTION_RD;
-    case FF_MB_DECISION_BITS:
+    case 1:
         if (!(x->vop_flags & XVID_VOP_MODEDECISION_RD))
             x->vop_flags |= XVID_VOP_FAST_MODEDECISION_RD;
         x->me_flags |= XVID_ME_HALFPELREFINE16_RD |

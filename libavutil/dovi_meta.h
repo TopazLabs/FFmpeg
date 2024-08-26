@@ -46,7 +46,6 @@
  * uint8_t  el_present_flag
  * uint8_t  bl_present_flag
  * uint8_t  dv_bl_signal_compatibility_id
- * uint8_t  dv_md_compression, the compression method in use
  * @endcode
  *
  * @note The struct must be allocated with av_dovi_alloc() and
@@ -61,15 +60,7 @@ typedef struct AVDOVIDecoderConfigurationRecord {
     uint8_t el_present_flag;
     uint8_t bl_present_flag;
     uint8_t dv_bl_signal_compatibility_id;
-    uint8_t dv_md_compression;
 } AVDOVIDecoderConfigurationRecord;
-
-enum AVDOVICompression {
-    AV_DOVI_COMPRESSION_NONE     = 0,
-    AV_DOVI_COMPRESSION_LIMITED  = 1,
-    AV_DOVI_COMPRESSION_RESERVED = 2,
-    AV_DOVI_COMPRESSION_EXTENDED = 3,
-};
 
 /**
  * Allocate a AVDOVIDecoderConfigurationRecord structure and initialize its
@@ -100,8 +91,6 @@ typedef struct AVDOVIRpuDataHeader {
     uint8_t spatial_resampling_filter_flag;
     uint8_t el_spatial_resampling_filter_flag;
     uint8_t disable_residual_flag;
-    uint8_t ext_mapping_idc_0_4; /* extended base layer inverse mapping indicator */
-    uint8_t ext_mapping_idc_5_7; /* reserved */
 } AVDOVIRpuDataHeader;
 
 enum AVDOVIMappingMethod {
@@ -301,28 +290,26 @@ typedef struct AVDOVIDmLevel255 {
 } AVDOVIDmLevel255;
 
 /**
- * Dolby Vision metadata extension block. Dynamic extension blocks may change
- * from frame to frame, while static blocks are constant throughout the entire
- * sequence.
+ * Dolby Vision metadata extension block.
  *
  * @note sizeof(AVDOVIDmData) is not part of the public API.
  */
 typedef struct AVDOVIDmData {
     uint8_t level; /* [1, 255] */
     union {
-        AVDOVIDmLevel1 l1; /* dynamic */
-        AVDOVIDmLevel2 l2; /* dynamic, may appear multiple times */
-        AVDOVIDmLevel3 l3; /* dynamic */
-        AVDOVIDmLevel4 l4; /* dynamic */
-        AVDOVIDmLevel5 l5; /* dynamic */
-        AVDOVIDmLevel6 l6; /* static */
+        AVDOVIDmLevel1 l1;
+        AVDOVIDmLevel2 l2; /* may appear multiple times */
+        AVDOVIDmLevel3 l3;
+        AVDOVIDmLevel4 l4;
+        AVDOVIDmLevel5 l5;
+        AVDOVIDmLevel6 l6;
         /* level 7 is currently unused */
-        AVDOVIDmLevel8 l8; /* dynamic, may appear multiple times */
-        AVDOVIDmLevel9 l9; /* dynamic */
-        AVDOVIDmLevel10 l10; /* static, may appear multiple times */
-        AVDOVIDmLevel11 l11; /* dynamic */
-        AVDOVIDmLevel254 l254; /* static */
-        AVDOVIDmLevel255 l255; /* static */
+        AVDOVIDmLevel8 l8; /* may appear multiple times */
+        AVDOVIDmLevel9 l9;
+        AVDOVIDmLevel10 l10; /* may appear multiple times */
+        AVDOVIDmLevel11 l11;
+        AVDOVIDmLevel254 l254;
+        AVDOVIDmLevel255 l255;
     };
 } AVDOVIDmData;
 

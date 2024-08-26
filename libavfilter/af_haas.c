@@ -23,7 +23,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "filters.h"
 #include "formats.h"
 
 #define MAX_HAAS_DELAY 40

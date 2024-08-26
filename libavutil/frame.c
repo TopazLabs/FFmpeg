@@ -166,8 +166,6 @@ void av_frame_free(AVFrame **frame)
     av_freep(frame);
 }
 
-#define ALIGN (HAVE_SIMD_ALIGN_64 ? 64 : 32)
-
 static int get_video_buffer(AVFrame *frame, int align)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
@@ -184,7 +182,7 @@ static int get_video_buffer(AVFrame *frame, int align)
 
     if (!frame->linesize[0]) {
         if (align <= 0)
-            align = ALIGN;
+            align = 32; /* STRIDE_ALIGN. Should be av_cpu_max_align() */
 
         for (int i = 1; i <= align; i += i) {
             ret = av_image_fill_linesizes(frame->linesize, frame->format,
@@ -1109,7 +1107,7 @@ int av_frame_apply_cropping(AVFrame *frame, int flags)
         if (log2_crop_align < min_log2_align)
             return AVERROR_BUG;
 
-        if (min_log2_align < 5 && log2_crop_align != INT_MAX) {
+        if (min_log2_align < 5) {
             frame->crop_left &= ~((1 << (5 + log2_crop_align - min_log2_align)) - 1);
             calc_cropping_offsets(offsets, frame, desc);
         }

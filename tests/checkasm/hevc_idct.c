@@ -23,7 +23,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mem_internal.h"
 
-#include "libavcodec/hevc/dsp.h"
+#include "libavcodec/hevcdsp.h"
 
 #include "checkasm.h"
 

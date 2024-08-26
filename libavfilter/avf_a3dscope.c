@@ -27,6 +27,7 @@
 #include "formats.h"
 #include "audio.h"
 #include "video.h"
+#include "internal.h"
 
 typedef struct Audio3dScopeContext {
     const AVClass *class;
@@ -114,14 +115,13 @@ static int config_input(AVFilterLink *inlink)
 
 static int config_output(AVFilterLink *outlink)
 {
-    FilterLink *l = ff_filter_link(outlink);
     Audio3dScopeContext *s = outlink->src->priv;
 
     outlink->w = s->w;
     outlink->h = s->h;
     outlink->sample_aspect_ratio = (AVRational){1,1};
-    l->frame_rate = s->frame_rate;
-    outlink->time_base = av_inv_q(l->frame_rate);
+    outlink->frame_rate = s->frame_rate;
+    outlink->time_base = av_inv_q(outlink->frame_rate);
 
     return 0;
 }

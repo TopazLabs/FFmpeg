@@ -41,7 +41,6 @@ static int qoa_read_header(AVFormatContext *s)
 {
     AVIOContext *pb = s->pb;
     AVStream *st;
-    int ret;
 
     st = avformat_new_stream(s, NULL);
     if (!st)
@@ -53,9 +52,7 @@ static int qoa_read_header(AVFormatContext *s)
     st->duration = avio_rb32(pb);
     st->start_time = 0;
 
-    ret = ffio_ensure_seekback(pb, 4);
-    if (ret < 0)
-        return ret;
+    ffio_ensure_seekback(pb, 4);
     st->codecpar->ch_layout.nb_channels = avio_r8(pb);
     if (st->codecpar->ch_layout.nb_channels == 0)
         return AVERROR_INVALIDDATA;

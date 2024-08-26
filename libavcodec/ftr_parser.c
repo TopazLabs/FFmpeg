@@ -25,6 +25,7 @@
  */
 
 #include "parser.h"
+#include "get_bits.h"
 #include "adts_header.h"
 #include "adts_parser.h"
 #include "mpeg4audio.h"
@@ -44,6 +45,7 @@ static int ftr_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     FTRParseContext *ftr = s->priv_data;
     uint64_t state = ftr->pc.state64;
     int next = END_NOT_FOUND;
+    GetBitContext bits;
     AACADTSHeaderInfo hdr;
     int size;
 
@@ -69,9 +71,10 @@ static int ftr_parse(AVCodecParserContext *s, AVCodecContext *avctx,
 
             state = (state << 8) | buf[i];
             AV_WB64(tmp, state);
-            size = ff_adts_header_parse_buf(tmp + 8 - AV_AAC_ADTS_HEADER_SIZE, &hdr);
+            init_get_bits(&bits, tmp + 8 - AV_AAC_ADTS_HEADER_SIZE,
+                          AV_AAC_ADTS_HEADER_SIZE * 8);
 
-            if (size > 0) {
+            if ((size = ff_adts_header_parse(&bits, &hdr)) > 0) {
                 ftr->skip = size - 6;
                 ftr->frame_index += ff_mpeg4audio_channels[hdr.chan_config];
                 if (ftr->frame_index >= avctx->ch_layout.nb_channels) {

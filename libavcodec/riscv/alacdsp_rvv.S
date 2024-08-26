@@ -21,8 +21,7 @@
 #include "libavutil/riscv/asm.S"
 
 #if (__riscv_xlen == 64)
-func ff_alac_decorrelate_stereo_rvv, zve32x, zba
-        lpad    0
+func ff_alac_decorrelate_stereo_rvv, zve32x
         ld          a4, 8(a0)
         ld          a0, 0(a0)
 1:
@@ -44,8 +43,7 @@ func ff_alac_decorrelate_stereo_rvv, zve32x, zba
         ret
 endfunc
 
-func ff_alac_append_extra_bits_mono_rvv, zve32x, zba
-        lpad    0
+func ff_alac_append_extra_bits_mono_rvv, zve32x
         ld      a0, (a0)
         ld      a1, (a1)
 1:
@@ -63,8 +61,7 @@ func ff_alac_append_extra_bits_mono_rvv, zve32x, zba
         ret
 endfunc
 
-func ff_alac_append_extra_bits_stereo_rvv, zve32x, zba
-        lpad    0
+func ff_alac_append_extra_bits_stereo_rvv, zve32x
         ld      a6, 8(a0)
         ld      a0,  (a0)
         ld      a7, 8(a1)

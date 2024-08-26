@@ -25,6 +25,7 @@
 #include "filters.h"
 #include "formats.h"
 #include "framesync.h"
+#include "internal.h"
 #include "video.h"
 
 typedef struct StreamSelectContext {
@@ -64,12 +65,11 @@ static int process_frame(FFFrameSync *fs)
 
     for (j = 0; j < ctx->nb_inputs; j++) {
         for (i = 0; i < s->nb_map; i++) {
-            FilterLink *outl = ff_filter_link(ctx->outputs[i]);
             if (s->map[i] == j) {
                 AVFrame *out;
 
                 if (s->is_audio && s->last_pts[j] == in[j]->pts &&
-                    outl->frame_count_in > 0)
+                    ctx->outputs[i]->frame_count_in > 0)
                     continue;
                 out = av_frame_clone(in[j]);
                 if (!out)
@@ -98,13 +98,11 @@ static int activate(AVFilterContext *ctx)
 
 static int config_output(AVFilterLink *outlink)
 {
-    FilterLink *outl     = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     StreamSelectContext *s = ctx->priv;
     const int outlink_idx = FF_OUTLINK_IDX(outlink);
     const int inlink_idx  = s->map[outlink_idx];
     AVFilterLink *inlink = ctx->inputs[inlink_idx];
-    FilterLink      *inl = ff_filter_link(inlink);
     FFFrameSyncIn *in;
     int i, ret;
 
@@ -117,7 +115,7 @@ static int config_output(AVFilterLink *outlink)
         outlink->w = inlink->w;
         outlink->h = inlink->h;
         outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
-        outl->frame_rate = inl->frame_rate;
+        outlink->frame_rate = inlink->frame_rate;
         break;
     case AVMEDIA_TYPE_AUDIO:
         outlink->sample_rate    = inlink->sample_rate;
@@ -248,7 +246,7 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
         if (ret < 0)
             return ret;
-        return 0;
+        return ff_filter_config_links(ctx);
     }
     return AVERROR(ENOSYS);
 }

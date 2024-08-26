@@ -78,7 +78,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     uint32_t it = 0;
     uint64_t nb_samples = 0;
     AVDictionary *opts = NULL;
-    uint64_t ec_pixels = 0;
 
     if (!c) {
 #define ENCODER_SYMBOL0(CODEC) ff_##CODEC##_encoder
@@ -90,14 +89,9 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         av_log_set_level(AV_LOG_PANIC);
     }
 
-    if (c->p.type != AVMEDIA_TYPE_VIDEO)
-        return 0;
+    av_assert0(c->p.type == AVMEDIA_TYPE_VIDEO);
 
     maxpixels = maxpixels_per_frame * maxiteration;
-    switch (c->p.id) {
-    case AV_CODEC_ID_A64_MULTI:         maxpixels  /= 65536;  break;
-    case AV_CODEC_ID_A64_MULTI5:        maxpixels  /= 65536;  break;
-    }
 
     maxpixels_per_frame  = FFMIN(maxpixels_per_frame , maxpixels);
 
@@ -135,12 +129,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
         flags64 = bytestream2_get_le64(&gbc);
 
-        if (c->p.pix_fmts) {
-            int npixfmts = 0;
-            while (c->p.pix_fmts[npixfmts++] != AV_PIX_FMT_NONE)
-                ;
-            ctx->pix_fmt = c->p.pix_fmts[bytestream2_get_byte(&gbc) % npixfmts];
-        }
+        int npixfmts = 0;
+        while (c->p.pix_fmts[npixfmts++] != AV_PIX_FMT_NONE)
+            ;
+        ctx->pix_fmt = c->p.pix_fmts[bytestream2_get_byte(&gbc) % npixfmts];
 
         switch (c->p.id) {
         case AV_CODEC_ID_FFV1:{
@@ -173,10 +165,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     frame->height = ctx->height;
 
     while (data < end && it < maxiteration) {
-        ec_pixels += (ctx->width + 32LL) * (ctx->height + 32LL);
-        if (ec_pixels > maxpixels)
-            goto maximums_reached;
-
         res = av_frame_get_buffer(frame, 0);
         if (res < 0)
             error("Failed av_frame_get_buffer");
@@ -201,7 +189,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
         av_packet_unref(avpkt);
     }
-maximums_reached:
+
     encode(ctx, NULL, avpkt);
     av_packet_unref(avpkt);
 

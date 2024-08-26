@@ -29,8 +29,8 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "video.h"
 
 #define CHECK_CU(x) FF_CUDA_CHECK_DL(ctx, device_hwctx->internal->cuda_dl, x)
@@ -178,8 +178,6 @@ static int format_is_supported(enum AVPixelFormat fmt)
 static int init_processing_chain(AVFilterContext *ctx, int in_width, int in_height,
                                  int out_width, int out_height)
 {
-    FilterLink        *inl = ff_filter_link(ctx->inputs[0]);
-    FilterLink       *outl = ff_filter_link(ctx->outputs[0]);
     NPPTransposeContext *s = ctx->priv;
     AVHWFramesContext *in_frames_ctx;
     enum AVPixelFormat format;
@@ -187,12 +185,12 @@ static int init_processing_chain(AVFilterContext *ctx, int in_width, int in_heig
     int rot_width = out_width, rot_height = out_height;
 
     /* check that we have a hw context */
-    if (!inl->hw_frames_ctx) {
+    if (!ctx->inputs[0]->hw_frames_ctx) {
         av_log(ctx, AV_LOG_ERROR, "No hw context provided on input\n");
         return AVERROR(EINVAL);
     }
 
-    in_frames_ctx = (AVHWFramesContext*)inl->hw_frames_ctx->data;
+    in_frames_ctx = (AVHWFramesContext*)ctx->inputs[0]->hw_frames_ctx->data;
     format        = in_frames_ctx->sw_format;
 
     if (!format_is_supported(format)) {
@@ -237,13 +235,13 @@ static int init_processing_chain(AVFilterContext *ctx, int in_width, int in_heig
     }
 
     if (last_stage >= 0) {
-        outl->hw_frames_ctx = av_buffer_ref(s->stages[last_stage].frames_ctx);
+        ctx->outputs[0]->hw_frames_ctx = av_buffer_ref(s->stages[last_stage].frames_ctx);
     } else {
-        outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
+        ctx->outputs[0]->hw_frames_ctx = av_buffer_ref(ctx->inputs[0]->hw_frames_ctx);
         s->passthrough = 1;
     }
 
-    if (!outl->hw_frames_ctx)
+    if (!ctx->outputs[0]->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -251,19 +249,17 @@ static int init_processing_chain(AVFilterContext *ctx, int in_width, int in_heig
 
 static int npptranspose_config_props(AVFilterLink *outlink)
 {
-    FilterLink     *outl   = ff_filter_link(outlink);
     AVFilterContext *ctx   = outlink->src;
     AVFilterLink *inlink   = ctx->inputs[0];
-    FilterLink      *inl   = ff_filter_link(inlink);
     NPPTransposeContext *s = ctx->priv;
     int ret;
 
     if ((inlink->w >= inlink->h && s->passthrough == NPP_TRANSPOSE_PT_TYPE_LANDSCAPE) ||
         (inlink->w <= inlink->h && s->passthrough == NPP_TRANSPOSE_PT_TYPE_PORTRAIT))
     {
-        if (inl->hw_frames_ctx) {
-            outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
-            if (!outl->hw_frames_ctx)
+        if (inlink->hw_frames_ctx) {
+            outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
+            if (!outlink->hw_frames_ctx)
                 return AVERROR(ENOMEM);
         }
 
@@ -391,8 +387,7 @@ static int npptranspose_filter_frame(AVFilterLink *link, AVFrame *in)
     AVFilterContext              *ctx = link->dst;
     NPPTransposeContext            *s = ctx->priv;
     AVFilterLink             *outlink = ctx->outputs[0];
-    FilterLink                  *outl = ff_filter_link(outlink);
-    AVHWFramesContext     *frames_ctx = (AVHWFramesContext*)outl->hw_frames_ctx->data;
+    AVHWFramesContext     *frames_ctx = (AVHWFramesContext*)outlink->hw_frames_ctx->data;
     AVCUDADeviceContext *device_hwctx = frames_ctx->device_ctx->hwctx;
     AVFrame *out = NULL;
     CUcontext dummy;

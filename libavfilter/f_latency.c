@@ -23,6 +23,7 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "internal.h"
 #include "video.h"
 
 typedef struct LatencyContext {
@@ -45,7 +46,6 @@ static int activate(AVFilterContext *ctx)
 {
     LatencyContext *s = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
-    FilterLink      *inl = ff_filter_link(inlink);
     AVFilterLink *outlink = ctx->outputs[0];
 
     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
@@ -53,15 +53,14 @@ static int activate(AVFilterContext *ctx)
     if (!ctx->is_disabled && ctx->inputs[0]->src &&
         ctx->inputs[0]->src->nb_inputs > 0) {
         AVFilterLink *prevlink = ctx->inputs[0]->src->inputs[0];
-        FilterLink *prevl = ff_filter_link(prevlink);
         int64_t delta = 0;
 
         switch (prevlink->type) {
         case AVMEDIA_TYPE_AUDIO:
-            delta = prevl->sample_count_in - inl->sample_count_out;
+            delta = prevlink->sample_count_in - inlink->sample_count_out;
             break;
         case AVMEDIA_TYPE_VIDEO:
-            delta = prevl->frame_count_in - inl->frame_count_out;
+            delta = prevlink->frame_count_in - inlink->frame_count_out;
             break;
         }
 

@@ -23,8 +23,8 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "framesync.h"
+#include "internal.h"
 #include "video.h"
 
 typedef struct VarBlurContext {
@@ -320,8 +320,6 @@ static int config_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
     AVFilterLink *radiuslink = ctx->inputs[1];
-    FilterLink *il = ff_filter_link(inlink);
-    FilterLink *ol = ff_filter_link(outlink);
     VarBlurContext *s = ctx->priv;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
     int ret;
@@ -339,7 +337,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = inlink->h;
     outlink->time_base = inlink->time_base;
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = inlink->frame_rate;
 
     s->depth = desc->comp[0].depth;
     s->blur_plane = s->depth <= 8 ? blur_plane8 : s->depth <= 16 ? blur_plane16 : blur_plane32;

@@ -21,8 +21,8 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "framesync.h"
+#include "internal.h"
 #include "video.h"
 
 enum EdgeMode {
@@ -318,11 +318,9 @@ static int config_input(AVFilterLink *inlink)
 
 static int config_output(AVFilterLink *outlink)
 {
-    FilterLink     *outl = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     DisplaceContext *s = ctx->priv;
     AVFilterLink *srclink = ctx->inputs[0];
-    FilterLink        *sl = ff_filter_link(srclink);
     AVFilterLink *xlink = ctx->inputs[1];
     AVFilterLink *ylink = ctx->inputs[2];
     FFFrameSyncIn *in;
@@ -345,7 +343,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = srclink->w;
     outlink->h = srclink->h;
     outlink->sample_aspect_ratio = srclink->sample_aspect_ratio;
-    outl->frame_rate = sl->frame_rate;
+    outlink->frame_rate = srclink->frame_rate;
 
     ret = ff_framesync_init(&s->fs, ctx, 3);
     if (ret < 0)

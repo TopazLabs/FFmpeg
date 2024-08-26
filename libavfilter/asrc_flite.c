@@ -35,6 +35,7 @@
 #include "filters.h"
 #include "audio.h"
 #include "formats.h"
+#include "internal.h"
 
 typedef struct FliteContext {
     const AVClass *class;

@@ -35,11 +35,10 @@
 #include "libavutil/samplefmt.h"
 #include "libavutil/timestamp.h"
 #include "avfilter.h"
-#include "avfilter_internal.h"
 #include "buffersrc.h"
 #include "filters.h"
 #include "formats.h"
-#include "video.h"
+#include "internal.h"
 
 typedef struct BufferSourceContext {
     const AVClass    *class;
@@ -494,7 +493,6 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_props(AVFilterLink *link)
 {
-    FilterLink *l = ff_filter_link(link);
     BufferSourceContext *c = link->src->priv;
 
     switch (link->type) {
@@ -504,8 +502,8 @@ static int config_props(AVFilterLink *link)
         link->sample_aspect_ratio = c->pixel_aspect;
 
         if (c->hw_frames_ctx) {
-            l->hw_frames_ctx = av_buffer_ref(c->hw_frames_ctx);
-            if (!l->hw_frames_ctx)
+            link->hw_frames_ctx = av_buffer_ref(c->hw_frames_ctx);
+            if (!link->hw_frames_ctx)
                 return AVERROR(ENOMEM);
         }
         break;
@@ -521,7 +519,7 @@ static int config_props(AVFilterLink *link)
     }
 
     link->time_base = c->time_base;
-    l->frame_rate = c->frame_rate;
+    link->frame_rate = c->frame_rate;
     return 0;
 }
 

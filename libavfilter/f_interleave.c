@@ -31,6 +31,7 @@
 
 #include "avfilter.h"
 #include "filters.h"
+#include "internal.h"
 #include "audio.h"
 #include "video.h"
 
@@ -182,7 +183,6 @@ static av_cold int init(AVFilterContext *ctx)
 
 static int config_output(AVFilterLink *outlink)
 {
-    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink0 = ctx->inputs[0];
     int i;
@@ -193,7 +193,7 @@ static int config_output(AVFilterLink *outlink)
         outlink->h                   = inlink0->h;
         outlink->sample_aspect_ratio = inlink0->sample_aspect_ratio;
         outlink->format              = inlink0->format;
-        l->frame_rate = (AVRational) {1, 0};
+        outlink->frame_rate = (AVRational) {1, 0};
         for (i = 1; i < ctx->nb_inputs; i++) {
             AVFilterLink *inlink = ctx->inputs[i];
 

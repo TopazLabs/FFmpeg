@@ -26,7 +26,7 @@
 #include "libavutil/ppc/cpu.h"
 #include "libavutil/ppc/util_altivec.h"
 
-#include "libavcodec/hevc/dsp.h"
+#include "libavcodec/hevcdsp.h"
 
 #if HAVE_ALTIVEC
 static const vec_s16 trans4[4] = {

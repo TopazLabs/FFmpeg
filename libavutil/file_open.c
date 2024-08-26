@@ -112,10 +112,7 @@ int avpriv_tempfile(const char *prefix, char **filename, int log_offset, void *l
 {
     FileLogContext file_log_ctx = { &file_log_ctx_class, log_offset, log_ctx };
     int fd = -1;
-#if HAVE_MKSTEMP
-    size_t len = strlen(prefix) + 12; /* room for "/tmp/" and "XXXXXX\0" */
-    *filename  = av_malloc(len);
-#elif HAVE_TEMPNAM
+#if !HAVE_MKSTEMP
     void *ptr= tempnam(NULL, prefix);
     if(!ptr)
         ptr= tempnam(".", prefix);
@@ -123,7 +120,8 @@ int avpriv_tempfile(const char *prefix, char **filename, int log_offset, void *l
 #undef free
     free(ptr);
 #else
-    return AVERROR(ENOSYS);
+    size_t len = strlen(prefix) + 12; /* room for "/tmp/" and "XXXXXX\0" */
+    *filename  = av_malloc(len);
 #endif
     /* -----common section-----*/
     if (!*filename) {

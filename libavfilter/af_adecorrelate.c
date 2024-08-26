@@ -27,7 +27,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "filters.h"
 
 #define MAX_STAGES 16
 #define FILTER_FC  1100.0

@@ -24,13 +24,12 @@
 #include <nppi.h>
 #include <nppi_filtering_functions.h>
 
-#include "filters.h"
+#include "internal.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/cuda_check.h"
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_cuda_internal.h"
 #include "libavutil/opt.h"
-
 
 #define CHECK_CU(x) FF_CUDA_CHECK_DL(ctx, device_hwctx->internal->cuda_dl, x)
 
@@ -71,18 +70,16 @@ fail:
 
 static int nppsharpen_config(AVFilterContext* ctx, int width, int height)
 {
-    FilterLink      *inl = ff_filter_link(ctx->inputs[0]);
-    FilterLink     *outl = ff_filter_link(ctx->outputs[0]);
     NPPSharpenContext* s = ctx->priv;
     AVHWFramesContext *out_ctx, *in_ctx;
     int i, ret, supported_format = 0;
 
-    if (!inl->hw_frames_ctx) {
+    if (!ctx->inputs[0]->hw_frames_ctx) {
         av_log(ctx, AV_LOG_ERROR, "No hw context provided on input\n");
         goto fail;
     }
 
-    in_ctx = (AVHWFramesContext*)inl->hw_frames_ctx->data;
+    in_ctx = (AVHWFramesContext*)ctx->inputs[0]->hw_frames_ctx->data;
 
     s->frames_ctx = av_hwframe_ctx_alloc(in_ctx->device_ref);
     if (!s->frames_ctx)
@@ -114,8 +111,8 @@ static int nppsharpen_config(AVFilterContext* ctx, int width, int height)
     if (ret < 0)
         goto fail;
 
-    outl->hw_frames_ctx = av_buffer_ref(s->frames_ctx);
-    if (!outl->hw_frames_ctx)
+    ctx->outputs[0]->hw_frames_ctx = av_buffer_ref(s->frames_ctx);
+    if (!ctx->outputs[0]->hw_frames_ctx)
         goto fail;
 
     return 0;
@@ -155,8 +152,8 @@ static int nppsharpen_config_props(AVFilterLink* outlink)
 
 static int nppsharpen_sharpen(AVFilterContext* ctx, AVFrame* out, AVFrame* in)
 {
-    FilterLink *inl = ff_filter_link(ctx->inputs[0]);
-    AVHWFramesContext* in_ctx = (AVHWFramesContext*)inl->hw_frames_ctx->data;
+    AVHWFramesContext* in_ctx =
+        (AVHWFramesContext*)ctx->inputs[0]->hw_frames_ctx->data;
     NPPSharpenContext* s = ctx->priv;
 
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(in_ctx->sw_format);
@@ -182,9 +179,8 @@ static int nppsharpen_filter_frame(AVFilterLink* link, AVFrame* in)
     AVFilterContext* ctx = link->dst;
     NPPSharpenContext* s = ctx->priv;
     AVFilterLink* outlink = ctx->outputs[0];
-    FilterLink      *outl = ff_filter_link(outlink);
     AVHWFramesContext* frames_ctx =
-        (AVHWFramesContext*)outl->hw_frames_ctx->data;
+        (AVHWFramesContext*)outlink->hw_frames_ctx->data;
     AVCUDADeviceContext* device_hwctx = frames_ctx->device_ctx->hwctx;
 
     AVFrame* out = NULL;

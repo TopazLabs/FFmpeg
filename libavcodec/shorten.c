@@ -582,9 +582,10 @@ static int shorten_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             return ret;
 
         if (avpkt->size) {
-            int max_framesize = s->blocksize * s->channels * 8;
+            int max_framesize;
             void *tmp_ptr;
 
+            max_framesize = FFMAX(s->max_framesize, s->blocksize * s->channels * 8);
             tmp_ptr = av_fast_realloc(s->bitstream, &s->allocated_bitstream_size,
                                       max_framesize + AV_INPUT_BUFFER_PADDING_SIZE);
             if (!tmp_ptr) {
@@ -592,10 +593,7 @@ static int shorten_decode_frame(AVCodecContext *avctx, AVFrame *frame,
                 return AVERROR(ENOMEM);
             }
             s->bitstream = tmp_ptr;
-            if (max_framesize > s->max_framesize)
-                memset(s->bitstream + s->max_framesize, 0, (max_framesize - s->max_framesize) +
-                                                            AV_INPUT_BUFFER_PADDING_SIZE);
-            s->max_framesize = FFMAX(s->max_framesize, max_framesize);
+            s->max_framesize = max_framesize;
             *got_frame_ptr = 0;
             goto finish_frame;
         }

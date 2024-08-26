@@ -481,6 +481,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         return AVERROR_INVALIDDATA;
     }
 
+    frame->flags |= AV_FRAME_FLAG_KEY;
+    frame->pict_type = AV_PICTURE_TYPE_I;
+
     *got_frame = 1;
 
     /* always report that the buffer was completely consumed */

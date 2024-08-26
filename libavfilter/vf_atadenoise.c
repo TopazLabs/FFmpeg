@@ -34,7 +34,7 @@
 #include "bufferqueue.h"
 
 #include "atadenoise.h"
-#include "filters.h"
+#include "internal.h"
 #include "video.h"
 
 #define SIZE FF_BUFQUEUE_SIZE

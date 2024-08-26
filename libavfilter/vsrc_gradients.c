@@ -21,6 +21,7 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "video.h"
+#include "internal.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/lfg.h"
@@ -333,7 +334,6 @@ static int draw_gradients_slice32_planar(AVFilterContext *ctx, void *arg, int jo
 static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
-    FilterLink *l = ff_filter_link(outlink);
     GradientsContext *s = ctx->priv;
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
 
@@ -344,7 +344,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = s->h;
     outlink->time_base = av_inv_q(s->frame_rate);
     outlink->sample_aspect_ratio = (AVRational) {1, 1};
-    l->frame_rate = s->frame_rate;
+    outlink->frame_rate = s->frame_rate;
     if (s->seed == -1)
         s->seed = av_get_random_seed();
     av_lfg_init(&s->lfg, s->seed);

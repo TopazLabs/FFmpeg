@@ -30,7 +30,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "filters.h"
+#include "internal.h"
 #include "cuda/load_helper.h"
 
 static const enum AVPixelFormat supported_formats[] = {
@@ -180,18 +180,17 @@ static av_cold void set_format_info(AVFilterContext *ctx, enum AVPixelFormat in_
 
 static av_cold int init_processing_chain(AVFilterContext *ctx, int width, int height)
 {
-    FilterLink         *inl = ff_filter_link(ctx->inputs[0]);
-    FilterLink        *outl = ff_filter_link(ctx->outputs[0]);
     ChromakeyCUDAContext *s = ctx->priv;
     AVHWFramesContext *in_frames_ctx;
     int ret;
 
     /* check that we have a hw context */
-    if (!inl->hw_frames_ctx) {
+    if (!ctx->inputs[0]->hw_frames_ctx)
+    {
         av_log(ctx, AV_LOG_ERROR, "No hw context provided on input\n");
         return AVERROR(EINVAL);
     }
-    in_frames_ctx = (AVHWFramesContext *)inl->hw_frames_ctx->data;
+    in_frames_ctx = (AVHWFramesContext *)ctx->inputs[0]->hw_frames_ctx->data;
 
     if (!format_is_supported(in_frames_ctx->sw_format))
     {
@@ -205,8 +204,8 @@ static av_cold int init_processing_chain(AVFilterContext *ctx, int width, int he
     if (ret < 0)
         return ret;
 
-    outl->hw_frames_ctx = av_buffer_ref(s->frames_ctx);
-    if (!outl->hw_frames_ctx)
+    ctx->outputs[0]->hw_frames_ctx = av_buffer_ref(s->frames_ctx);
+    if (!ctx->outputs[0]->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -259,11 +258,13 @@ static av_cold int cudachromakey_config_props(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = outlink->src->inputs[0];
-    FilterLink      *inl = ff_filter_link(inlink);
     ChromakeyCUDAContext *s = ctx->priv;
-    AVHWFramesContext *frames_ctx;
-    AVCUDADeviceContext *device_hwctx;
+    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
+    AVCUDADeviceContext *device_hwctx = frames_ctx->device_ctx->hwctx;
     int ret;
+
+    s->hwctx = device_hwctx;
+    s->cu_stream = s->hwctx->stream;
 
     if (s->is_yuv) {
         s->chromakey_uv[0] = s->chromakey_rgba[1];
@@ -276,12 +277,6 @@ static av_cold int cudachromakey_config_props(AVFilterLink *outlink)
     ret = init_processing_chain(ctx, inlink->w, inlink->h);
     if (ret < 0)
         return ret;
-
-    frames_ctx = (AVHWFramesContext *)inl->hw_frames_ctx->data;
-    device_hwctx = frames_ctx->device_ctx->hwctx;
-
-    s->hwctx = device_hwctx;
-    s->cu_stream = s->hwctx->stream;
 
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
 

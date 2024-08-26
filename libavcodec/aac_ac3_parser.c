@@ -144,9 +144,10 @@ get_next:
 #endif
         } else {
 #if CONFIG_AAC_PARSER
-            AACADTSHeaderInfo hdr;
-            if (buf_size < AV_AAC_ADTS_HEADER_SIZE ||
-                ff_adts_header_parse_buf(buf, &hdr) < 0)
+            AACADTSHeaderInfo hdr, *phrd = &hdr;
+            int ret = avpriv_adts_header_parse(&phrd, buf, buf_size);
+
+            if (ret < 0)
                 return i;
 
             bit_rate = hdr.bit_rate;

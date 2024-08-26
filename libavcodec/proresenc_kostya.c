@@ -343,7 +343,7 @@ static void get_slice_data(ProresContext *ctx, const uint16_t *src,
 
 static void get_alpha_data(ProresContext *ctx, const uint16_t *src,
                            ptrdiff_t linesize, int x, int y, int w, int h,
-                           uint16_t *blocks, int mbs_per_slice, int abits)
+                           int16_t *blocks, int mbs_per_slice, int abits)
 {
     const int slice_width = 16 * mbs_per_slice;
     int i, j, copy_w, copy_h;
@@ -477,7 +477,7 @@ static void put_alpha_diff(PutBitContext *pb, int cur, int prev, int abits)
     const int dsize = 1 << dbits - 1;
     int diff = cur - prev;
 
-    diff = av_zero_extend(diff, abits);
+    diff = av_mod_uintp2(diff, abits);
     if (diff >= (1 << abits) - dsize)
         diff -= 1 << abits;
     if (diff < -dsize || diff > dsize || !diff) {
@@ -721,7 +721,7 @@ static int est_alpha_diff(int cur, int prev, int abits)
     const int dsize = 1 << dbits - 1;
     int diff = cur - prev;
 
-    diff = av_zero_extend(diff, abits);
+    diff = av_mod_uintp2(diff, abits);
     if (diff >= (1 << abits) - dsize)
         diff -= 1 << abits;
     if (diff < -dsize || diff > dsize || !diff)

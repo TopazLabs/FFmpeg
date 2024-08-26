@@ -224,7 +224,6 @@ end:
 static int fsync_config_props(AVFilterLink* outlink)
 {
     AVFilterContext *ctx = outlink->src;
-    FilterLink      *l   = ff_filter_link(outlink);
     FsyncContext    *s   = ctx->priv;
     int ret;
 
@@ -236,7 +235,7 @@ static int fsync_config_props(AVFilterLink* outlink)
         return AVERROR_INVALIDDATA;
     }
 
-    l->frame_rate = av_make_q(1, 0); // unknown or dynamic
+    outlink->frame_rate = av_make_q(1, 0); // unknown or dynamic
     outlink->time_base  = av_make_q(s->tb_num, s->tb_den);
 
     return 0;

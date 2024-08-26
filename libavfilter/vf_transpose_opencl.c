@@ -23,7 +23,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "filters.h"
+#include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -71,11 +71,9 @@ fail:
 
 static int transpose_opencl_config_output(AVFilterLink *outlink)
 {
-    FilterLink       *outl = ff_filter_link(outlink);
     AVFilterContext *avctx = outlink->src;
     TransposeOpenCLContext *s = avctx->priv;
     AVFilterLink *inlink = avctx->inputs[0];
-    FilterLink      *inl = ff_filter_link(inlink);
     const AVPixFmtDescriptor *desc_in  = av_pix_fmt_desc_get(inlink->format);
     int ret;
 
@@ -83,9 +81,9 @@ static int transpose_opencl_config_output(AVFilterLink *outlink)
          s->passthrough == TRANSPOSE_PT_TYPE_LANDSCAPE) ||
         (inlink->w <= inlink->h &&
          s->passthrough == TRANSPOSE_PT_TYPE_PORTRAIT)) {
-        if (inl->hw_frames_ctx) {
-            outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
-            if (!outl->hw_frames_ctx)
+        if (inlink->hw_frames_ctx) {
+            outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
+            if (!outlink->hw_frames_ctx)
                 return AVERROR(ENOMEM);
         }
         av_log(avctx, AV_LOG_VERBOSE,

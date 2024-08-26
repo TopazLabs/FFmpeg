@@ -18,6 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 
 #include "libavcodec/svq1encdsp.h"
@@ -25,13 +26,11 @@
 #include "checkasm.h"
 
 #define BUF_SIZE 1024
-#define MIN_VAL (-255 - 5 * 127)
-#define MAX_VAL ( 255 + 5 * 128)
 
 #define randomize(buf, len) \
     do { \
         for (int i = 0; i < len; i++) \
-            buf[i] = ((rnd() % (MAX_VAL - MIN_VAL + 1)) + MIN_VAL); \
+            buf[i] = ((rnd() % 65281) - 32641); \
     } while (0)
 
 static void test_ssd_int8_vs_int16(SVQ1EncDSPContext *s) {

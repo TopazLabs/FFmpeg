@@ -113,7 +113,6 @@ static int tls_shutdown_client(URLContext *h)
                                              c->request_flags, 0, 0, NULL, 0, &c->ctxt_handle,
                                              &outbuf_desc, &c->context_flags, &c->ctxt_timestamp);
         if (sspi_ret == SEC_E_OK || sspi_ret == SEC_I_CONTEXT_EXPIRED) {
-            s->tcp->flags &= ~AVIO_FLAG_NONBLOCK;
             ret = ffurl_write(s->tcp, outbuf.pvBuffer, outbuf.cbBuffer);
             FreeContextBuffer(outbuf.pvBuffer);
             if (ret < 0 || ret != outbuf.cbBuffer)
@@ -317,7 +316,6 @@ static int tls_client_handshake(URLContext *h)
         goto fail;
     }
 
-    s->tcp->flags &= ~AVIO_FLAG_NONBLOCK;
     ret = ffurl_write(s->tcp, outbuf.pvBuffer, outbuf.cbBuffer);
     FreeContextBuffer(outbuf.pvBuffer);
     if (ret < 0 || ret != outbuf.cbBuffer) {
@@ -391,7 +389,7 @@ static int tls_read(URLContext *h, uint8_t *buf, int len)
     SECURITY_STATUS sspi_ret = SEC_E_OK;
     SecBuffer inbuf[4];
     SecBufferDesc inbuf_desc;
-    int size, ret = 0;
+    int size, ret;
     int min_enc_buf_size = len + SCHANNEL_FREE_BUFFER_SIZE;
 
     /* If we have some left-over data from previous network activity,
@@ -418,15 +416,10 @@ static int tls_read(URLContext *h, uint8_t *buf, int len)
             }
         }
 
-        s->tcp->flags &= ~AVIO_FLAG_NONBLOCK;
-        s->tcp->flags |= h->flags & AVIO_FLAG_NONBLOCK;
-
         ret = ffurl_read(s->tcp, c->enc_buf + c->enc_buf_offset,
                          c->enc_buf_size - c->enc_buf_offset);
         if (ret == AVERROR_EOF) {
             c->connection_closed = 1;
-            ret = 0;
-        } else if (ret == AVERROR(EAGAIN)) {
             ret = 0;
         } else if (ret < 0) {
             av_log(h, AV_LOG_ERROR, "Unable to read from socket\n");
@@ -571,14 +564,8 @@ static int tls_write(URLContext *h, const uint8_t *buf, int len)
     sspi_ret = EncryptMessage(&c->ctxt_handle, 0, &outbuf_desc, 0);
     if (sspi_ret == SEC_E_OK)  {
         len = outbuf[0].cbBuffer + outbuf[1].cbBuffer + outbuf[2].cbBuffer;
-
-        s->tcp->flags &= ~AVIO_FLAG_NONBLOCK;
-        s->tcp->flags |= h->flags & AVIO_FLAG_NONBLOCK;
-
         ret = ffurl_write(s->tcp, data, len);
-        if (ret == AVERROR(EAGAIN)) {
-            goto done;
-        } else if (ret < 0 || ret != len) {
+        if (ret < 0 || ret != len) {
             ret = AVERROR(EIO);
             av_log(h, AV_LOG_ERROR, "Writing encrypted data to socket failed\n");
             goto done;

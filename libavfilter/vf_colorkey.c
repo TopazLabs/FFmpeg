@@ -24,7 +24,7 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "filters.h"
+#include "internal.h"
 
 typedef struct ColorkeyContext {
     const AVClass *class;

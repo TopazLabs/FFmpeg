@@ -23,7 +23,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "filters.h"
 
 #define MAX_OVERSAMPLE 64
 

@@ -28,7 +28,7 @@
 
 
 #include "avfilter.h"
-#include "filters.h"
+#include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -42,7 +42,7 @@ typedef struct NeighborOpenCLContext {
 
     char *matrix_str[4];
 
-    cl_float threshold[AV_VIDEO_MAX_PLANES];
+    cl_float threshold[4];
     cl_int coordinates;
     cl_mem coord;
 
@@ -93,7 +93,7 @@ static int neighbor_opencl_make_filter_params(AVFilterContext *avctx)
     cl_int cle;
     int i;
 
-    for (i = 0; i < AV_VIDEO_MAX_PLANES; i++) {
+    for (i = 0; i < 4; i++) {
         ctx->threshold[i] /= 255.0;
     }
 

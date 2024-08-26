@@ -27,7 +27,6 @@
 .endm
 
 func ff_pix_abs16_rvv, zve32x
-        lpad    0
         vsetivli        zero, 1, e32, m1, ta, ma
         vmv.s.x         v0, zero
 1:
@@ -48,7 +47,6 @@ func ff_pix_abs16_rvv, zve32x
 endfunc
 
 func ff_pix_abs8_rvv, zve32x
-        lpad    0
         vsetivli        zero, 1, e32, m1, ta, ma
         vmv.s.x         v0, zero
 1:
@@ -69,7 +67,6 @@ func ff_pix_abs8_rvv, zve32x
 endfunc
 
 func ff_pix_abs16_x2_rvv, zve32x
-        lpad    0
         csrwi           vxrm, 0
         vsetivli        zero, 1, e32, m1, ta, ma
         li              t5, 1
@@ -95,7 +92,6 @@ func ff_pix_abs16_x2_rvv, zve32x
 endfunc
 
 func ff_pix_abs8_x2_rvv, zve32x
-        lpad    0
         csrwi           vxrm, 0
         vsetivli        zero, 1, e32, m1, ta, ma
         li              t5, 1
@@ -121,7 +117,6 @@ func ff_pix_abs8_x2_rvv, zve32x
 endfunc
 
 func ff_pix_abs16_y2_rvv, zve32x
-        lpad    0
         csrwi           vxrm, 0
         vsetivli        zero, 1, e32, m1, ta, ma
         add             t1, a2, a3
@@ -147,7 +142,6 @@ func ff_pix_abs16_y2_rvv, zve32x
 endfunc
 
 func ff_pix_abs8_y2_rvv, zve32x
-        lpad    0
         csrwi           vxrm, 0
         vsetivli        zero, 1, e32, m1, ta, ma
         add             t1, a2, a3
@@ -173,7 +167,6 @@ func ff_pix_abs8_y2_rvv, zve32x
 endfunc
 
 func ff_sse16_rvv, zve32x
-        lpad    0
         vsetivli        t0, 16, e32, m4, ta, ma
         vmv.v.x         v24, zero
         vmv.s.x         v0, zero
@@ -196,7 +189,6 @@ func ff_sse16_rvv, zve32x
 endfunc
 
 func ff_sse8_rvv, zve32x
-        lpad    0
         vsetivli        t0, 8, e32, m2, ta, ma
         vmv.v.x         v24, zero
         vmv.s.x         v0, zero
@@ -219,7 +211,6 @@ func ff_sse8_rvv, zve32x
 endfunc
 
 func ff_sse4_rvv, zve32x
-        lpad    0
         vsetivli        t0, 4, e32, m1, ta, ma
         vmv.v.x         v24, zero
         vmv.s.x         v0, zero
@@ -248,7 +239,6 @@ endfunc
 .endm
 
 .macro  vsad_vsse16 type
-        lpad    0
         vsetivli        t0, 16, e32, m4, ta, ma
         addi            a4, a4, -1
         add             t1, a1, a3
@@ -287,7 +277,6 @@ endfunc
 .endm
 
 .macro  vsad_vsse8 type
-        lpad    0
         vsetivli        t0, 8, e32, m2, ta, ma
         addi            a4, a4, -1
         add             t1, a1, a3
@@ -326,7 +315,6 @@ endfunc
 .endm
 
 .macro  vsad_vsse_intra16 type
-        lpad    0
         vsetivli        t0, 16, e32, m4, ta, ma
         addi            a4, a4, -1
         add             t1, a1, a3
@@ -358,7 +346,6 @@ endfunc
 .endm
 
 .macro  vsad_vsse_intra8 type
-        lpad    0
         vsetivli        t0, 8, e32, m2, ta, ma
         addi            a4, a4, -1
         add             t1, a1, a3
@@ -422,8 +409,6 @@ func ff_vsad_intra8_rvv, zve32x
 endfunc
 
 func ff_nsse16_rvv, zve32x
-        lpad    0
-
         .macro squarediff16
         vsetivli        zero, 16, e8, m1, tu, ma
         vle8.v          v4, (a1)
@@ -483,8 +468,6 @@ func ff_nsse16_rvv, zve32x
 endfunc
 
 func ff_nsse8_rvv, zve32x
-        lpad    0
-
         .macro squarediff8
         vsetivli        zero, 8, e8, mf2, tu, ma
         vle8.v          v4, (a1)
