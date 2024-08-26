@@ -27,8 +27,8 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "framesync.h"
 #include "video.h"
 
@@ -316,8 +316,7 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     MixContext *s = ctx->priv;
-    FilterLink *il = ff_filter_link(ctx->inputs[0]);
-    FilterLink *ol = ff_filter_link(outlink);
+    AVRational frame_rate = ctx->inputs[0]->frame_rate;
     AVRational sar = ctx->inputs[0]->sample_aspect_ratio;
     AVFilterLink *inlink = ctx->inputs[0];
     int height = ctx->inputs[0]->h;
@@ -367,7 +366,7 @@ static int config_output(AVFilterLink *outlink)
 
     outlink->w          = width;
     outlink->h          = height;
-    ol->frame_rate     = il->frame_rate;
+    outlink->frame_rate = frame_rate;
     outlink->sample_aspect_ratio = sar;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, s->nb_inputs)) < 0)

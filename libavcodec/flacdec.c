@@ -481,7 +481,7 @@ static int decode_subframe_lpc(FLACContext *s, int32_t *decoded, int pred_order,
 static int decode_subframe_lpc_33bps(FLACContext *s, int64_t *decoded,
                                      int32_t *residual, int pred_order)
 {
-    int i, ret;
+    int i, j, ret;
     int coeff_prec, qlevel;
     int coeffs[32];
 
@@ -509,7 +509,12 @@ static int decode_subframe_lpc_33bps(FLACContext *s, int64_t *decoded,
     if ((ret = decode_residuals(s, residual, pred_order)) < 0)
         return ret;
 
-    s->dsp.lpc33(decoded, residual, coeffs, pred_order, qlevel, s->blocksize);
+    for (i = pred_order; i < s->blocksize; i++, decoded++) {
+        int64_t sum = 0;
+        for (j = 0; j < pred_order; j++)
+            sum += (int64_t)coeffs[j] * (uint64_t)decoded[j];
+        decoded[j] = residual[i] + (sum >> qlevel);
+    }
 
     return 0;
 }
@@ -597,9 +602,13 @@ static inline int decode_subframe(FLACContext *s, int channel)
 
     if (wasted) {
         if (wasted+bps == 33) {
-            s->dsp.wasted33(s->decoded_33bps, decoded, wasted, s->blocksize);
+            int i;
+            for (i = 0; i < s->blocksize; i++)
+                s->decoded_33bps[i] = (uint64_t)decoded[i] << wasted;
         } else if (wasted < 32) {
-            s->dsp.wasted32(decoded, wasted, s->blocksize);
+            int i;
+            for (i = 0; i < s->blocksize; i++)
+                decoded[i] = (unsigned)decoded[i] << wasted;
         }
     }
 

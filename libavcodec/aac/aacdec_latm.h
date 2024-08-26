@@ -56,8 +56,7 @@ static int latm_decode_audio_specific_config(struct LATMContext *latmctx,
 {
     AACDecContext *ac     = &latmctx->aac_ctx;
     AVCodecContext *avctx = ac->avctx;
-    OutputConfiguration oc = { 0 };
-    MPEG4AudioConfig *m4ac = &oc.m4ac;
+    MPEG4AudioConfig m4ac = { 0 };
     GetBitContext gbc;
     int config_start_bit  = get_bits_count(gb);
     int sync_extension    = 0;
@@ -77,7 +76,7 @@ static int latm_decode_audio_specific_config(struct LATMContext *latmctx,
     if (get_bits_left(gb) <= 0)
         return AVERROR_INVALIDDATA;
 
-    bits_consumed = decode_audio_specific_config_gb(NULL, avctx, &oc,
+    bits_consumed = decode_audio_specific_config_gb(NULL, avctx, &m4ac,
                                                     &gbc, config_start_bit,
                                                     sync_extension);
 
@@ -89,12 +88,11 @@ static int latm_decode_audio_specific_config(struct LATMContext *latmctx,
       asclen = bits_consumed;
 
     if (!latmctx->initialized ||
-        ac->oc[1].m4ac.sample_rate != m4ac->sample_rate ||
-        ac->oc[1].m4ac.chan_config != m4ac->chan_config) {
+        ac->oc[1].m4ac.sample_rate != m4ac.sample_rate ||
+        ac->oc[1].m4ac.chan_config != m4ac.chan_config) {
 
         if (latmctx->initialized) {
-            av_log(avctx, AV_LOG_INFO, "audio config changed (sample_rate=%d, chan_config=%d)\n",
-                   m4ac->sample_rate, m4ac->chan_config);
+            av_log(avctx, AV_LOG_INFO, "audio config changed (sample_rate=%d, chan_config=%d)\n", m4ac.sample_rate, m4ac.chan_config);
         } else {
             av_log(avctx, AV_LOG_DEBUG, "initializing latmctx\n");
         }
@@ -282,7 +280,7 @@ static int latm_decode_frame(AVCodecContext *avctx, AVFrame *out,
         } else {
             push_output_configuration(&latmctx->aac_ctx);
             if ((err = decode_audio_specific_config(
-                    &latmctx->aac_ctx, avctx, &latmctx->aac_ctx.oc[1],
+                    &latmctx->aac_ctx, avctx, &latmctx->aac_ctx.oc[1].m4ac,
                     avctx->extradata, avctx->extradata_size*8LL, 1)) < 0) {
                 pop_output_configuration(&latmctx->aac_ctx);
                 return err;
@@ -317,7 +315,7 @@ static int latm_decode_frame(AVCodecContext *avctx, AVFrame *out,
 static av_cold int latm_decode_init(AVCodecContext *avctx)
 {
     struct LATMContext *latmctx = avctx->priv_data;
-    int ret = ff_aac_decode_init_float(avctx);
+    int ret = aac_decode_init(avctx);
 
     if (avctx->extradata_size > 0)
         latmctx->initialized = !ret;

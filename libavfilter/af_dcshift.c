@@ -23,7 +23,7 @@
 #include "libavutil/samplefmt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "filters.h"
+#include "internal.h"
 
 typedef struct DCShiftContext {
     const AVClass *class;

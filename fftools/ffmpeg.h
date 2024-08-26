@@ -155,7 +155,6 @@ typedef struct OptionsContext {
     SpecifierOptList hwaccel_devices;
     SpecifierOptList hwaccel_output_formats;
     SpecifierOptList autorotate;
-    SpecifierOptList apply_cropping;
 
     /* output options */
     StreamMap *stream_maps;
@@ -240,7 +239,6 @@ enum IFilterFlags {
     IFILTER_FLAG_AUTOROTATE     = (1 << 0),
     IFILTER_FLAG_REINIT         = (1 << 1),
     IFILTER_FLAG_CFR            = (1 << 2),
-    IFILTER_FLAG_CROP           = (1 << 3),
 };
 
 typedef struct InputFilterOptions {
@@ -255,11 +253,6 @@ typedef struct InputFilterOptions {
      * Otherwise, this is an estimate that should not be relied upon to be
      * accurate */
     AVRational          framerate;
-
-    unsigned            crop_top;
-    unsigned            crop_bottom;
-    unsigned            crop_left;
-    unsigned            crop_right;
 
     int                 sub2video_width;
     int                 sub2video_height;
@@ -546,13 +539,6 @@ typedef struct KeyframeForceCtx {
 
 typedef struct Encoder Encoder;
 
-enum CroppingType {
-    CROP_DISABLED = 0,
-    CROP_ALL,
-    CROP_CODEC,
-    CROP_CONTAINER,
-};
-
 typedef struct OutputStream {
     const AVClass *class;
 
@@ -593,12 +579,14 @@ typedef struct OutputStream {
 
     KeyframeForceCtx kf;
 
-    const char *logfile_prefix;
+    char *logfile_prefix;
     FILE *logfile;
 
     // simple filtergraph feeding this stream, if any
     FilterGraph  *fg_simple;
     OutputFilter *filter;
+
+    AVDictionary *encoder_opts;
 
     char *attachment_filename;
 
@@ -722,10 +710,11 @@ void term_exit(void);
 
 void show_usage(void);
 
-int check_avoptions_used(const AVDictionary *opts, const AVDictionary *opts_used,
-                         void *logctx, int decode);
+void remove_avoptions(AVDictionary **a, AVDictionary *b);
+int check_avoptions(AVDictionary *m);
 
 int assert_file_overwrite(const char *filename);
+AVDictionary *strip_specifiers(const AVDictionary *dict);
 int find_codec(void *logctx, const char *name,
                enum AVMediaType type, int encoder, const AVCodec **codec);
 int parse_and_set_vsync(const char *arg, int *vsync_var, int file_idx, int st_idx, int is_global);
@@ -857,16 +846,46 @@ OutputStream *ost_iter(OutputStream *prev);
 
 void update_benchmark(const char *fmt, ...);
 
+#define SPECIFIER_OPT_FMT_str  "%s"
+#define SPECIFIER_OPT_FMT_i    "%i"
+#define SPECIFIER_OPT_FMT_i64  "%"PRId64
+#define SPECIFIER_OPT_FMT_ui64 "%"PRIu64
+#define SPECIFIER_OPT_FMT_f    "%f"
+#define SPECIFIER_OPT_FMT_dbl  "%lf"
+
+#define WARN_MULTIPLE_OPT_USAGE(optname, type, idx, st)\
+{\
+    char namestr[128] = "";\
+    const SpecifierOpt *so = &o->optname.opt[idx];\
+    const char *spec = so->specifier && so->specifier[0] ? so->specifier : "";\
+    snprintf(namestr, sizeof(namestr), "-%s", o->optname.opt_canon->name);\
+    if (o->optname.opt_canon->flags & OPT_HAS_ALT) {\
+        const char * const *names_alt = o->optname.opt_canon->u1.names_alt;\
+        for (int _i = 0; names_alt[_i]; _i++)\
+            av_strlcatf(namestr, sizeof(namestr), "/-%s", names_alt[_i]);\
+    }\
+    av_log(NULL, AV_LOG_WARNING, "Multiple %s options specified for stream %d, only the last option '-%s%s%s "SPECIFIER_OPT_FMT_##type"' will be used.\n",\
+           namestr, st->index, o->optname.opt_canon->name, spec[0] ? ":" : "", spec, so->u.type);\
+}
+
+#define MATCH_PER_STREAM_OPT(name, type, outvar, fmtctx, st)\
+{\
+    int _ret, _matches = 0, _match_idx;\
+    for (int _i = 0; _i < o->name.nb_opt; _i++) {\
+        char *spec = o->name.opt[_i].specifier;\
+        if ((_ret = check_stream_specifier(fmtctx, st, spec)) > 0) {\
+            outvar = o->name.opt[_i].u.type;\
+            _match_idx = _i;\
+            _matches++;\
+        } else if (_ret < 0)\
+            return _ret;\
+    }\
+    if (_matches > 1 && o->name.opt_canon)\
+       WARN_MULTIPLE_OPT_USAGE(name, type, _match_idx, st);\
+}
+
 const char *opt_match_per_type_str(const SpecifierOptList *sol,
                                    char mediatype);
-void opt_match_per_stream_str(void *logctx, const SpecifierOptList *sol,
-                              AVFormatContext *fc, AVStream *st, const char **out);
-void opt_match_per_stream_int(void *logctx, const SpecifierOptList *sol,
-                              AVFormatContext *fc, AVStream *st, int *out);
-void opt_match_per_stream_int64(void *logctx, const SpecifierOptList *sol,
-                                AVFormatContext *fc, AVStream *st, int64_t *out);
-void opt_match_per_stream_dbl(void *logctx, const SpecifierOptList *sol,
-                              AVFormatContext *fc, AVStream *st, double *out);
 
 int muxer_thread(void *arg);
 int encoder_thread(void *arg);

@@ -32,7 +32,8 @@ av_cold void ff_opus_dsp_init_riscv(OpusDSP *d)
 #if HAVE_RVV
     int flags = av_get_cpu_flags();
 
-    if ((flags & AV_CPU_FLAG_RVV_F32) && (flags & AV_CPU_FLAG_RVB))
+    if ((flags & AV_CPU_FLAG_RVV_F32) && (flags & AV_CPU_FLAG_RVB_ADDR) &&
+        (flags & AV_CPU_FLAG_RVB_BASIC))
         d->postfilter = ff_opus_postfilter_rvv;
 #endif
 }

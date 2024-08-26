@@ -51,7 +51,7 @@
 
 #include "avfilter.h"
 #include "drawutils.h"
-#include "filters.h"
+#include "internal.h"
 #include "framesync.h"
 
 #define RIGHT   0
@@ -1594,8 +1594,6 @@ static int config_output(AVFilterLink *outlink)
     SSIM360Context      *s = ctx->priv;
     AVFilterLink *mainlink = ctx->inputs[0];
     AVFilterLink  *reflink = ctx->inputs[0];
-    FilterLink         *il = ff_filter_link(mainlink);
-    FilterLink         *ol = ff_filter_link(outlink);
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
     int ret;
 
@@ -1645,7 +1643,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = mainlink->h;
     outlink->time_base = mainlink->time_base;
     outlink->sample_aspect_ratio = mainlink->sample_aspect_ratio;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = mainlink->frame_rate;
 
     s->fs.opt_shortest   = 1;
     s->fs.opt_repeatlast = 1;

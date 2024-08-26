@@ -29,6 +29,7 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "window_func.h"
 
 typedef struct AudioFIRSourceContext {

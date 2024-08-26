@@ -23,7 +23,7 @@
 
 %include "libavutil/x86/x86util.asm"
 
-SECTION_RODATA 32
+SECTION_RODATA
 
 %define RY 0x20DE
 %define GY 0x4087
@@ -90,12 +90,8 @@ rgb_UVrnd:       times 4 dd 0x400100       ; 128.5 << 15
 ; rgba_Vcoeff_ag:  times 4 dw 0,  GV
 
 shuf_rgb_12x4:   db 0, 0x80, 1, 0x80,  2, 0x80,  3, 0x80, \
-                    6, 0x80, 7, 0x80,  8, 0x80,  9, 0x80, \
-                    0, 0x80, 1, 0x80,  2, 0x80,  3, 0x80, \
                     6, 0x80, 7, 0x80,  8, 0x80,  9, 0x80
 shuf_rgb_3x56:   db 2, 0x80, 3, 0x80,  4, 0x80,  5, 0x80, \
-                    8, 0x80, 9, 0x80, 10, 0x80, 11, 0x80, \
-                    2, 0x80, 3, 0x80,  4, 0x80,  5, 0x80, \
                     8, 0x80, 9, 0x80, 10, 0x80, 11, 0x80
 pd_65535f:     times 8 dd 65535.0
 pb_pack_shuffle16le:    db  0,  1,  4,  5, \
@@ -138,13 +134,8 @@ SECTION .text
 %macro RGB24_TO_Y_FN 2-3
 cglobal %2 %+ 24ToY, 6, 6, %1, dst, src, u1, u2, w, table
 %if ARCH_X86_64
-%if mmsize == 32
-    vbroadcasti128 m8, [%2_Ycoeff_12x4]
-    vbroadcasti128 m9, [%2_Ycoeff_3x56]
-%else
     mova           m8, [%2_Ycoeff_12x4]
     mova           m9, [%2_Ycoeff_3x56]
-%endif
 %define coeff1 m8
 %define coeff2 m9
 %else ; x86-32
@@ -174,19 +165,11 @@ cglobal %2 %+ 24ToY, 6, 6, %1, dst, src, u1, u2, w, table
 %if notcpuflag(ssse3)
     pxor           m7, m7
 %endif ; !cpuflag(ssse3)
-%if mmsize == 32
-    vbroadcasti128 m4, [rgb_Yrnd]
-%else
     mova           m4, [rgb_Yrnd]
-%endif
 .loop:
 %if cpuflag(ssse3)
-    movu          xm0, [srcq+0]           ; (byte) { Bx, Gx, Rx }[0-3]
-    movu          xm2, [srcq+12]          ; (byte) { Bx, Gx, Rx }[4-7]
-%if mmsize == 32
-    vinserti128    m0, m0, [srcq+24], 1
-    vinserti128    m2, m2, [srcq+36], 1
-%endif
+    movu           m0, [srcq+0]           ; (byte) { Bx, Gx, Rx }[0-3]
+    movu           m2, [srcq+12]          ; (byte) { Bx, Gx, Rx }[4-7]
     pshufb         m1, m0, shuf_rgb2      ; (word) { R0, B1, G1, R1, R2, B3, G3, R3 }
     pshufb         m0, shuf_rgb1          ; (word) { B0, G0, R0, B1, B2, G2, R2, B3 }
     pshufb         m3, m2, shuf_rgb2      ; (word) { R4, B5, G5, R5, R6, B7, G7, R7 }
@@ -229,35 +212,27 @@ cglobal %2 %+ 24ToY, 6, 6, %1, dst, src, u1, u2, w, table
 %endmacro
 
 ; %1 = nr. of XMM registers
-; %2 = aligned/unaligned output argument
-; %3-4 = rgb or bgr
-%macro RGB24_TO_UV_FN 3-4
-cglobal %3 %+ 24ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
+; %2 = rgb or bgr
+%macro RGB24_TO_UV_FN 2-3
+cglobal %2 %+ 24ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
 %if ARCH_X86_64
-%if mmsize == 32
-    vbroadcasti128  m8, [%3_Ucoeff_12x4]
-    vbroadcasti128  m9, [%3_Ucoeff_3x56]
-    vbroadcasti128 m10, [%3_Vcoeff_12x4]
-    vbroadcasti128 m11, [%3_Vcoeff_3x56]
-%else
-    mova            m8, [%3_Ucoeff_12x4]
-    mova            m9, [%3_Ucoeff_3x56]
-    mova           m10, [%3_Vcoeff_12x4]
-    mova           m11, [%3_Vcoeff_3x56]
-%endif
+    mova           m8, [%2_Ucoeff_12x4]
+    mova           m9, [%2_Ucoeff_3x56]
+    mova          m10, [%2_Vcoeff_12x4]
+    mova          m11, [%2_Vcoeff_3x56]
 %define coeffU1 m8
 %define coeffU2 m9
 %define coeffV1 m10
 %define coeffV2 m11
 %else ; x86-32
-%define coeffU1 [%3_Ucoeff_12x4]
-%define coeffU2 [%3_Ucoeff_3x56]
-%define coeffV1 [%3_Vcoeff_12x4]
-%define coeffV2 [%3_Vcoeff_3x56]
+%define coeffU1 [%2_Ucoeff_12x4]
+%define coeffU2 [%2_Ucoeff_3x56]
+%define coeffV1 [%2_Vcoeff_12x4]
+%define coeffV2 [%2_Vcoeff_3x56]
 %endif ; x86-32/64
-%if ARCH_X86_64 && %0 == 4
-    jmp mangle(private_prefix %+ _ %+ %4 %+ 24ToUV %+ SUFFIX).body
-%else ; ARCH_X86_64 && %0 == 4
+%if ARCH_X86_64 && %0 == 3
+    jmp mangle(private_prefix %+ _ %+ %3 %+ 24ToUV %+ SUFFIX).body
+%else ; ARCH_X86_64 && %0 == 3
 .body:
 %if cpuflag(ssse3)
     mova           m7, [shuf_rgb_12x4]
@@ -278,22 +253,14 @@ cglobal %3 %+ 24ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
     add         dstUq, wq
     add         dstVq, wq
     neg            wq
-%if mmsize == 32
-    vbroadcasti128 m6, [rgb_UVrnd]
-%else
     mova           m6, [rgb_UVrnd]
-%endif
 %if notcpuflag(ssse3)
     pxor           m7, m7
 %endif
 .loop:
 %if cpuflag(ssse3)
-    movu          xm0, [srcq+0]           ; (byte) { Bx, Gx, Rx }[0-3]
-    movu          xm4, [srcq+12]          ; (byte) { Bx, Gx, Rx }[4-7]
-%if mmsize == 32
-    vinserti128    m0, m0, [srcq+24], 1
-    vinserti128    m4, m4, [srcq+36], 1
-%endif
+    movu           m0, [srcq+0]           ; (byte) { Bx, Gx, Rx }[0-3]
+    movu           m4, [srcq+12]          ; (byte) { Bx, Gx, Rx }[4-7]
     pshufb         m1, m0, shuf_rgb2      ; (word) { R0, B1, G1, R1, R2, B3, G3, R3 }
     pshufb         m0, shuf_rgb1          ; (word) { B0, G0, R0, B1, B2, G2, R2, B3 }
 %else ; !cpuflag(ssse3)
@@ -342,53 +309,40 @@ cglobal %3 %+ 24ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
     psrad          m4, 9
     packssdw       m0, m1                 ; (word) { U[0-7] }
     packssdw       m2, m4                 ; (word) { V[0-7] }
-    mov%2  [dstUq+wq], m0
-    mov%2  [dstVq+wq], m2
+    mova   [dstUq+wq], m0
+    mova   [dstVq+wq], m2
     add            wq, mmsize
     jl .loop
     RET
-%endif ; ARCH_X86_64 && %0 == 4
+%endif ; ARCH_X86_64 && %0 == 3
 %endmacro
 
 ; %1 = nr. of XMM registers for rgb-to-Y func
 ; %2 = nr. of XMM registers for rgb-to-UV func
-; %3 = aligned/unaligned output argument
-%macro RGB24_FUNCS 3
+%macro RGB24_FUNCS 2
 RGB24_TO_Y_FN %1, rgb
 RGB24_TO_Y_FN %1, bgr, rgb
-RGB24_TO_UV_FN %2, %3, rgb
-RGB24_TO_UV_FN %2, %3, bgr, rgb
+RGB24_TO_UV_FN %2, rgb
+RGB24_TO_UV_FN %2, bgr, rgb
 %endmacro
 
 INIT_XMM sse2
-RGB24_FUNCS 10, 12, a
+RGB24_FUNCS 10, 12
 
 INIT_XMM ssse3
-RGB24_FUNCS 11, 13, a
+RGB24_FUNCS 11, 13
 
 %if HAVE_AVX_EXTERNAL
 INIT_XMM avx
-RGB24_FUNCS 11, 13, a
-%endif
-
-%if ARCH_X86_64
-%if HAVE_AVX2_EXTERNAL
-INIT_YMM avx2
-RGB24_FUNCS 11, 13, u
-%endif
+RGB24_FUNCS 11, 13
 %endif
 
 ; %1 = nr. of XMM registers
 ; %2-5 = rgba, bgra, argb or abgr (in individual characters)
 %macro RGB32_TO_Y_FN 5-6
 cglobal %2%3%4%5 %+ ToY, 6, 6, %1, dst, src, u1, u2, w, table
-%if mmsize == 32
-    vbroadcasti128 m5, [rgba_Ycoeff_%2%4]
-    vbroadcasti128 m6, [rgba_Ycoeff_%3%5]
-%else
     mova           m5, [rgba_Ycoeff_%2%4]
     mova           m6, [rgba_Ycoeff_%3%5]
-%endif
 %if %0 == 6
     jmp mangle(private_prefix %+ _ %+ %6 %+ ToY %+ SUFFIX).body
 %else ; %0 == 6
@@ -401,21 +355,13 @@ cglobal %2%3%4%5 %+ ToY, 6, 6, %1, dst, src, u1, u2, w, table
     lea          srcq, [srcq+wq*2]
     add          dstq, wq
     neg            wq
-%if mmsize == 32
-    vbroadcasti128 m4, [rgb_Yrnd]
-%else
     mova           m4, [rgb_Yrnd]
-%endif
     pcmpeqb        m7, m7
     psrlw          m7, 8                  ; (word) { 0x00ff } x4
 .loop:
     ; FIXME check alignment and use mova
-    movu          xm0, [srcq+wq*2+0]      ; (byte) { Bx, Gx, Rx, xx }[0-3]
-    movu          xm2, [srcq+wq*2+16]     ; (byte) { Bx, Gx, Rx, xx }[4-7]
-%if mmsize == 32
-    vinserti128    m0, m0, [srcq+wq*2+32], 1
-    vinserti128    m2, m2, [srcq+wq*2+48], 1
-%endif
+    movu           m0, [srcq+wq*2+0]      ; (byte) { Bx, Gx, Rx, xx }[0-3]
+    movu           m2, [srcq+wq*2+mmsize] ; (byte) { Bx, Gx, Rx, xx }[4-7]
     DEINTB          1,  0,  3,  2,  7     ; (word) { Gx, xx (m0/m2) or Bx, Rx (m1/m3) }[0-3]/[4-7]
     pmaddwd        m1, m5                 ; (dword) { Bx*BY + Rx*RY }[0-3]
     pmaddwd        m0, m6                 ; (dword) { Gx*GY }[0-3]
@@ -436,7 +382,6 @@ cglobal %2%3%4%5 %+ ToY, 6, 6, %1, dst, src, u1, u2, w, table
     add            srcq, 2*mmsize - 2
     add            dstq, mmsize - 1
 .loop2:
-INIT_XMM cpuname
     movd           m0, [srcq+wq*2+0]      ; (byte) { Bx, Gx, Rx, xx }[0-3]
     DEINTB          1,  0,  3,  2,  7     ; (word) { Gx, xx (m0/m2) or Bx, Rx (m1/m3) }[0-3]/[4-7]
     pmaddwd        m1, m5                 ; (dword) { Bx*BY + Rx*RY }[0-3]
@@ -449,43 +394,32 @@ INIT_XMM cpuname
     add            wq, 2
     jl .loop2
 .end:
-%if cpuflag(avx2)
-INIT_YMM cpuname
-%endif
     RET
 %endif ; %0 == 3
 %endmacro
 
 ; %1 = nr. of XMM registers
-; %2 = aligned/unaligned output argument
-; %3-6 = rgba, bgra, argb or abgr (in individual characters)
-%macro RGB32_TO_UV_FN 6-7
-cglobal %3%4%5%6 %+ ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
+; %2-5 = rgba, bgra, argb or abgr (in individual characters)
+%macro RGB32_TO_UV_FN 5-6
+cglobal %2%3%4%5 %+ ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
 %if ARCH_X86_64
-%if mmsize == 32
-    vbroadcasti128  m8, [rgba_Ucoeff_%3%5]
-    vbroadcasti128  m9, [rgba_Ucoeff_%4%6]
-    vbroadcasti128 m10, [rgba_Vcoeff_%3%5]
-    vbroadcasti128 m11, [rgba_Vcoeff_%4%6]
-%else
-    mova            m8, [rgba_Ucoeff_%3%5]
-    mova            m9, [rgba_Ucoeff_%4%6]
-    mova           m10, [rgba_Vcoeff_%3%5]
-    mova           m11, [rgba_Vcoeff_%4%6]
-%endif
+    mova           m8, [rgba_Ucoeff_%2%4]
+    mova           m9, [rgba_Ucoeff_%3%5]
+    mova          m10, [rgba_Vcoeff_%2%4]
+    mova          m11, [rgba_Vcoeff_%3%5]
 %define coeffU1 m8
 %define coeffU2 m9
 %define coeffV1 m10
 %define coeffV2 m11
 %else ; x86-32
-%define coeffU1 [rgba_Ucoeff_%3%5]
-%define coeffU2 [rgba_Ucoeff_%4%6]
-%define coeffV1 [rgba_Vcoeff_%3%5]
-%define coeffV2 [rgba_Vcoeff_%4%6]
+%define coeffU1 [rgba_Ucoeff_%2%4]
+%define coeffU2 [rgba_Ucoeff_%3%5]
+%define coeffV1 [rgba_Vcoeff_%2%4]
+%define coeffV2 [rgba_Vcoeff_%3%5]
 %endif ; x86-64/32
-%if ARCH_X86_64 && %0 == 7
-    jmp mangle(private_prefix %+ _ %+ %7 %+ ToUV %+ SUFFIX).body
-%else ; ARCH_X86_64 && %0 == 7
+%if ARCH_X86_64 && %0 == 6
+    jmp mangle(private_prefix %+ _ %+ %6 %+ ToUV %+ SUFFIX).body
+%else ; ARCH_X86_64 && %0 == 6
 .body:
 %if ARCH_X86_64
     movsxd         wq, dword r5m
@@ -500,19 +434,11 @@ cglobal %3%4%5%6 %+ ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
     neg            wq
     pcmpeqb        m7, m7
     psrlw          m7, 8                  ; (word) { 0x00ff } x4
-%if mmsize == 32
-    vbroadcasti128 m6, [rgb_UVrnd]
-%else
     mova           m6, [rgb_UVrnd]
-%endif
 .loop:
     ; FIXME check alignment and use mova
-    movu          xm0, [srcq+wq*2+0]      ; (byte) { Bx, Gx, Rx, xx }[0-3]
-    movu          xm4, [srcq+wq*2+16]     ; (byte) { Bx, Gx, Rx, xx }[4-7]
-%if mmsize == 32
-    vinserti128    m0, m0, [srcq+wq*2+32], 1
-    vinserti128    m4, m4, [srcq+wq*2+48], 1
-%endif
+    movu           m0, [srcq+wq*2+0]      ; (byte) { Bx, Gx, Rx, xx }[0-3]
+    movu           m4, [srcq+wq*2+mmsize] ; (byte) { Bx, Gx, Rx, xx }[4-7]
     DEINTB          1,  0,  5,  4,  7     ; (word) { Gx, xx (m0/m4) or Bx, Rx (m1/m5) }[0-3]/[4-7]
     pmaddwd        m3, m1, coeffV1        ; (dword) { Bx*BV + Rx*RV }[0-3]
     pmaddwd        m2, m0, coeffV2        ; (dword) { Gx*GV }[0-3]
@@ -536,9 +462,8 @@ cglobal %3%4%5%6 %+ ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
     psrad          m1, 9
     packssdw       m0, m4                 ; (word) { U[0-7] }
     packssdw       m2, m1                 ; (word) { V[0-7] }
-    ; FIXME check alignment and use mova
-    mov%2  [dstUq+wq], m0
-    mov%2  [dstVq+wq], m2
+    mova   [dstUq+wq], m0
+    mova   [dstVq+wq], m2
     add            wq, mmsize
     jl .loop
     sub            wq, mmsize - 1
@@ -547,7 +472,6 @@ cglobal %3%4%5%6 %+ ToUV, 7, 7, %1, dstU, dstV, u1, src, u2, w, table
     add            dstUq, mmsize - 1
     add            dstVq, mmsize - 1
 .loop2:
-INIT_XMM cpuname
     movd           m0, [srcq+wq*2]        ; (byte) { Bx, Gx, Rx, xx }[0-3]
     DEINTB          1,  0,  5,  4,  7     ; (word) { Gx, xx (m0/m4) or Bx, Rx (m1/m5) }[0-3]/[4-7]
     pmaddwd        m3, m1, coeffV1        ; (dword) { Bx*BV + Rx*RV }[0-3]
@@ -567,41 +491,30 @@ INIT_XMM cpuname
     add            wq, 2
     jl .loop2
 .end:
-%if cpuflag(avx2)
-INIT_YMM cpuname
-%endif
     RET
-%endif ; ARCH_X86_64 && %0 == 7
+%endif ; ARCH_X86_64 && %0 == 3
 %endmacro
 
 ; %1 = nr. of XMM registers for rgb-to-Y func
 ; %2 = nr. of XMM registers for rgb-to-UV func
-; %3 = aligned/unaligned output argument
-%macro RGB32_FUNCS 3
+%macro RGB32_FUNCS 2
 RGB32_TO_Y_FN %1, r, g, b, a
 RGB32_TO_Y_FN %1, b, g, r, a, rgba
 RGB32_TO_Y_FN %1, a, r, g, b, rgba
 RGB32_TO_Y_FN %1, a, b, g, r, rgba
 
-RGB32_TO_UV_FN %2, %3, r, g, b, a
-RGB32_TO_UV_FN %2, %3, b, g, r, a, rgba
-RGB32_TO_UV_FN %2, %3, a, r, g, b, rgba
-RGB32_TO_UV_FN %2, %3, a, b, g, r, rgba
+RGB32_TO_UV_FN %2, r, g, b, a
+RGB32_TO_UV_FN %2, b, g, r, a, rgba
+RGB32_TO_UV_FN %2, a, r, g, b, rgba
+RGB32_TO_UV_FN %2, a, b, g, r, rgba
 %endmacro
 
 INIT_XMM sse2
-RGB32_FUNCS 8, 12, a
+RGB32_FUNCS 8, 12
 
 %if HAVE_AVX_EXTERNAL
 INIT_XMM avx
-RGB32_FUNCS 8, 12, a
-%endif
-
-%if ARCH_X86_64
-%if HAVE_AVX2_EXTERNAL
-INIT_YMM avx2
-RGB32_FUNCS 8, 12, u
-%endif
+RGB32_FUNCS 8, 12
 %endif
 
 ;-----------------------------------------------------------------------------

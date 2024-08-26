@@ -27,6 +27,7 @@
 #include "filters.h"
 #include "formats.h"
 #include "framesync.h"
+#include "internal.h"
 #include "video.h"
 
 typedef struct ThreadData {
@@ -35,8 +36,8 @@ typedef struct ThreadData {
 
 typedef struct PreMultiplyContext {
     const AVClass *class;
-    int width[AV_VIDEO_MAX_PLANES], height[AV_VIDEO_MAX_PLANES];
-    int linesize[AV_VIDEO_MAX_PLANES];
+    int width[4], height[4];
+    int linesize[4];
     int nb_planes;
     int planes;
     int inverse;
@@ -44,7 +45,7 @@ typedef struct PreMultiplyContext {
     int half, depth, offset, max;
     FFFrameSync fs;
 
-    void (*premultiply[AV_VIDEO_MAX_PLANES])(const uint8_t *msrc, const uint8_t *asrc,
+    void (*premultiply[4])(const uint8_t *msrc, const uint8_t *asrc,
                            uint8_t *dst,
                            ptrdiff_t mlinesize, ptrdiff_t alinesize,
                            ptrdiff_t dlinesize,
@@ -695,8 +696,6 @@ static int config_output(AVFilterLink *outlink)
     PreMultiplyContext *s = ctx->priv;
     AVFilterLink *base = ctx->inputs[0];
     AVFilterLink *alpha;
-    FilterLink *il = ff_filter_link(base);
-    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -718,7 +717,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = base->h;
     outlink->time_base = base->time_base;
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = base->frame_rate;
 
     if (s->inplace)
         return 0;

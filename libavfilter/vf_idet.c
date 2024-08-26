@@ -22,7 +22,7 @@
 
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
-#include "filters.h"
+#include "internal.h"
 #include "vf_idet.h"
 
 #define OFFSET(x) offsetof(IDETContext, x)

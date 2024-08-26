@@ -25,7 +25,6 @@
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #include <sys/stat.h>
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
@@ -505,7 +504,6 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
     pkt->flags       |= AV_PKT_FLAG_KEY;
     if (s->ts_from_file) {
         struct stat img_stat;
-        av_assert0(!s->is_pipe); // The ts_from_file option is not supported by piped input demuxers
         if (stat(filename, &img_stat)) {
             res = AVERROR(EIO);
             goto fail;
@@ -563,7 +561,6 @@ int ff_img_read_packet(AVFormatContext *s1, AVPacket *pkt)
         }
         goto fail;
     } else {
-        memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
         s->img_count++;
         s->img_number++;
         s->pts++;
@@ -797,14 +794,13 @@ static int jpeg_probe(const AVProbeData *p)
                 return 0;
             state = EOI;
             break;
+        case DQT:
         case APP0:
-            if (c == APP0 && AV_RL32(&b[i + 4]) == MKTAG('J','F','I','F'))
+            if (AV_RL32(&b[i + 4]) == MKTAG('J','F','I','F'))
                 got_header = 1;
-            /* fallthrough */
         case APP1:
-            if (c == APP1 && AV_RL32(&b[i + 4]) == MKTAG('E','x','i','f'))
+            if (AV_RL32(&b[i + 4]) == MKTAG('E','x','i','f'))
                 got_header = 1;
-            /* fallthrough */
         case APP2:
         case APP3:
         case APP4:
@@ -819,7 +815,6 @@ static int jpeg_probe(const AVProbeData *p)
         case APP13:
         case APP14:
         case APP15:
-        case DQT: /* fallthrough */
         case COM:
             i += AV_RB16(&b[i + 2]) + 1;
             break;

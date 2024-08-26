@@ -42,7 +42,6 @@
 #include "h263.h"
 #include "h263enc.h"
 #include "h263data.h"
-#include "h263dsp.h"
 #include "mathops.h"
 #include "mpegutils.h"
 #include "internal.h"
@@ -272,7 +271,9 @@ void ff_h263_encode_gob_header(MpegEncContext * s, int mb_line)
  */
 void ff_clean_h263_qscales(MpegEncContext *s){
     int i;
-    int8_t * const qscale_table = s->cur_pic.qscale_table;
+    int8_t * const qscale_table = s->current_picture.qscale_table;
+
+    ff_init_qscale_tab(s);
 
     for(i=1; i<s->mb_num; i++){
         if(qscale_table[ s->mb_index2xy[i] ] - qscale_table[ s->mb_index2xy[i-1] ] >2)
@@ -304,7 +305,7 @@ static const int dquant_code[5]= {1,0,9,2,3};
 static void h263_encode_block(MpegEncContext * s, int16_t * block, int n)
 {
     int level, run, last, i, j, last_index, last_non_zero, sign, slevel, code;
-    const RLTable *rl;
+    RLTable *rl;
 
     rl = &ff_h263_rl_inter;
     if (s->mb_intra && !s->h263_aic) {
@@ -511,6 +512,7 @@ void ff_h263_encode_mb(MpegEncContext * s,
                 s->misc_bits++;
                 s->last_bits++;
             }
+            s->skip_count++;
 
             return;
         }
@@ -564,8 +566,8 @@ void ff_h263_encode_mb(MpegEncContext * s,
                 /* motion vectors: 8x8 mode*/
                 ff_h263_pred_motion(s, i, 0, &pred_x, &pred_y);
 
-                motion_x = s->cur_pic.motion_val[0][s->block_index[i]][0];
-                motion_y = s->cur_pic.motion_val[0][s->block_index[i]][1];
+                motion_x = s->current_picture.motion_val[0][s->block_index[i]][0];
+                motion_y = s->current_picture.motion_val[0][s->block_index[i]][1];
                 if (!s->umvplus) {
                     ff_h263_encode_motion_vector(s, motion_x - pred_x,
                                                     motion_y - pred_y, 1);
@@ -687,30 +689,14 @@ void ff_h263_encode_mb(MpegEncContext * s,
     }
 }
 
-void ff_h263_update_mb(MpegEncContext *s)
-{
-    const int mb_xy = s->mb_y * s->mb_stride + s->mb_x;
-
-    if (s->cur_pic.mbskip_table)
-        s->cur_pic.mbskip_table[mb_xy] = s->mb_skipped;
-
-    if (s->mv_type == MV_TYPE_8X8)
-        s->cur_pic.mb_type[mb_xy] = MB_TYPE_FORWARD_MV | MB_TYPE_8x8;
-    else if(s->mb_intra)
-        s->cur_pic.mb_type[mb_xy] = MB_TYPE_INTRA;
-    else
-        s->cur_pic.mb_type[mb_xy] = MB_TYPE_FORWARD_MV | MB_TYPE_16x16;
-
-    ff_h263_update_motion_val(s);
-}
-
 void ff_h263_encode_motion(PutBitContext *pb, int val, int f_code)
 {
     int range, bit_size, sign, code, bits;
 
     if (val == 0) {
-        /* zero vector -- corresponds to ff_mvtab[0] */
-        put_bits(pb, 1, 1);
+        /* zero vector */
+        code = 0;
+        put_bits(pb, ff_mvtab[code][1], ff_mvtab[code][0]);
     } else {
         bit_size = f_code - 1;
         range = 1 << bit_size;
@@ -740,7 +726,7 @@ static av_cold void init_mv_penalty_and_fcode(void)
         for(mv=-MAX_DMV; mv<=MAX_DMV; mv++){
             int len;
 
-            if (mv==0) len = 1; // ff_mvtab[0][1]
+            if(mv==0) len= ff_mvtab[0][1];
             else{
                 int val, bit_size, code;
 
@@ -754,7 +740,7 @@ static av_cold void init_mv_penalty_and_fcode(void)
                 if(code<33){
                     len= ff_mvtab[code][1] + 1 + bit_size;
                 }else{
-                    len = 12 /* ff_mvtab[32][1] */ + av_log2(code>>5) + 2 + bit_size;
+                    len= ff_mvtab[32][1] + av_log2(code>>5) + 2 + bit_size;
                 }
             }
 
@@ -879,9 +865,10 @@ av_cold void ff_h263_encode_init(MpegEncContext *s)
         s->c_dc_scale_table= ff_mpeg1_dc_scale_table;
     }
 
-#if CONFIG_H263_ENCODER // Snow and SVQ1 call this
-    ff_h263dsp_init(&s->h263dsp);
-#endif
+    if (s->lmin > s->lmax) {
+        av_log(s->avctx, AV_LOG_WARNING, "Clipping lmin value to %d\n", s->lmax);
+        s->lmin = s->lmax;
+    }
 
     ff_thread_once(&init_static_once, h263_encode_init_static);
 }

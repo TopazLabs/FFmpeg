@@ -28,8 +28,8 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "framesync.h"
+#include "internal.h"
 #include "video.h"
 #include "threshold.h"
 #include "vf_threshold_init.h"
@@ -181,8 +181,6 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *threshold = ctx->inputs[1];
     AVFilterLink *min = ctx->inputs[2];
     AVFilterLink *max = ctx->inputs[3];
-    FilterLink *il = ff_filter_link(base);
-    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -207,7 +205,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = base->w;
     outlink->h = base->h;
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = base->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 4)) < 0)
         return ret;

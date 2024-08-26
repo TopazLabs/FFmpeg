@@ -881,6 +881,8 @@ static int read_sm_data(AVFormatContext *s, AVIOContext *bc, AVPacket *pkt, int 
     int count = ffio_read_varlen(bc);
     int skip_start = 0;
     int skip_end = 0;
+    int channels = 0;
+    int64_t channel_layout = 0;
     int sample_rate = 0;
     int width = 0;
     int height = 0;
@@ -928,7 +930,7 @@ static int read_sm_data(AVFormatContext *s, AVIOContext *bc, AVPacket *pkt, int 
                 AV_WB64(dst, v64);
                 dst += 8;
             } else if (!strcmp(name, "ChannelLayout") && value_len == 8) {
-                // Ignored
+                channel_layout = avio_rl64(bc);
                 continue;
             } else {
                 av_log(s, AV_LOG_WARNING, "Unknown data %s / %s\n", name, type_str);
@@ -950,7 +952,7 @@ static int read_sm_data(AVFormatContext *s, AVIOContext *bc, AVPacket *pkt, int 
             } else if (!strcmp(name, "SkipEnd")) {
                 skip_end = value;
             } else if (!strcmp(name, "Channels")) {
-                // Ignored
+                channels = value;
             } else if (!strcmp(name, "SampleRate")) {
                 sample_rate = value;
             } else if (!strcmp(name, "Width")) {
@@ -963,14 +965,18 @@ static int read_sm_data(AVFormatContext *s, AVIOContext *bc, AVPacket *pkt, int 
         }
     }
 
-    if (sample_rate || width || height) {
-        uint8_t *dst = av_packet_new_side_data(pkt, AV_PKT_DATA_PARAM_CHANGE, 16);
+    if (channels || channel_layout || sample_rate || width || height) {
+        uint8_t *dst = av_packet_new_side_data(pkt, AV_PKT_DATA_PARAM_CHANGE, 28);
         if (!dst)
             return AVERROR(ENOMEM);
         bytestream_put_le32(&dst,
                             AV_SIDE_DATA_PARAM_CHANGE_SAMPLE_RATE*(!!sample_rate) +
                             AV_SIDE_DATA_PARAM_CHANGE_DIMENSIONS*(!!(width|height))
                            );
+        if (channels)
+            bytestream_put_le32(&dst, channels);
+        if (channel_layout)
+            bytestream_put_le64(&dst, channel_layout);
         if (sample_rate)
             bytestream_put_le32(&dst, sample_rate);
         if (width || height){

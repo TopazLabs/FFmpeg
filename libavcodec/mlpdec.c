@@ -1212,7 +1212,6 @@ static int read_access_unit(AVCodecContext *avctx, AVFrame *frame,
             goto error;
         m->is_major_sync_unit = 1;
         header_size += m->major_sync_header_size;
-        frame->flags |= AV_FRAME_FLAG_KEY;
     }
 
     if (!m->params_valid) {

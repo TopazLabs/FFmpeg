@@ -45,7 +45,7 @@ static void send_packet(AVFormatContext *ctx, uint8_t parse_code, int info_hdr_s
     ff_rtp_send_data(ctx, rtp_ctx->buf, RTP_VC2HQ_PL_HEADER_SIZE + info_hdr_size + size, rtp_m);
 }
 
-static int send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int interlaced)
+static void send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int interlaced)
 {
     RTPMuxContext *rtp_ctx = ctx->priv_data;
     GetBitContext gc;
@@ -53,9 +53,6 @@ static int send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int 
     uint32_t pic_nr, wavelet_depth, prefix_bytes, size_scaler;
     uint16_t frag_len;
     char *info_hdr = &rtp_ctx->buf[4];
-
-    if (size < DIRAC_PIC_NR_SIZE)
-        return AVERROR(EINVAL);
 
     pic_nr = AV_RB32(&buf[0]);
     buf += DIRAC_PIC_NR_SIZE;
@@ -100,7 +97,6 @@ static int send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int 
         send_packet(ctx, DIRAC_RTP_PCODE_HQ_PIC_FRAGMENT, 16, buf, frag_len, interlaced, second_field, size > 0 ? 0 : 1);
         buf += frag_len;
     }
-    return 0;
 }
 
 void ff_rtp_send_vc2hq(AVFormatContext *ctx, const uint8_t *frame_buf, int frame_size, int interlaced)
@@ -114,21 +110,16 @@ void ff_rtp_send_vc2hq(AVFormatContext *ctx, const uint8_t *frame_buf, int frame
         parse_code = unit[4];
         unit_size = AV_RB32(&unit[5]);
 
-        if (unit_size > end - unit)
-            break;
-
         switch (parse_code) {
         /* sequence header */
         /* end of sequence */
         case DIRAC_PCODE_SEQ_HEADER:
         case DIRAC_PCODE_END_SEQ:
-            if (unit_size >= DIRAC_DATA_UNIT_HEADER_SIZE)
-                send_packet(ctx, parse_code, 0, unit + DIRAC_DATA_UNIT_HEADER_SIZE, unit_size - DIRAC_DATA_UNIT_HEADER_SIZE, 0, 0, 0);
+            send_packet(ctx, parse_code, 0, unit + DIRAC_DATA_UNIT_HEADER_SIZE, unit_size - DIRAC_DATA_UNIT_HEADER_SIZE, 0, 0, 0);
             break;
         /* HQ picture */
         case DIRAC_PCODE_PICTURE_HQ:
-            if (unit_size >= DIRAC_DATA_UNIT_HEADER_SIZE)
-                send_picture(ctx, unit + DIRAC_DATA_UNIT_HEADER_SIZE, unit_size - DIRAC_DATA_UNIT_HEADER_SIZE, interlaced);
+            send_picture(ctx, unit + DIRAC_DATA_UNIT_HEADER_SIZE, unit_size - DIRAC_DATA_UNIT_HEADER_SIZE, interlaced);
             break;
         /* parse codes without specification */
         case DIRAC_PCODE_AUX:

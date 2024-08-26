@@ -40,7 +40,7 @@
 
 #include "avfilter.h"
 #include "drawutils.h"
-#include "filters.h"
+#include "internal.h"
 #include "formats.h"
 #include "textutils.h"
 #include "video.h"
@@ -284,7 +284,7 @@ static int func_eval_expr_formatted(void *ctx, AVBPrint *bp, const char *functio
                                         argv[1][0], positions);
 }
 
-static const FFExpandTextFunction expand_text_functions[] = {
+static FFExpandTextFunction expand_text_functions[] = {
     { "expr",            1, 1, func_eval_expr },
     { "e",               1, 1, func_eval_expr },
     { "expr_formatted",  2, 3, func_eval_expr_formatted },
@@ -586,7 +586,6 @@ AVFILTER_DEFINE_CLASS(qrencodesrc);
 
 static int qrencodesrc_config_props(AVFilterLink *outlink)
 {
-    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     QREncodeContext *qr = ctx->priv;
     int ret;
@@ -646,7 +645,7 @@ static int qrencodesrc_config_props(AVFilterLink *outlink)
     outlink->w = qr->rendered_padded_qrcode_width;
     outlink->h = qr->rendered_padded_qrcode_width;
     outlink->time_base = av_inv_q(qr->frame_rate);
-    l->frame_rate = qr->frame_rate;
+    outlink->frame_rate = qr->frame_rate;
 
     return 0;
 }
@@ -779,13 +778,12 @@ static int qrencode_query_formats(AVFilterContext *ctx)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
-    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     QREncodeContext *qr = ctx->priv;
     int ret;
 
-    V(n) = inl->frame_count_out;
+    V(n) = inlink->frame_count_out;
     V(t) = frame->pts == AV_NOPTS_VALUE ?
         NAN : frame->pts * av_q2d(inlink->time_base);
     V(pict_type) = frame->pict_type;

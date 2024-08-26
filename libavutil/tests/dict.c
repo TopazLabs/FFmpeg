@@ -150,15 +150,12 @@ int main(void)
 
     //valgrind sensible test
     printf("\nTesting av_dict_set() with existing AVDictionaryEntry.key as key\n");
-    if (av_dict_set(&dict, "key", "old", 0) < 0)
-        return 1;
+    av_dict_set(&dict, "key", "old", 0);
     e = av_dict_get(dict, "key", NULL, 0);
-    if (av_dict_set(&dict, e->key, "new val OK", 0) < 0)
-        return 1;
+    av_dict_set(&dict, e->key, "new val OK", 0);
     e = av_dict_get(dict, "key", NULL, 0);
     printf("%s\n", e->value);
-    if (av_dict_set(&dict, e->key, e->value, 0) < 0)
-        return 1;
+    av_dict_set(&dict, e->key, e->value, 0);
     e = av_dict_get(dict, "key", NULL, 0);
     printf("%s\n", e->value);
     av_dict_free(&dict);

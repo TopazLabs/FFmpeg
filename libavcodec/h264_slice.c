@@ -1396,7 +1396,7 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
 
     sps = h->ps.sps;
 
-    if (sps->bitstream_restriction_flag &&
+    if (sps && sps->bitstream_restriction_flag &&
         h->avctx->has_b_frames < sps->num_reorder_frames) {
         h->avctx->has_b_frames = sps->num_reorder_frames;
     }
@@ -1637,8 +1637,8 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
             h->valid_recovery_point = 1;
 
         if (   h->recovery_frame < 0
-            || av_zero_extend(h->recovery_frame - h->poc.frame_num, h->ps.sps->log2_max_frame_num) > sei_recovery_frame_cnt) {
-            h->recovery_frame = av_zero_extend(h->poc.frame_num + sei_recovery_frame_cnt, h->ps.sps->log2_max_frame_num);
+            || av_mod_uintp2(h->recovery_frame - h->poc.frame_num, h->ps.sps->log2_max_frame_num) > sei_recovery_frame_cnt) {
+            h->recovery_frame = av_mod_uintp2(h->poc.frame_num + sei_recovery_frame_cnt, h->ps.sps->log2_max_frame_num);
 
             if (!h->valid_recovery_point)
                 h->recovery_frame = h->poc.frame_num;

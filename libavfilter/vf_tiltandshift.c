@@ -31,7 +31,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "filters.h"
+#include "internal.h"
 #include "video.h"
 
 enum PaddingOption {
@@ -175,14 +175,14 @@ static void copy_column(AVFilterLink *outlink,
     const uint8_t *src[4];
 
     dst[0] = dst_data[0] + ncol;
-    dst[1] = dst_data[1] + (ncol >> s->desc->log2_chroma_w);
-    dst[2] = dst_data[2] + (ncol >> s->desc->log2_chroma_w);
+    dst[1] = dst_data[1] + (ncol >> s->desc->log2_chroma_h);
+    dst[2] = dst_data[2] + (ncol >> s->desc->log2_chroma_h);
 
     if (!tilt)
         ncol = 0;
     src[0] = src_data[0] + ncol;
-    src[1] = src_data[1] + (ncol >> s->desc->log2_chroma_w);
-    src[2] = src_data[2] + (ncol >> s->desc->log2_chroma_w);
+    src[1] = src_data[1] + (ncol >> s->desc->log2_chroma_h);
+    src[2] = src_data[2] + (ncol >> s->desc->log2_chroma_h);
 
     av_image_copy(dst, dst_linesizes, src, src_linesizes, outlink->format, 1, outlink->h);
 }
@@ -237,10 +237,8 @@ static int output_frame(AVFilterLink *outlink)
 
     // set correct timestamps and props as long as there is proper input
     ret = av_frame_copy_props(dst, s->input);
-    if (ret < 0) {
-        av_frame_free(&dst);
+    if (ret < 0)
         return ret;
-    }
 
     // discard frame at the top of the list since it has been fully processed
     list_remove_head(s);

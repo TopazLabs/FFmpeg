@@ -31,7 +31,6 @@
 #include <stdint.h>
 
 #include "libavutil/attributes.h"
-#include "libavutil/avassert.h"
 #include "libavutil/mem_internal.h"
 
 #include "audiodsp.h"
@@ -51,15 +50,14 @@
  */
 static void apply_mdct(AC3EncodeContext *s, uint8_t * const *samples)
 {
-    av_assert1(s->num_blocks > 0);
+    int blk, ch;
 
-    for (int ch = 0; ch < s->channels; ch++) {
+    for (ch = 0; ch < s->channels; ch++) {
         const SampleType *input_samples0 = (const SampleType*)s->planar_samples[ch];
         /* Reorder channels from native order to AC-3 order. */
         const SampleType *input_samples1 = (const SampleType*)samples[s->channel_map[ch]];
-        int blk = 0;
 
-        do {
+        for (blk = 0; blk < s->num_blocks; blk++) {
             AC3Block *block = &s->blocks[blk];
             SampleType *windowed_samples = s->RENAME(windowed_samples);
 
@@ -73,8 +71,7 @@ static void apply_mdct(AC3EncodeContext *s, uint8_t * const *samples)
                      windowed_samples, sizeof(*windowed_samples));
             input_samples0  = input_samples1;
             input_samples1 += AC3_BLOCK_SIZE;
-        } while (++blk < s->num_blocks);
-
+        }
         /* Store last 256 samples of current frame */
         memcpy(s->planar_samples[ch], input_samples0,
                AC3_BLOCK_SIZE * sizeof(*input_samples0));

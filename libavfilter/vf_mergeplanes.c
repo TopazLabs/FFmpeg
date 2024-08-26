@@ -24,8 +24,8 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "framesync.h"
 #include "video.h"
 
@@ -185,8 +185,6 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     MergePlanesContext *s = ctx->priv;
-    FilterLink *il = ff_filter_link(ctx->inputs[0]);
-    FilterLink *ol = ff_filter_link(outlink);
     InputParam inputsp[4];
     FFFrameSyncIn *in;
     int i, ret;
@@ -201,7 +199,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = ctx->inputs[0]->w;
     outlink->h = ctx->inputs[0]->h;
     outlink->time_base = ctx->inputs[0]->time_base;
-    ol->frame_rate = il->frame_rate;
+    outlink->frame_rate = ctx->inputs[0]->frame_rate;
     outlink->sample_aspect_ratio = ctx->inputs[0]->sample_aspect_ratio;
 
     s->planewidth[1]  =

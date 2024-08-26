@@ -59,6 +59,10 @@ enum AVPacketSideDataType {
      * An AV_PKT_DATA_PARAM_CHANGE side data packet is laid out as follows:
      * @code
      * u32le param_flags
+     * if (param_flags & AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_COUNT)
+     *     s32le channel_count
+     * if (param_flags & AV_SIDE_DATA_PARAM_CHANGE_CHANNEL_LAYOUT)
+     *     u64le channel_layout
      * if (param_flags & AV_SIDE_DATA_PARAM_CHANGE_SAMPLE_RATE)
      *     s32le sample_rate
      * if (param_flags & AV_SIDE_DATA_PARAM_CHANGE_DIMENSIONS)
@@ -325,19 +329,6 @@ enum AVPacketSideDataType {
      * of the AVAmbientViewingEnvironment struct.
     */
     AV_PKT_DATA_AMBIENT_VIEWING_ENVIRONMENT,
-
-    /**
-     * The number of pixels to discard from the top/bottom/left/right border of the
-     * decoded frame to obtain the sub-rectangle intended for presentation.
-     *
-     * @code
-     * u32le crop_top
-     * u32le crop_bottom
-     * u32le crop_left
-     * u32le crop_right
-     * @endcode
-     */
-    AV_PKT_DATA_FRAME_CROPPING,
 
     /**
      * The number of side data types.

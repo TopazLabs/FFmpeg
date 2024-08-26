@@ -27,8 +27,8 @@
 #include "libavutil/xga_font_data.h"
 #include "audio.h"
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
+#include "internal.h"
 #include "video.h"
 
 typedef struct ThreadData {
@@ -820,6 +820,7 @@ static void solve(double *matrix, double *vector, int n, double *y, double *x, d
 static int convert_serial2parallel(AVFilterContext *ctx, int channels)
 {
     AudioIIRContext *s = ctx->priv;
+    int ret = 0;
 
     for (int ch = 0; ch < channels; ch++) {
         IIRChannel *iir = &s->iir[ch];
@@ -828,17 +829,17 @@ static int convert_serial2parallel(AVFilterContext *ctx, int channels)
         double *impulse = av_calloc(length, sizeof(*impulse));
         double *y = av_calloc(length, sizeof(*y));
         double *resp = av_calloc(length, sizeof(*resp));
-        double *M = av_calloc((length - 1) * nb_biquads, 2 * 2 * sizeof(*M));
-        double *W;
+        double *M = av_calloc((length - 1) * 2 * nb_biquads, sizeof(*M));
+        double *W = av_calloc((length - 1) * 2 * nb_biquads, sizeof(*W));
 
         if (!impulse || !y || !resp || !M) {
             av_free(impulse);
             av_free(y);
             av_free(resp);
             av_free(M);
+            av_free(W);
             return AVERROR(ENOMEM);
         }
-        W = M + (length - 1) * 2 * nb_biquads;
 
         impulse[0] = 1.;
 
@@ -877,6 +878,10 @@ static int convert_serial2parallel(AVFilterContext *ctx, int channels)
         av_free(y);
         av_free(resp);
         av_free(M);
+        av_free(W);
+
+        if (ret < 0)
+            return ret;
     }
 
     return 0;
@@ -1434,15 +1439,14 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
 static int config_video(AVFilterLink *outlink)
 {
-    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     AudioIIRContext *s = ctx->priv;
 
     outlink->sample_aspect_ratio = (AVRational){1,1};
     outlink->w = s->w;
     outlink->h = s->h;
-    l->frame_rate = s->rate;
-    outlink->time_base = av_inv_q(l->frame_rate);
+    outlink->frame_rate = s->rate;
+    outlink->time_base = av_inv_q(outlink->frame_rate);
 
     return 0;
 }

@@ -27,7 +27,6 @@
 #include "mathops.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
-#include "mpegvideodec.h"
 #include "msmpeg4.h"
 #include "msmpeg4_vc1_data.h"
 #include "msmpeg4dec.h"
@@ -104,7 +103,7 @@ static int parse_mb_skip(WMV2DecContext *w)
     int mb_x, mb_y;
     int coded_mb_count = 0;
     MpegEncContext *const s = &w->s;
-    uint32_t *const mb_type = s->cur_pic.mb_type;
+    uint32_t *const mb_type = s->current_picture_ptr->mb_type;
 
     w->skip_type = get_bits(&s->gb, 2);
     switch (w->skip_type) {
@@ -112,7 +111,7 @@ static int parse_mb_skip(WMV2DecContext *w)
         for (mb_y = 0; mb_y < s->mb_height; mb_y++)
             for (mb_x = 0; mb_x < s->mb_width; mb_x++)
                 mb_type[mb_y * s->mb_stride + mb_x] =
-                    MB_TYPE_16x16 | MB_TYPE_FORWARD_MV;
+                    MB_TYPE_16x16 | MB_TYPE_L0;
         break;
     case SKIP_TYPE_MPEG:
         if (get_bits_left(&s->gb) < s->mb_height * s->mb_width)
@@ -120,7 +119,7 @@ static int parse_mb_skip(WMV2DecContext *w)
         for (mb_y = 0; mb_y < s->mb_height; mb_y++)
             for (mb_x = 0; mb_x < s->mb_width; mb_x++)
                 mb_type[mb_y * s->mb_stride + mb_x] =
-                    (get_bits1(&s->gb) ? MB_TYPE_SKIP : 0) | MB_TYPE_16x16 | MB_TYPE_FORWARD_MV;
+                    (get_bits1(&s->gb) ? MB_TYPE_SKIP : 0) | MB_TYPE_16x16 | MB_TYPE_L0;
         break;
     case SKIP_TYPE_ROW:
         for (mb_y = 0; mb_y < s->mb_height; mb_y++) {
@@ -129,11 +128,11 @@ static int parse_mb_skip(WMV2DecContext *w)
             if (get_bits1(&s->gb)) {
                 for (mb_x = 0; mb_x < s->mb_width; mb_x++)
                     mb_type[mb_y * s->mb_stride + mb_x] =
-                        MB_TYPE_SKIP | MB_TYPE_16x16 | MB_TYPE_FORWARD_MV;
+                        MB_TYPE_SKIP | MB_TYPE_16x16 | MB_TYPE_L0;
             } else {
                 for (mb_x = 0; mb_x < s->mb_width; mb_x++)
                     mb_type[mb_y * s->mb_stride + mb_x] =
-                        (get_bits1(&s->gb) ? MB_TYPE_SKIP : 0) | MB_TYPE_16x16 | MB_TYPE_FORWARD_MV;
+                        (get_bits1(&s->gb) ? MB_TYPE_SKIP : 0) | MB_TYPE_16x16 | MB_TYPE_L0;
             }
         }
         break;
@@ -144,11 +143,11 @@ static int parse_mb_skip(WMV2DecContext *w)
             if (get_bits1(&s->gb)) {
                 for (mb_y = 0; mb_y < s->mb_height; mb_y++)
                     mb_type[mb_y * s->mb_stride + mb_x] =
-                        MB_TYPE_SKIP | MB_TYPE_16x16 | MB_TYPE_FORWARD_MV;
+                        MB_TYPE_SKIP | MB_TYPE_16x16 | MB_TYPE_L0;
             } else {
                 for (mb_y = 0; mb_y < s->mb_height; mb_y++)
                     mb_type[mb_y * s->mb_stride + mb_x] =
-                        (get_bits1(&s->gb) ? MB_TYPE_SKIP : 0) | MB_TYPE_16x16 | MB_TYPE_FORWARD_MV;
+                        (get_bits1(&s->gb) ? MB_TYPE_SKIP : 0) | MB_TYPE_16x16 | MB_TYPE_L0;
             }
         }
         break;
@@ -239,8 +238,9 @@ int ff_wmv2_decode_secondary_picture_header(MpegEncContext *s)
 
     if (s->pict_type == AV_PICTURE_TYPE_I) {
         /* Is filling with zeroes really the right thing to do? */
-        memset(s->cur_pic.mb_type, 0,
-               sizeof(*s->cur_pic.mb_type) * s->mb_height * s->mb_stride);
+        memset(s->current_picture_ptr->mb_type, 0,
+               sizeof(*s->current_picture_ptr->mb_type) *
+               s->mb_height * s->mb_stride);
         if (w->j_type_bit)
             w->j_type = get_bits1(&s->gb);
         else
@@ -331,7 +331,7 @@ int ff_wmv2_decode_secondary_picture_header(MpegEncContext *s)
     s->esc3_run_length   = 0;
 
     if (w->j_type) {
-        ff_intrax8_decode_picture(&w->x8, s->cur_pic.ptr,
+        ff_intrax8_decode_picture(&w->x8, &s->current_picture,
                                   &s->gb, &s->mb_x, &s->mb_y,
                                   2 * s->qscale, (s->qscale - 1) | 1,
                                   s->loop_filter, s->low_delay);
@@ -366,11 +366,11 @@ static int16_t *wmv2_pred_motion(WMV2DecContext *w, int *px, int *py)
     wrap    = s->b8_stride;
     xy      = s->block_index[0];
 
-    mot_val = s->cur_pic.motion_val[0][xy];
+    mot_val = s->current_picture.motion_val[0][xy];
 
-    A       = s->cur_pic.motion_val[0][xy     - 1];
-    B       = s->cur_pic.motion_val[0][xy     - wrap];
-    C       = s->cur_pic.motion_val[0][xy + 2 - wrap];
+    A       = s->current_picture.motion_val[0][xy     - 1];
+    B       = s->current_picture.motion_val[0][xy     - wrap];
+    C       = s->current_picture.motion_val[0][xy + 2 - wrap];
 
     if (s->mb_x && !s->first_slice_line && !s->mspel && w->top_left_mv_flag)
         diff = FFMAX(FFABS(A[0] - B[0]), FFABS(A[1] - B[1]));
@@ -452,7 +452,7 @@ static int wmv2_decode_mb(MpegEncContext *s, int16_t block[6][64])
         return 0;
 
     if (s->pict_type == AV_PICTURE_TYPE_P) {
-        if (IS_SKIP(s->cur_pic.mb_type[s->mb_y * s->mb_stride + s->mb_x])) {
+        if (IS_SKIP(s->current_picture.mb_type[s->mb_y * s->mb_stride + s->mb_x])) {
             /* skip mb */
             s->mb_intra = 0;
             for (i = 0; i < 6; i++)
@@ -585,7 +585,7 @@ static av_cold int wmv2_decode_end(AVCodecContext *avctx)
     WMV2DecContext *const w = avctx->priv_data;
 
     ff_intrax8_common_end(&w->x8);
-    return ff_mpv_decode_close(avctx);
+    return ff_h263_decode_end(avctx);
 }
 
 const FFCodec ff_wmv2_decoder = {

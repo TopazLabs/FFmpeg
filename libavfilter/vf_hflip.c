@@ -27,9 +27,9 @@
 #include <string.h>
 
 #include "avfilter.h"
-#include "filters.h"
 #include "formats.h"
 #include "hflip.h"
+#include "internal.h"
 #include "vf_hflip_init.h"
 #include "video.h"
 #include "libavutil/pixdesc.h"

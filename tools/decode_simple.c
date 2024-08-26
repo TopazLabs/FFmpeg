@@ -94,9 +94,8 @@ int ds_run(DecodeContext *dc)
             goto finish;
     }
 
-    ret = avcodec_send_packet(dc->decoder, NULL);
-    if (ret >= 0)
-        ret = decode_read(dc, 1);
+    avcodec_send_packet(dc->decoder, NULL);
+    ret = decode_read(dc, 1);
     if (ret < 0) {
         fprintf(stderr, "Error flushing: %d\n", ret);
         return ret;

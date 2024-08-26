@@ -29,6 +29,7 @@
 #include "libavfilter/avfilter_internal.h"
 #include "libavfilter/formats.h"
 #include "libavfilter/framequeue.h"
+#include "libavfilter/internal.h"
 
 static void print_formats_internal(AVFilterLink **links, const AVFilterPad *pads,
                                    unsigned nb, size_t fmts_cfg_offset,
