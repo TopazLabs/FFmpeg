@@ -37,7 +37,7 @@
  */
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "libavutil/common.h"
 #include "libavutil/imgutils.h"

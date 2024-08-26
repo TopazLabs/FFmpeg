@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "filters.h"
 #include "vulkan_filter.h"
 #include "libavutil/vulkan_loader.h"
 
@@ -36,6 +37,7 @@ int ff_vk_filter_init_context(AVFilterContext *avctx, FFVulkanContext *s,
     if (frames_ref) {
         int no_storage = 0;
         FFVulkanFunctions *vk;
+        VkImageUsageFlagBits usage_req;
         const VkFormat *sub = av_vkfmt_from_pixfmt(sw_format);
 
         frames_ctx = (AVHWFramesContext *)frames_ref->data;
@@ -52,21 +54,43 @@ int ff_vk_filter_init_context(AVFilterContext *avctx, FFVulkanContext *s,
         if (sw_format != frames_ctx->sw_format)
             goto skip;
 
-        /* Unusual tiling mismatch. Don't let linear through either. */
-        if (vk_frames->tiling != VK_IMAGE_TILING_OPTIMAL)
-            goto skip;
-
-        /* Usage mismatch */
-        if ((vk_frames->usage & (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT)) !=
-                                (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT))
+        /* Don't let linear through. */
+        if (vk_frames->tiling == VK_IMAGE_TILING_LINEAR)
             goto skip;
 
         s->extensions = ff_vk_extensions_to_mask(vk_dev->enabled_dev_extensions,
                                                  vk_dev->nb_enabled_dev_extensions);
+
+        /* More advanced format checks */
         err = ff_vk_load_functions(device_ctx, &s->vkfn, s->extensions, 1, 1);
         if (err < 0)
             return err;
         vk = &s->vkfn;
+
+        /* Usage mismatch */
+        usage_req = VK_IMAGE_USAGE_SAMPLED_BIT;
+
+        /* If format supports hardware encoding, make sure
+         * the context includes it. */
+        if (vk_frames->format[1] == VK_FORMAT_UNDEFINED &&
+            (s->extensions & (FF_VK_EXT_VIDEO_ENCODE_QUEUE |
+                              FF_VK_EXT_VIDEO_MAINTENANCE_1))) {
+            VkFormatProperties3 fprops = {
+                .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3,
+            };
+            VkFormatProperties2 prop = {
+                .sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
+                .pNext = &fprops,
+            };
+            vk->GetPhysicalDeviceFormatProperties2(vk_dev->phys_dev,
+                                                   vk_frames->format[0],
+                                                   &prop);
+            if (fprops.optimalTilingFeatures & VK_FORMAT_FEATURE_2_VIDEO_ENCODE_INPUT_BIT_KHR)
+                usage_req |= VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR;
+        }
+
+        if ((vk_frames->usage & usage_req) != usage_req)
+            goto skip;
 
         /* Check if the subformats can do storage */
         for (int i = 0; sub[i] != VK_FORMAT_UNDEFINED; i++) {
@@ -75,14 +99,8 @@ int ff_vk_filter_init_context(AVFilterContext *avctx, FFVulkanContext *s,
             };
             vk->GetPhysicalDeviceFormatProperties2(vk_dev->phys_dev, sub[i],
                                                    &prop);
-
-            if (vk_frames->tiling == VK_IMAGE_TILING_LINEAR) {
-                no_storage |= !(prop.formatProperties.linearTilingFeatures &
-                                VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT);
-            } else {
-                no_storage |= !(prop.formatProperties.optimalTilingFeatures &
-                                VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT);
-            }
+            no_storage |= !(prop.formatProperties.optimalTilingFeatures &
+                            VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT);
         }
 
         /* Check if it's usable */
@@ -111,13 +129,6 @@ skip:
         frames_ctx->sw_format = sw_format;
         frames_ctx->width     = width;
         frames_ctx->height    = height;
-
-        vk_frames = frames_ctx->hwctx;
-        vk_frames->tiling = VK_IMAGE_TILING_OPTIMAL;
-        vk_frames->usage  = VK_IMAGE_USAGE_SAMPLED_BIT |
-                            VK_IMAGE_USAGE_STORAGE_BIT |
-                            VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-                            VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
         err = av_hwframe_ctx_init(frames_ref);
         if (err < 0) {
@@ -165,17 +176,18 @@ skip:
 
 int ff_vk_filter_config_input(AVFilterLink *inlink)
 {
+    FilterLink *l = ff_filter_link(inlink);
     AVHWFramesContext *input_frames;
     AVFilterContext *avctx = inlink->dst;
     FFVulkanContext *s = inlink->dst->priv;
 
-    if (!inlink->hw_frames_ctx) {
+    if (!l->hw_frames_ctx) {
         av_log(inlink->dst, AV_LOG_ERROR, "Vulkan filtering requires a "
                "hardware frames context on the input.\n");
         return AVERROR(EINVAL);
     }
 
-    input_frames = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
+    input_frames = (AVHWFramesContext *)l->hw_frames_ctx->data;
     if (input_frames->format != AV_PIX_FMT_VULKAN)
         return AVERROR(EINVAL);
 
@@ -184,7 +196,7 @@ int ff_vk_filter_config_input(AVFilterLink *inlink)
         return 0;
 
     /* Save the ref, without reffing it */
-    s->input_frames_ref = inlink->hw_frames_ctx;
+    s->input_frames_ref = l->hw_frames_ctx;
 
     /* Defaults */
     s->input_format = input_frames->sw_format;
@@ -198,9 +210,10 @@ int ff_vk_filter_config_input(AVFilterLink *inlink)
 int ff_vk_filter_config_output(AVFilterLink *outlink)
 {
     int err;
+    FilterLink *l = ff_filter_link(outlink);
     FFVulkanContext *s = outlink->src->priv;
 
-    av_buffer_unref(&outlink->hw_frames_ctx);
+    av_buffer_unref(&l->hw_frames_ctx);
 
     err = ff_vk_filter_init_context(outlink->src, s, s->input_frames_ref,
                                     s->output_width, s->output_height,
@@ -208,8 +221,8 @@ int ff_vk_filter_config_output(AVFilterLink *outlink)
     if (err < 0)
         return err;
 
-    outlink->hw_frames_ctx = av_buffer_ref(s->frames_ref);
-    if (!outlink->hw_frames_ctx)
+    l->hw_frames_ctx = av_buffer_ref(s->frames_ref);
+    if (!l->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
     outlink->w = s->output_width;

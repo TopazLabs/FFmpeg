@@ -22,7 +22,7 @@
  *
  * Split an audio stream into per-channel streams.
  */
-
+#include "libavutil/avassert.h"
 #include "libavutil/attributes.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/internal.h"
@@ -33,7 +33,6 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "internal.h"
 
 #define MAX_CH 64
 
@@ -151,13 +150,16 @@ static int query_formats(AVFilterContext *ctx)
 
 static int filter_frame(AVFilterLink *outlink, AVFrame *buf)
 {
+    AVFrame *buf_out;
     AVFilterContext *ctx = outlink->src;
     ChannelSplitContext *s = ctx->priv;
     const int i = FF_OUTLINK_IDX(outlink);
     enum AVChannel channel = av_channel_layout_channel_from_index(&buf->ch_layout, s->map[i]);
     int ret;
 
-    AVFrame *buf_out = av_frame_clone(buf);
+    av_assert1(channel >= 0);
+
+    buf_out = av_frame_clone(buf);
     if (!buf_out)
         return AVERROR(ENOMEM);
 

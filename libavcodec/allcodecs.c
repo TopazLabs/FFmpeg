@@ -28,7 +28,6 @@
 #include <string.h>
 
 #include "config.h"
-#include "config_components.h"
 #include "libavutil/thread.h"
 #include "codec.h"
 #include "codec_id.h"
@@ -801,19 +800,12 @@ extern const FFCodec ff_libvpx_vp8_encoder;
 extern const FFCodec ff_libvpx_vp8_decoder;
 extern FFCodec ff_libvpx_vp9_encoder;
 extern const FFCodec ff_libvpx_vp9_decoder;
+extern const FFCodec ff_libvvenc_encoder;
 /* preferred over libwebp */
 extern const FFCodec ff_libwebp_anim_encoder;
 extern const FFCodec ff_libwebp_encoder;
 extern const FFCodec ff_libx262_encoder;
-#if CONFIG_LIBX264_ENCODER
-#include <x264.h>
-#if X264_BUILD < 153
-#define LIBX264_CONST
-#else
-#define LIBX264_CONST const
-#endif
-extern LIBX264_CONST FFCodec ff_libx264_encoder;
-#endif
+extern const FFCodec ff_libx264_encoder;
 extern const FFCodec ff_libx264rgb_encoder;
 extern FFCodec ff_libx265_encoder;
 extern const FFCodec ff_libxeve_encoder;
@@ -857,6 +849,7 @@ extern const FFCodec ff_h264_vaapi_encoder;
 extern const FFCodec ff_h264_videotoolbox_encoder;
 extern const FFCodec ff_hevc_amf_encoder;
 extern const FFCodec ff_hevc_cuvid_decoder;
+extern const FFCodec ff_hevc_d3d12va_encoder;
 extern const FFCodec ff_hevc_mediacodec_decoder;
 extern const FFCodec ff_hevc_mediacodec_encoder;
 extern const FFCodec ff_hevc_mf_encoder;
@@ -894,6 +887,7 @@ extern const FFCodec ff_vp9_mediacodec_encoder;
 extern const FFCodec ff_vp9_qsv_decoder;
 extern const FFCodec ff_vp9_vaapi_encoder;
 extern const FFCodec ff_vp9_qsv_encoder;
+extern const FFCodec ff_vvc_qsv_decoder;
 
 // null codecs
 extern const FFCodec ff_vnull_decoder;

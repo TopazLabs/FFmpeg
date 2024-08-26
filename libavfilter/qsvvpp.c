@@ -27,7 +27,7 @@
 #include "libavutil/time.h"
 #include "libavutil/pixdesc.h"
 
-#include "internal.h"
+#include "filters.h"
 #include "qsvvpp.h"
 #include "video.h"
 
@@ -297,18 +297,19 @@ static int map_frame_to_surface(AVFrame *frame, mfxFrameSurface1 *surface)
 /* fill the surface info */
 static int fill_frameinfo_by_link(mfxFrameInfo *frameinfo, AVFilterLink *link)
 {
+    FilterLink *l = ff_filter_link(link);
     enum AVPixelFormat        pix_fmt;
     AVHWFramesContext        *frames_ctx;
     AVQSVFramesContext       *frames_hwctx;
     const AVPixFmtDescriptor *desc;
 
     if (link->format == AV_PIX_FMT_QSV) {
-        if (!link->hw_frames_ctx)
+        if (!l->hw_frames_ctx)
             return AVERROR(EINVAL);
 
-        frames_ctx   = (AVHWFramesContext *)link->hw_frames_ctx->data;
+        frames_ctx   = (AVHWFramesContext *)l->hw_frames_ctx->data;
         frames_hwctx = frames_ctx->hwctx;
-        *frameinfo   = frames_hwctx->surfaces[0].Info;
+        *frameinfo   = frames_hwctx->nb_surfaces ? frames_hwctx->surfaces[0].Info : *frames_hwctx->info;
     } else {
         pix_fmt = link->format;
         desc = av_pix_fmt_desc_get(pix_fmt);
@@ -334,8 +335,8 @@ static int fill_frameinfo_by_link(mfxFrameInfo *frameinfo, AVFilterLink *link)
 
     frameinfo->CropW          = link->w;
     frameinfo->CropH          = link->h;
-    frameinfo->FrameRateExtN  = link->frame_rate.num;
-    frameinfo->FrameRateExtD  = link->frame_rate.den;
+    frameinfo->FrameRateExtN  = l->frame_rate.num;
+    frameinfo->FrameRateExtD  = l->frame_rate.den;
 
     /* Apparently VPP in the SDK requires the frame rate to be set to some value, otherwise
      * init will fail */
@@ -472,6 +473,7 @@ static QSVFrame *submit_frame(QSVVPPContext *s, AVFilterLink *inlink, AVFrame *p
 /* get the output surface */
 static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFrame *in)
 {
+    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     QSVFrame        *out_frame;
     int              ret;
@@ -489,7 +491,7 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFr
         if (!out_frame->frame)
             return NULL;
 
-        ret = av_hwframe_get_buffer(outlink->hw_frames_ctx, out_frame->frame, 0);
+        ret = av_hwframe_get_buffer(l->hw_frames_ctx, out_frame->frame, 0);
         if (ret < 0) {
             av_log(ctx, AV_LOG_ERROR, "Can't allocate a surface.\n");
             return NULL;
@@ -511,8 +513,8 @@ static QSVFrame *query_frame(QSVVPPContext *s, AVFilterLink *outlink, const AVFr
             return NULL;
     }
 
-    if (outlink->frame_rate.num && outlink->frame_rate.den)
-        out_frame->frame->duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+    if (l->frame_rate.num && l->frame_rate.den)
+        out_frame->frame->duration = av_rescale_q(1, av_inv_q(l->frame_rate), outlink->time_base);
     else
         out_frame->frame->duration = 0;
 
@@ -546,7 +548,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
 static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
 {
     AVFilterLink                 *inlink = avctx->inputs[0];
+    FilterLink                      *inl = ff_filter_link(inlink);
     AVFilterLink                *outlink = avctx->outputs[0];
+    FilterLink                     *outl = ff_filter_link(outlink);
     AVQSVFramesContext  *in_frames_hwctx = NULL;
     AVQSVFramesContext *out_frames_hwctx = NULL;
 
@@ -559,8 +563,8 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     mfxIMPL impl;
     int ret, i;
 
-    if (inlink->hw_frames_ctx) {
-        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
+    if (inl->hw_frames_ctx) {
+        AVHWFramesContext *frames_ctx = (AVHWFramesContext *)inl->hw_frames_ctx->data;
 
         device_ref      = frames_ctx->device_ref;
         in_frames_hwctx = frames_ctx->hwctx;
@@ -587,6 +591,26 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
     device_ctx   = (AVHWDeviceContext *)device_ref->data;
     device_hwctx = device_ctx->hwctx;
 
+    /* extract the properties of the "master" session given to us */
+    ret = MFXQueryIMPL(device_hwctx->session, &impl);
+    if (ret == MFX_ERR_NONE)
+        ret = MFXQueryVersion(device_hwctx->session, &ver);
+    if (ret != MFX_ERR_NONE) {
+        av_log(avctx, AV_LOG_ERROR, "Error querying the session attributes\n");
+        return AVERROR_UNKNOWN;
+    }
+
+    if (MFX_IMPL_VIA_VAAPI == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_VA_DISPLAY;
+    } else if (MFX_IMPL_VIA_D3D11 == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_D3D11_DEVICE;
+    } else if (MFX_IMPL_VIA_D3D9 == MFX_IMPL_VIA_MASK(impl)) {
+        handle_type = MFX_HANDLE_D3D9_DEVICE_MANAGER;
+    } else {
+        av_log(avctx, AV_LOG_ERROR, "Error unsupported handle type\n");
+        return AVERROR_UNKNOWN;
+    }
+
     if (outlink->format == AV_PIX_FMT_QSV) {
         AVHWFramesContext *out_frames_ctx;
         AVBufferRef *out_frames_ref = av_hwframe_ctx_alloc(device_ref);
@@ -608,9 +632,15 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
         out_frames_ctx->width             = FFALIGN(outlink->w, 32);
         out_frames_ctx->height            = FFALIGN(outlink->h, 32);
         out_frames_ctx->sw_format         = s->out_sw_format;
-        out_frames_ctx->initial_pool_size = 64;
-        if (avctx->extra_hw_frames > 0)
-            out_frames_ctx->initial_pool_size += avctx->extra_hw_frames;
+
+        if (QSV_RUNTIME_VERSION_ATLEAST(ver, 2, 9) && handle_type != MFX_HANDLE_D3D9_DEVICE_MANAGER)
+            out_frames_ctx->initial_pool_size = 0;
+        else {
+            out_frames_ctx->initial_pool_size = 64;
+            if (avctx->extra_hw_frames > 0)
+                out_frames_ctx->initial_pool_size += avctx->extra_hw_frames;
+        }
+
         out_frames_hwctx->frame_type      = s->out_mem_mode;
 
         ret = av_hwframe_ctx_init(out_frames_ref);
@@ -631,30 +661,10 @@ static int init_vpp_session(AVFilterContext *avctx, QSVVPPContext *s)
             s->surface_ptrs_out[i] = out_frames_hwctx->surfaces + i;
         s->nb_surface_ptrs_out = out_frames_hwctx->nb_surfaces;
 
-        av_buffer_unref(&outlink->hw_frames_ctx);
-        outlink->hw_frames_ctx = out_frames_ref;
+        av_buffer_unref(&outl->hw_frames_ctx);
+        outl->hw_frames_ctx = out_frames_ref;
     } else
         s->out_mem_mode = MFX_MEMTYPE_SYSTEM_MEMORY;
-
-    /* extract the properties of the "master" session given to us */
-    ret = MFXQueryIMPL(device_hwctx->session, &impl);
-    if (ret == MFX_ERR_NONE)
-        ret = MFXQueryVersion(device_hwctx->session, &ver);
-    if (ret != MFX_ERR_NONE) {
-        av_log(avctx, AV_LOG_ERROR, "Error querying the session attributes\n");
-        return AVERROR_UNKNOWN;
-    }
-
-    if (MFX_IMPL_VIA_VAAPI == MFX_IMPL_VIA_MASK(impl)) {
-        handle_type = MFX_HANDLE_VA_DISPLAY;
-    } else if (MFX_IMPL_VIA_D3D11 == MFX_IMPL_VIA_MASK(impl)) {
-        handle_type = MFX_HANDLE_D3D11_DEVICE;
-    } else if (MFX_IMPL_VIA_D3D9 == MFX_IMPL_VIA_MASK(impl)) {
-        handle_type = MFX_HANDLE_D3D9_DEVICE_MANAGER;
-    } else {
-        av_log(avctx, AV_LOG_ERROR, "Error unsupported handle type\n");
-        return AVERROR_UNKNOWN;
-    }
 
     ret = MFXVideoCORE_GetHandle(device_hwctx->session, handle_type, &handle);
     if (ret < 0)
@@ -1093,11 +1103,6 @@ int ff_qsvvpp_create_mfx_session(void *ctx,
     if (sts < 0)
         return ff_qsvvpp_print_error(ctx, sts,
                                      "Error creating a MFX session");
-    else if (sts > 0) {
-        ff_qsvvpp_print_warning(ctx, sts,
-                                "Warning in MFX session creation");
-        return AVERROR_UNKNOWN;
-    }
 
     *psession = session;
 

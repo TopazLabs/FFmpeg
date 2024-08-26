@@ -393,8 +393,6 @@ static int aic_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     int slice_size;
 
     ctx->frame            = frame;
-    ctx->frame->pict_type = AV_PICTURE_TYPE_I;
-    ctx->frame->flags |= AV_FRAME_FLAG_KEY;
 
     off = FFALIGN(AIC_HDR_SIZE + ctx->num_x_slices * ctx->mb_height * 2, 4);
 
@@ -467,8 +465,7 @@ static av_cold int aic_decode_init(AVCodecContext *avctx)
         }
     }
 
-    ctx->slice_data = av_malloc_array(ctx->slice_width, AIC_BAND_COEFFS
-                                * sizeof(*ctx->slice_data));
+    ctx->slice_data = av_calloc(ctx->slice_width, AIC_BAND_COEFFS * sizeof(*ctx->slice_data));
     if (!ctx->slice_data) {
         av_log(avctx, AV_LOG_ERROR, "Error allocating slice buffer\n");
 

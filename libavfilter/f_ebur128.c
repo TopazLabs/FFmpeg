@@ -41,7 +41,6 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 #define ABS_THRES    -70            ///< silence gate: we discard anything below this absolute (LUFS) threshold
@@ -294,6 +293,7 @@ static int config_video_output(AVFilterLink *outlink)
 {
     int i, x, y;
     uint8_t *p;
+    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     EBUR128Context *ebur128 = ctx->priv;
     AVFrame *outpicref;
@@ -307,8 +307,8 @@ static int config_video_output(AVFilterLink *outlink)
     outlink->w = ebur128->w;
     outlink->h = ebur128->h;
     outlink->sample_aspect_ratio = (AVRational){1,1};
-    outlink->frame_rate = av_make_q(10, 1);
-    outlink->time_base = av_inv_q(outlink->frame_rate);
+    l->frame_rate = av_make_q(10, 1);
+    outlink->time_base = av_inv_q(l->frame_rate);
 
 #define PAD 8
 
