@@ -63,6 +63,8 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
   ff_tvai_handleLogging();
   AVFilterContext *pCtx = pOutlink->src;
   AVFilterLink *pInlink = pCtx->inputs[0];
+  FilterLink *fInlink = ff_filter_link(pInlink);
+  FilterLink *fOutlink = ff_filter_link(pOutlink);
   pProcessorInfo->basic = *pBasic;
   if(ff_tvai_checkModel(pProcessorInfo->basic.modelName, modelType, pCtx) || ff_tvai_checkDevice(pProcessorInfo->basic.device.index, pCtx) || ff_tvai_checkScale(pProcessorInfo->basic.modelName, pProcessorInfo->basic.scale, pCtx)) {
     return 1;
@@ -73,14 +75,14 @@ int ff_tvai_prepareProcessorInfo(VideoProcessorInfo* pProcessorInfo, ModelType m
   pProcessorInfo->basic.inputWidth = pInlink->w;
   pProcessorInfo->basic.inputHeight = pInlink->h;
   pProcessorInfo->basic.timebase = av_q2d(pInlink->time_base);
-  pProcessorInfo->basic.framerate = av_q2d(pInlink->frame_rate);
+  pProcessorInfo->basic.framerate = av_q2d(fInlink->frame_rate);
   pProcessorInfo->outputWidth = pOutlink->w = pInlink->w*pProcessorInfo->basic.scale;
   pProcessorInfo->outputHeight = pOutlink->h = pInlink->h*pProcessorInfo->basic.scale;
   if(pParameters != NULL && parameterCount > 0) {
     memcpy(pProcessorInfo->modelParameters, pParameters, sizeof(float)*parameterCount);
   }
   pOutlink->time_base = pInlink->time_base;
-  pOutlink->frame_rate = pInlink->frame_rate;
+  fOutlink->frame_rate = fInlink->frame_rate;
   pOutlink->sample_aspect_ratio = pInlink->sample_aspect_ratio;
   return 0;
 }

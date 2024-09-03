@@ -7,7 +7,7 @@
 #include "libavutil/avutil.h"
 #include "avfilter.h"
 #include "formats.h"
-#include "internal.h"
+#include "avfilter_internal.h"
 #include "video.h"
 #include "tvai_data.h"
 #include "tvai.h"
