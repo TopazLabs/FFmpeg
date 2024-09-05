@@ -80,16 +80,14 @@ static int config_props(AVFilterLink *outlink) {
     AVFilterContext *ctx = outlink->src;
     TVAIFIContext *tvai = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
-    FilterLink *fInlink = ff_filter_link(inlink);
-    FilterLink *fOutlink = ff_filter_link(outlink);
     float threshold = 0.05;
     float fpsFactor = 0;
     tvai->basicInfo.scale = 1;
     if(tvai->frame_rate.num > 0) {
-        AVRational frFactor = av_div_q(tvai->frame_rate, fInlink->frame_rate);
+        AVRational frFactor = av_div_q(tvai->frame_rate, inlink->frame_rate);
         fpsFactor = 1/(tvai->slowmo*av_q2d(frFactor));
     } else {
-        fOutlink->frame_rate = fInlink->frame_rate;
+        outlink->frame_rate = inlink->frame_rate;
         fpsFactor = 1/tvai->slowmo;
     }
     VideoProcessorInfo info;
@@ -106,17 +104,17 @@ static int config_props(AVFilterLink *outlink) {
     tvai->previousFrame = NULL;
     tvai->timebaseUpdated = tvai->frame_rate.num > 0 && av_q2d(av_inv_q(tvai->frame_rate)) < av_q2d(outlink->time_base);
     if(tvai->frame_rate.num > 0) {
-        fOutlink->frame_rate = tvai->frame_rate;
+        outlink->frame_rate = tvai->frame_rate;
     }
-    info.basic.framerate = av_q2d(fOutlink->frame_rate);
+    info.basic.framerate = av_q2d(outlink->frame_rate);
     if(tvai->timebaseUpdated) {
-        outlink->time_base  = av_inv_q(fOutlink->frame_rate);
+        outlink->time_base  = av_inv_q(outlink->frame_rate);
     }
     info.basic.timebase = av_q2d(outlink->time_base);
 
     tvai->pFrameProcessor = tvai_create(&info);
     av_log(ctx, AV_LOG_DEBUG, "Set time base to %d/%d %lf -> %d/%d %lf\n", inlink->time_base.num, inlink->time_base.den, av_q2d(inlink->time_base), outlink->time_base.num, outlink->time_base.den, av_q2d(outlink->time_base));
-    av_log(ctx, AV_LOG_DEBUG, "Set frame rate to %lf -> %lf\n", av_q2d(fInlink->frame_rate), av_q2d(fOutlink->frame_rate));
+    av_log(ctx, AV_LOG_DEBUG, "Set frame rate to %lf -> %lf\n", av_q2d(inlink->frame_rate), av_q2d(outlink->frame_rate));
     av_log(ctx, AV_LOG_DEBUG, "Set fpsFactor to %lf generating %lf frames\n", fpsFactor, 1/fpsFactor);
     return tvai->pFrameProcessor == NULL ? AVERROR(EINVAL) : 0;
 }
