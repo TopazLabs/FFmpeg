@@ -20,10 +20,6 @@ parameters:
     displayName: 'PUBLISH'
     type: boolean
     default: false
-  - name: qt
-    displayName: 'QT_VERSION'
-    type: string
-    default: '6.6.1'
   - name: windows
     displayName: 'Windows (2019)'
     type: boolean
@@ -40,8 +36,6 @@ parameters:
 variables:
   - name: VERSION
     value: ${{ parameters.version }}
-  - name: QT_VERSION
-    value: ${{ parameters.qt }}
   - ${{ if eq(parameters.publish, true) }}:
     - name: PUBLISH
       value: 'true'
