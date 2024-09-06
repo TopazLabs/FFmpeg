@@ -46,3 +46,5 @@
 .vscode/settings.json
 /conan
 /output-conan
+.vscode/launch.json
+/.vscode
