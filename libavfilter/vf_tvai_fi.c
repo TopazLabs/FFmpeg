@@ -44,6 +44,10 @@ typedef struct  {
     void* pFrameProcessor;
     AVRational frame_rate;
     AVFrame* previousFrame;
+    AVDictionary *parameters;
+    DictionaryItem *pModelParameters;
+    int modelParametersCount;
+    char *deviceString;    
 } TVAIFIContext;
 
 #define OFFSET(x) offsetof(TVAIFIContext, x)
@@ -51,14 +55,15 @@ typedef struct  {
 #define DEVICE_OFFSET(x) BASIC_OFFSET(device) + offsetof(DeviceSetting, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_fi_options[] = {
-    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="chr-1"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="chr-2"}, .flags = FLAGS },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ... or a . separated list of GPU indices e.g. 0.1.3)",  OFFSET(deviceString),  AV_OPT_TYPE_STRING, {.str="-2"}, .flags = FLAGS, "device" },
     { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
     { "rdt",  "Replace duplicate threshold. (0 or below means do not remove, high value will detect more duplicates)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.2, FLAGS, "rdt" },
     { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
+    { "parameters", TVAI_FRAME_INTERPOLATION_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
     { NULL }
 };
 
@@ -89,8 +94,13 @@ static int config_props(AVFilterLink *outlink) {
     }
     VideoProcessorInfo info;
     threshold = fpsFactor*0.3;
-    float parameterValues[4] = {threshold, fpsFactor, tvai->slowmo, tvai->rdt};
-    if(ff_tvai_prepareProcessorInfo(&info, ModelTypeFrameInterpolation, outlink, &(tvai->basicInfo), 0, parameterValues, 4)) {
+    av_dict_set_float(&tvai->parameters, "threshold", threshold, 0);
+    av_dict_set_float(&tvai->parameters, "fpsFactor", fpsFactor, 0);
+    av_dict_set_float(&tvai->parameters, "slowmo", tvai->slowmo, 0);
+    av_dict_set_float(&tvai->parameters, "rdt", tvai->rdt, 0);
+    tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
+    ff_av_dict_log(ctx, "Parameters", tvai->parameters);
+    if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeFrameInterpolation, outlink, &(tvai->basicInfo), 0, tvai->pModelParameters, tvai->modelParametersCount)) {
         return AVERROR(EINVAL);
     }
     tvai->previousFrame = NULL;
