@@ -30,10 +30,6 @@ steps:
         /bin/bash -c "echo '##vso[task.setvariable variable=MD_APPLE_SDK_ROOT;]'/Applications/Xcode_$XCODE_VERSION.app;sudo xcode-select --switch /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer"
       displayName: 'Select XCode $(XCODE_VERSION)'
 
-  - script: |
-      python -m pip install pipenv
-    displayName: 'Install pipenv'
-
   - bash: |
       echo "##vso[task.setvariable variable=CONAN_HOME]${{ parameters.CONAN_USER_HOME }}/.conan2"
       mkdir -p "${{ parameters.CONAN_USER_HOME }}/.conan2"
@@ -41,7 +37,7 @@ steps:
 
   - script: |
       python -m pip install conan==2.0.9
-      conan profile detect --force
+      echo core.download:parallel=4 > "${{ parameters.CONAN_USER_HOME }}/.conan2/global.conf"
       conan remote add topaz-conan https://topaz.jfrog.io/artifactory/api/conan/topaz-conan
       conan remote login -p $(CONAN_PASSWORD) topaz-conan build.bot
       conan remote disable conancenter
