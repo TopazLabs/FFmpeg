@@ -1,10 +1,5 @@
 resources:
   repositories:
-    - repository: topaz-conan-dev
-      type: github
-      endpoint: TopazLabs
-      name: TopazLabs/topaz-conan-dev
-      ref: master
     - repository: nv-codec-headers
       type: github
       endpoint: TopazLabs
