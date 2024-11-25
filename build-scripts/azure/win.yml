@@ -32,6 +32,7 @@ steps:
         exit 0
       else
         cd build-scripts
+        dos2unix deploy_conanfile.py
         conan export-pkg deploy_conanfile.py \
             --name topaz-ffmpeg --version "$(VERSION)" \
             -pr:b profile_win2019 -pr:h profile_win2019 \
