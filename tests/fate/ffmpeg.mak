@@ -146,7 +146,7 @@ fate-copy-trac236: CMD = transcode mov $(TARGET_SAMPLES)/mov/fcp_export8-236.mov
 
 FATE_STREAMCOPY-$(call TRANSCODE, RAWVIDEO MPEG2VIDEO, MXF, MPEGTS_DEMUXER MPEGVIDEO_PARSER MPEGAUDIO_PARSER MP2_DECODER ARESAMPLE_FILTER PCM_S16LE_DECODER) += fate-copy-trac4914
 fate-copy-trac4914: CMD = transcode mpegts $(TARGET_SAMPLES)/mpeg2/xdcam8mp2-1s_small.ts\
-                      mxf "-c:a pcm_s16le -af aresample -c:v copy -time_base 1001/30000"
+                      mxf "-c:a pcm_s16le -af aresample -c:v copy"
 
 FATE_STREAMCOPY-$(call TRANSCODE, RAWVIDEO MPEG2VIDEO, AVI, MPEGTS_DEMUXER MPEGVIDEO_PARSER MPEGAUDIO_PARSER EXTRACT_EXTRADATA_BSF MP2_DECODER ARESAMPLE_FILTER) += fate-copy-trac4914-avi
 fate-copy-trac4914-avi: CMD = transcode mpegts $(TARGET_SAMPLES)/mpeg2/xdcam8mp2-1s_small.ts\
@@ -220,7 +220,7 @@ FATE_SAMPLES_FFMPEG-$(call DEMMUX, APNG, FRAMECRC, SETTS_BSF PIPE_PROTOCOL) += f
 fate-ffmpeg-setts-bsf: CMD = framecrc -i $(TARGET_SAMPLES)/apng/clock.png -c:v copy -bsf:v "setts=duration=if(eq(NEXT_PTS\,NOPTS)\,PREV_OUTDURATION\,(NEXT_PTS-PTS)/2):ts=PTS/2" -fflags +bitexact
 
 FATE_TIME_BASE-$(call PARSERDEMDEC, MPEGVIDEO, MPEGPS, MPEG2VIDEO, MPEGVIDEO_DEMUXER MXF_MUXER) += fate-time_base
-fate-time_base: CMD = md5 -i $(TARGET_SAMPLES)/mpeg2/dvd_single_frame.vob -an -sn -c:v copy -r 25 -time_base 1001:30000 -fflags +bitexact -f mxf
+fate-time_base: CMD = md5 -i $(TARGET_SAMPLES)/mpeg2/dvd_single_frame.vob -an -sn -c:v copy -r 25 -fflags +bitexact -f mxf
 
 FATE_SAMPLES_FFMPEG-yes += $(FATE_TIME_BASE-yes)
 
@@ -263,3 +263,7 @@ fate-ffmpeg-loopback-decoding: CMD = transcode \
     "rawvideo -s 352x288 -pix_fmt yuv420p" $(TARGET_PATH)/tests/data/vsynth1.yuv nut \
     "-map 0:v:0 -c:v mpeg2video -f null - -flags +bitexact -idct simple -threads $$threads -dec 0:0 -filter_complex '[0:v][dec:0]hstack[stack]' -map '[stack]' -c:v ffv1" ""
 FATE_FFMPEG-$(call ENCDEC2, MPEG2VIDEO, FFV1, NUT, HSTACK_FILTER PIPE_PROTOCOL FRAMECRC_MUXER) += fate-ffmpeg-loopback-decoding
+
+# test matching by stream disposition
+fate-ffmpeg-spec-disposition: CMD = framecrc -i $(TARGET_SAMPLES)/mpegts/pmtchange.ts -map '0:disp:visual_impaired+descriptions:1' -c copy
+FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MPEGTS,,) += fate-ffmpeg-spec-disposition

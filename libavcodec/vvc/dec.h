@@ -101,6 +101,8 @@ typedef struct VVCFrame {
      * A combination of VVC_FRAME_FLAG_*
      */
     uint8_t flags;
+
+    void *hwaccel_picture_private; ///< hardware accelerator private data
 } VVCFrame;
 
 typedef struct SliceContext {
@@ -172,8 +174,6 @@ typedef struct VVCFrameContext {
 
         uint8_t *tu_coded_flag[VVC_MAX_SAMPLE_ARRAYS];  ///< tu_y_coded_flag[][],  tu_cb_coded_flag[][],  tu_cr_coded_flag[][]
         uint8_t *tu_joint_cbcr_residual_flag;           ///< tu_joint_cbcr_residual_flag[][]
-        int     *tb_pos_x0[2];
-        int     *tb_pos_y0[2];
         uint8_t *tb_width[2];
         uint8_t *tb_height[2];
         uint8_t *pcmf[2];
@@ -236,13 +236,15 @@ typedef struct VVCContext {
     uint16_t seq_decode;
     uint16_t seq_output;
 
-    struct AVExecutor *executor;
+    struct FFExecutor *executor;
 
     VVCFrameContext *fcs;
     int nb_fcs;
 
     uint64_t nb_frames;     ///< processed frames
     int nb_delayed;         ///< delayed frames
+
+    enum AVPixelFormat pix_fmt; ///< pix format of current frame
 }  VVCContext ;
 
 #endif /* AVCODEC_VVC_DEC_H */

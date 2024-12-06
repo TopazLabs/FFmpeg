@@ -189,6 +189,7 @@ typedef struct VariantStream {
     const char *sgroup;   /* subtitle group name */
     const char *ccgroup;  /* closed caption group name */
     const char *varname;  /* variant name */
+    const char *subtitle_varname;  /* subtitle variant name */
 } VariantStream;
 
 typedef struct ClosedCaptionsStream {
@@ -887,7 +888,9 @@ static int hls_mux_init(AVFormatContext *s, VariantStream *vs)
 
         if (!(st = avformat_new_stream(loc, NULL)))
             return AVERROR(ENOMEM);
-        avcodec_parameters_copy(st->codecpar, vs->streams[i]->codecpar);
+        ret = avcodec_parameters_copy(st->codecpar, vs->streams[i]->codecpar);
+        if (ret < 0)
+            return ret;
         if (!oc->oformat->codec_tag ||
             av_codec_get_id (oc->oformat->codec_tag, vs->streams[i]->codecpar->codec_tag) == st->codecpar->codec_id ||
             av_codec_get_tag(oc->oformat->codec_tag, vs->streams[i]->codecpar->codec_id) <= 0) {
@@ -1202,6 +1205,22 @@ static int hls_append_segment(struct AVFormatContext *s, HLSContext *hls,
     return 0;
 }
 
+static int extract_segment_number(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    const char *num_start = dot - 1;
+
+    while (num_start > filename && *num_start >= '0' && *num_start <= '9') {
+        num_start--;
+    }
+
+    num_start++;
+
+    if (num_start == dot)
+        return -1;
+
+    return atoi(num_start);
+}
+
 static int parse_playlist(AVFormatContext *s, const char *url, VariantStream *vs)
 {
     HLSContext *hls = s->priv_data;
@@ -1295,6 +1314,20 @@ static int parse_playlist(AVFormatContext *s, const char *url, VariantStream *vs
                     goto fail;
                 }
                 ff_format_set_url(vs->avf, new_file);
+
+                if (vs->has_subtitle) {
+                    int vtt_index = extract_segment_number(line);
+                    const char *vtt_basename = av_basename(vs->vtt_basename);
+                    int len = strlen(vtt_basename) + 11;
+                    char *vtt_file = av_mallocz(len);
+                    if (!vtt_file) {
+                        ret = AVERROR(ENOMEM);
+                        goto fail;
+                    }
+                    snprintf(vtt_file, len, vtt_basename, vtt_index);
+                    ff_format_set_url(vs->vtt_avf, vtt_file);
+                }
+
                 is_segment = 0;
                 new_start_pos = avio_tell(vs->avf->pb);
                 vs->size = new_start_pos - vs->start_pos;
@@ -1533,7 +1566,8 @@ static int create_master_playlist(AVFormatContext *s,
                 break;
             }
 
-            ff_hls_write_subtitle_rendition(hls->m3u8_out, sgroup, vtt_m3u8_rel_name, vs->language, i, hls->has_default_key ? vs->is_default : 1);
+            ff_hls_write_subtitle_rendition(hls->m3u8_out, sgroup, vtt_m3u8_rel_name, vs->language,
+                    vs->subtitle_varname, i, hls->has_default_key ? vs->is_default : 1);
         }
 
         if (!hls->has_default_key || !hls->has_video_m3u8) {
@@ -1668,7 +1702,7 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
         ff_hls_write_playlist_header(hls->sub_m3u8_out, hls->version, hls->allowcache,
                                      target_duration, sequence, PLAYLIST_TYPE_NONE, 0);
         for (en = vs->segments; en; en = en->next) {
-            ret = ff_hls_write_file_entry(hls->sub_m3u8_out, 0, byterange_mode,
+            ret = ff_hls_write_file_entry(hls->sub_m3u8_out, en->discont, byterange_mode,
                                           en->duration, 0, en->size, en->pos,
                                           hls->baseurl, en->sub_filename, NULL, 0, 0, 0);
             if (ret < 0) {
@@ -1676,7 +1710,7 @@ static int hls_window(AVFormatContext *s, int last, VariantStream *vs)
             }
         }
 
-        if (last)
+        if (last && !(hls->flags & HLS_OMIT_ENDLIST))
             ff_hls_write_end_list(hls->sub_m3u8_out);
 
     }
@@ -2106,6 +2140,9 @@ static int parse_variant_stream_mapstring(AVFormatContext *s)
                 continue;
             } else if (av_strstart(keyval, "name:", &val)) {
                 vs->varname  = val;
+                continue;
+            } else if (av_strstart(keyval, "sname:", &val)) {
+                vs->subtitle_varname  = val;
                 continue;
             } else if (av_strstart(keyval, "agroup:", &val)) {
                 vs->agroup   = val;

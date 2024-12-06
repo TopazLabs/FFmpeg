@@ -36,6 +36,7 @@
 #include "libavcodec/codec_desc.h"
 #include "libavcodec/packet_internal.h"
 #include "avformat.h"
+#include "avformat_internal.h"
 #include "avio.h"
 #include "demux.h"
 #include "mux.h"
@@ -102,7 +103,13 @@ void ff_free_stream_group(AVStreamGroup **pstg)
     case AV_STREAM_GROUP_PARAMS_TILE_GRID:
         av_opt_free(stg->params.tile_grid);
         av_freep(&stg->params.tile_grid->offsets);
+        av_packet_side_data_free(&stg->params.tile_grid->coded_side_data,
+                                 &stg->params.tile_grid->nb_coded_side_data);
         av_freep(&stg->params.tile_grid);
+        break;
+    case AV_STREAM_GROUP_PARAMS_LCEVC:
+        av_opt_free(stg->params.lcevc);
+        av_freep(&stg->params.lcevc);
         break;
     default:
         break;
@@ -130,23 +137,26 @@ void ff_remove_stream_group(AVFormatContext *s, AVStreamGroup *stg)
 /* XXX: suppress the packet queue */
 void ff_flush_packet_queue(AVFormatContext *s)
 {
-    FFFormatContext *const si = ffformatcontext(s);
-    avpriv_packet_list_free(&si->parse_queue);
+    FormatContextInternal *const fci = ff_fc_internal(s);
+    FFFormatContext *const si = &fci->fc;
+    avpriv_packet_list_free(&fci->parse_queue);
     avpriv_packet_list_free(&si->packet_buffer);
-    avpriv_packet_list_free(&si->raw_packet_buffer);
+    avpriv_packet_list_free(&fci->raw_packet_buffer);
 
-    si->raw_packet_buffer_size = 0;
+    fci->raw_packet_buffer_size = 0;
 }
 
 void avformat_free_context(AVFormatContext *s)
 {
+    FormatContextInternal *fci;
     FFFormatContext *si;
 
     if (!s)
         return;
-    si = ffformatcontext(s);
+    fci = ff_fc_internal(s);
+    si  = &fci->fc;
 
-    if (s->oformat && ffofmt(s->oformat)->deinit && si->initialized)
+    if (s->oformat && ffofmt(s->oformat)->deinit && fci->initialized)
         ffofmt(s->oformat)->deinit(s);
 
     av_opt_free(s);
@@ -182,7 +192,8 @@ void avformat_free_context(AVFormatContext *s)
     av_packet_free(&si->parse_pkt);
     av_freep(&s->streams);
     av_freep(&s->stream_groups);
-    ff_flush_packet_queue(s);
+    if (s->iformat)
+        ff_flush_packet_queue(s);
     av_freep(&s->url);
     av_free(s);
 }
@@ -327,6 +338,7 @@ const char *avformat_stream_group_name(enum AVStreamGroupParamsType type)
     case AV_STREAM_GROUP_PARAMS_IAMF_AUDIO_ELEMENT:        return "IAMF Audio Element";
     case AV_STREAM_GROUP_PARAMS_IAMF_MIX_PRESENTATION:     return "IAMF Mix Presentation";
     case AV_STREAM_GROUP_PARAMS_TILE_GRID:                 return "Tile Grid";
+    case AV_STREAM_GROUP_PARAMS_LCEVC:                     return "LCEVC (Split video and enhancement)";
     }
     return NULL;
 }

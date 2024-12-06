@@ -99,7 +99,7 @@ static int generate_fake_vps(QSVEncContext *q, AVCodecContext *avctx)
     }
     get_bits(&gb, 9);
 
-    ret = ff_hevc_parse_sps(&sps, &gb, &sps_id, 0, NULL, avctx);
+    ret = ff_hevc_parse_sps(&sps, &gb, &sps_id, 0, 0, NULL, avctx);
     av_freep(&sps_rbsp.rbsp_buffer);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error parsing the SPS\n");
@@ -407,6 +407,7 @@ const FFCodec ff_hevc_qsv_encoder = {
                                                     AV_PIX_FMT_VUYX,
                                                     AV_PIX_FMT_XV30,
                                                     AV_PIX_FMT_NONE },
+    .color_ranges   = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
     .p.priv_class   = &class,
     .defaults       = qsv_enc_defaults,
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |

@@ -116,6 +116,7 @@ static const AVOption options[] = {
     { "none",                   "no adaptive quantization",         0, AV_OPT_TYPE_CONST, {.i64 = AMF_VIDEO_ENCODER_AV1_AQ_MODE_NONE }, 0, 0, VE, .unit = "adaptive_quantisation_mode" },
     { "caq",                    "context adaptive quantization",    0, AV_OPT_TYPE_CONST, {.i64 = AMF_VIDEO_ENCODER_AV1_AQ_MODE_CAQ }, 0, 0, VE, .unit = "adaptive_quantisation_mode" },
 
+    { "forced_idr",             "Force I frames to be IDR frames",  OFFSET(forced_idr),   AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
 
     { "align",                  "alignment mode",                           OFFSET(align),                          AV_OPT_TYPE_INT,     {.i64 = AMF_VIDEO_ENCODER_AV1_ALIGNMENT_MODE_NO_RESTRICTIONS },         AMF_VIDEO_ENCODER_AV1_ALIGNMENT_MODE_64X16_ONLY, AMF_VIDEO_ENCODER_AV1_ALIGNMENT_MODE_NO_RESTRICTIONS, VE, .unit = "align" },
     { "64x16",                  "", 0, AV_OPT_TYPE_CONST, {.i64 = AMF_VIDEO_ENCODER_AV1_ALIGNMENT_MODE_64X16_ONLY               }, 0, 0, VE, .unit = "align" },
@@ -185,7 +186,9 @@ static av_cold int amf_encode_init_av1(AVCodecContext* avctx)
     AMFGuid             guid;
     AMFRate             framerate;
     AMFSize             framesize = AMFConstructSize(avctx->width, avctx->height);
-
+    amf_int64           color_depth;
+    amf_int64           color_profile;
+    enum                AVPixelFormat pix_fmt;
 
     //for av1 alignment and crop
     uint32_t            crop_right  = 0;
@@ -235,6 +238,25 @@ FF_ENABLE_DEPRECATION_WARNINGS
         AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_PROFILE, profile);
     }
 
+    /// Color profile
+    color_profile = ff_amf_get_color_profile(avctx);
+    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_OUTPUT_COLOR_PROFILE, color_profile);
+
+    /// Color Depth
+    pix_fmt = avctx->hw_frames_ctx ? ((AVHWFramesContext*)avctx->hw_frames_ctx->data)->sw_format
+                                : avctx->pix_fmt;
+    color_depth = AMF_COLOR_BIT_DEPTH_8;
+    if (pix_fmt == AV_PIX_FMT_P010) {
+        color_depth = AMF_COLOR_BIT_DEPTH_10;
+    }
+
+    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_COLOR_BIT_DEPTH, color_depth);
+    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_OUTPUT_COLOR_PROFILE, color_profile);
+    /// Color Transfer Characteristics (AMF matches ISO/IEC)
+    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_OUTPUT_TRANSFER_CHARACTERISTIC, avctx->color_trc);
+    /// Color Primaries (AMF matches ISO/IEC)
+    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_OUTPUT_COLOR_PRIMARIES, avctx->color_primaries);
+
     profile_level = avctx->level;
     if (profile_level == AV_LEVEL_UNKNOWN) {
         profile_level = ctx->level;
@@ -254,7 +276,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     // Picture control properties
-    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_GOP_SIZE, avctx->gop_size);
+    if (avctx->gop_size != -1) {
+        AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_GOP_SIZE, avctx->gop_size);
+    }
 
     // Setup header insertion mode only if this option was defined explicitly
     if (ctx->header_insertion_mode != -1) {
@@ -441,6 +465,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
         }
     }
 
+    // Wait inside QueryOutput() if supported by the driver
+    AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_AV1_QUERY_TIMEOUT, 1);
+    res = ctx->encoder->pVtbl->GetProperty(ctx->encoder, AMF_VIDEO_ENCODER_AV1_QUERY_TIMEOUT, &var);
+    ctx->query_timeout_supported = res == AMF_OK && var.int64Value;
+
     // init encoder
     res = ctx->encoder->pVtbl->Init(ctx->encoder, ctx->format, avctx->width, avctx->height);
     AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_BUG, "encoder->Init() failed with error %d\n", res);
@@ -603,6 +632,7 @@ const FFCodec ff_av1_amf_encoder = {
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .p.pix_fmts       = ff_amf_pix_fmts,
+    .color_ranges   = AVCOL_RANGE_MPEG, /* FIXME: implement tagging */
     .p.wrapper_name   = "amf",
     .hw_configs     = ff_amfenc_hw_configs,
 };

@@ -453,6 +453,12 @@ static av_cold int set_fontsize(AVFilterContext *ctx, unsigned int fontsize)
         return AVERROR(EINVAL);
     }
 
+    // Whenever the underlying FT_Face changes, harfbuzz has to be notified of the change.
+    for (int line = 0; line < s->line_count; line++) {
+        TextLine *cur_line = &s->lines[line];
+        hb_ft_font_changed(cur_line->hb_data.font);
+    }
+
     s->fontsize = fontsize;
 
     return 0;
@@ -1077,9 +1083,12 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                  ff_draw_supported_pixel_formats(0));
 }
 
 static int glyph_enu_border_free(void *opaque, void *elem)
@@ -1366,11 +1375,10 @@ static int shape_text_hb(DrawTextContext *s, HarfbuzzData* hb, const char* text,
     hb_buffer_set_script(hb->buf, HB_SCRIPT_LATIN);
     hb_buffer_set_language(hb->buf, hb_language_from_string("en", -1));
     hb_buffer_guess_segment_properties(hb->buf);
-    hb->font = hb_ft_font_create(s->face, NULL);
+    hb->font = hb_ft_font_create_referenced(s->face);
     if(hb->font == NULL) {
         return AVERROR(ENOMEM);
     }
-    hb_ft_font_set_funcs(hb->font);
     hb_buffer_add_utf8(hb->buf, text, textLen, 0, -1);
     hb_shape(hb->font, hb->buf, NULL, 0);
     hb->glyph_info = hb_buffer_get_glyph_infos(hb->buf, &hb->glyph_count);
@@ -1381,8 +1389,8 @@ static int shape_text_hb(DrawTextContext *s, HarfbuzzData* hb, const char* text,
 
 static void hb_destroy(HarfbuzzData *hb)
 {
-    hb_buffer_destroy(hb->buf);
     hb_font_destroy(hb->font);
+    hb_buffer_destroy(hb->buf);
     hb->buf = NULL;
     hb->font = NULL;
     hb->glyph_info = NULL;
@@ -1915,7 +1923,7 @@ const AVFilter ff_vf_drawtext = {
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_drawtext_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = command,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

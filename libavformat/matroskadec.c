@@ -4224,7 +4224,7 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, AVBufferRef *buf
         } else {
             res = matroska_parse_frame(matroska, track, st, buf, out_data,
                                        out_size, timecode, lace_duration,
-                                       pos, !n ? is_keyframe : 0,
+                                       pos, is_keyframe,
                                        blockmore, nb_blockmore,
                                        discard_padding);
             if (res)
@@ -4633,7 +4633,7 @@ static int64_t webm_dash_manifest_compute_bandwidth(AVFormatContext *s, int64_t 
                 int64_t desc_bytes = desc_end.end_offset - desc_beg.start_offset;
                 int64_t desc_ns = desc_end.end_time_ns - desc_beg.start_time_ns;
                 double desc_sec, calc_bits_per_second, percent, mod_bits_per_second;
-                if (desc_bytes <= 0)
+                if (desc_bytes <= 0 || desc_bytes > INT64_MAX/8)
                     return -1;
 
                 desc_sec = desc_ns / nano_seconds_per_second;

@@ -18,6 +18,7 @@ AVCODECOBJS-$(CONFIG_LLVIDDSP)          += llviddsp.o
 AVCODECOBJS-$(CONFIG_LLVIDENCDSP)       += llviddspenc.o
 AVCODECOBJS-$(CONFIG_LPC)               += lpc.o
 AVCODECOBJS-$(CONFIG_ME_CMP)            += motion.o
+AVCODECOBJS-$(CONFIG_MPEGVIDEOENC)      += mpegvideoencdsp.o
 AVCODECOBJS-$(CONFIG_VC1DSP)            += vc1dsp.o
 AVCODECOBJS-$(CONFIG_VP8DSP)            += vp8dsp.o
 AVCODECOBJS-$(CONFIG_VIDEODSP)          += videodsp.o
@@ -28,6 +29,7 @@ AVCODECOBJS-$(CONFIG_AAC_DECODER)       += aacpsdsp.o \
 AVCODECOBJS-$(CONFIG_AAC_ENCODER)       += aacencdsp.o
 AVCODECOBJS-$(CONFIG_ALAC_DECODER)      += alacdsp.o
 AVCODECOBJS-$(CONFIG_DCA_DECODER)       += synth_filter.o
+AVCODECOBJS-$(CONFIG_DIRAC_DECODER)     += diracdsp.o
 AVCODECOBJS-$(CONFIG_EXR_DECODER)       += exrdsp.o
 AVCODECOBJS-$(CONFIG_FLAC_DECODER)      += flacdsp.o
 AVCODECOBJS-$(CONFIG_HUFFYUV_DECODER)   += huffyuvdsp.o
@@ -63,7 +65,7 @@ AVFILTEROBJS-$(CONFIG_SOBEL_FILTER)      += vf_convolution.o
 CHECKASMOBJS-$(CONFIG_AVFILTER) += $(AVFILTEROBJS-yes)
 
 # swscale tests
-SWSCALEOBJS                             += sw_gbrp.o sw_range_convert.o sw_rgb.o sw_scale.o sw_yuv2rgb.o
+SWSCALEOBJS                             += sw_gbrp.o sw_range_convert.o sw_rgb.o sw_scale.o sw_yuv2rgb.o sw_yuv2yuv.o
 
 CHECKASMOBJS-$(CONFIG_SWSCALE)  += $(SWSCALEOBJS)
 

@@ -492,8 +492,9 @@ int locate_option(int argc, char **argv, const OptionDef *options,
     for (i = 1; i < argc; i++) {
         const char *cur_opt = argv[i];
 
-        if (*cur_opt++ != '-')
+        if (!(cur_opt[0] == '-' && cur_opt[1]))
             continue;
+        cur_opt++;
 
         po = find_option(options, cur_opt);
         if (!po->name && cur_opt[0] == 'n' && cur_opt[1] == 'o')
@@ -551,11 +552,12 @@ static void check_options(const OptionDef *po)
 
 void parse_loglevel(int argc, char **argv, const OptionDef *options)
 {
-    int idx = locate_option(argc, argv, options, "loglevel");
+    int idx;
     char *env;
 
     check_options(options);
 
+    idx = locate_option(argc, argv, options, "loglevel");
     if (!idx)
         idx = locate_option(argc, argv, options, "v");
     if (idx && argv[idx + 1])
@@ -802,7 +804,7 @@ int split_commandline(OptionParseContext *octx, int argc, char *argv[],
     while (optindex < argc) {
         const char *opt = argv[optindex++], *arg;
         const OptionDef *po;
-        int ret, group_idx;
+        int group_idx;
 
         av_log(NULL, AV_LOG_DEBUG, "Reading option '%s' ...", opt);
 
@@ -988,6 +990,12 @@ FILE *get_preset_file(char *filename, size_t filename_size,
     return f;
 }
 
+int cmdutils_isalnum(char c)
+{
+    return (c >= '0' && c <= '9') ||
+           (c >= 'A' && c <= 'Z') ||
+           (c >= 'a' && c <= 'z');
+}
 
 void stream_specifier_uninit(StreamSpecifier *ss)
 {
@@ -1024,8 +1032,9 @@ int stream_specifier_parse(StreamSpecifier *ss, const char *spec,
 
             // this terminates the specifier
             break;
-        } else if (*spec == 'v' || *spec == 'a' || *spec == 's' || *spec == 'd' ||
-                   *spec == 't' || *spec == 'V') { /* opt:[vasdtV] */
+        } else if ((*spec == 'v' || *spec == 'a' || *spec == 's' ||
+                    *spec == 'd' || *spec == 't' || *spec == 'V') &&
+                   !cmdutils_isalnum(*(spec + 1))) { /* opt:[vasdtV] */
             if (ss->media_type != AVMEDIA_TYPE_UNKNOWN) {
                 av_log(logctx, AV_LOG_ERROR, "Stream type specified multiple times\n");
                 ret = AVERROR(EINVAL);
@@ -1084,6 +1093,43 @@ int stream_specifier_parse(StreamSpecifier *ss, const char *spec,
 
             av_log(logctx, AV_LOG_TRACE,
                    "Parsed program ID: %"PRId64"; remainder: %s\n", ss->list_id, spec);
+        } else if (!strncmp(spec, "disp:", 5)) {
+            const AVClass *st_class = av_stream_get_class();
+            const AVOption       *o = av_opt_find(&st_class, "disposition", NULL, 0, AV_OPT_SEARCH_FAKE_OBJ);
+            char *disp = NULL;
+            size_t len;
+
+            av_assert0(o);
+
+            if (ss->disposition) {
+                av_log(logctx, AV_LOG_ERROR, "Multiple disposition specifiers\n");
+                ret = AVERROR(EINVAL);
+                goto fail;
+            }
+
+            spec += 5;
+
+            for (len = 0; cmdutils_isalnum(spec[len]) ||
+                          spec[len] == '_' || spec[len] == '+'; len++)
+                continue;
+
+            disp = av_strndup(spec, len);
+            if (!disp) {
+                ret = AVERROR(ENOMEM);
+                goto fail;
+            }
+
+            ret = av_opt_eval_flags(&st_class, o, disp, &ss->disposition);
+            av_freep(&disp);
+            if (ret < 0) {
+                av_log(logctx, AV_LOG_ERROR, "Invalid disposition specifier\n");
+                goto fail;
+            }
+
+            spec += len;
+
+            av_log(logctx, AV_LOG_TRACE,
+                   "Parsed disposition: 0x%x; remainder: %s\n", ss->disposition, spec);
         } else if (*spec == '#' ||
                    (*spec == 'i' && *(spec + 1) == ':')) {
             if (ss->stream_list != STREAM_LIST_ALL)
@@ -1274,6 +1320,10 @@ unsigned stream_specifier_match(const StreamSpecifier *ss,
             }
         }
 
+        if (ss->disposition &&
+            (candidate->disposition & ss->disposition) != ss->disposition)
+            continue;
+
         if (st == candidate)
             return ss->idx < 0 || ss->idx == nb_matched;
 
@@ -1366,7 +1416,7 @@ int filter_codec_opts(const AVDictionary *opts, enum AVCodecID codec_id,
 }
 
 int setup_find_stream_info_opts(AVFormatContext *s,
-                                AVDictionary *codec_opts,
+                                AVDictionary *local_codec_opts,
                                 AVDictionary ***dst)
 {
     int ret;
@@ -1382,7 +1432,7 @@ int setup_find_stream_info_opts(AVFormatContext *s,
         return AVERROR(ENOMEM);
 
     for (int i = 0; i < s->nb_streams; i++) {
-        ret = filter_codec_opts(codec_opts, s->streams[i]->codecpar->codec_id,
+        ret = filter_codec_opts(local_codec_opts, s->streams[i]->codecpar->codec_id,
                                 s, s->streams[i], NULL, &opts[i], NULL);
         if (ret < 0)
             goto fail;

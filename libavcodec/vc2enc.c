@@ -988,7 +988,7 @@ static av_cold int vc2_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
     }
 
     s->slice_min_bytes = s->slice_max_bytes - s->slice_max_bytes*(s->tolerance/100.0f);
-    if (s->slice_min_bytes < 0)
+    if (s->slice_min_bytes < 0 || s->slice_max_bytes > INT_MAX >> 3)
         return AVERROR(EINVAL);
 
     ret = encode_frame(s, avpkt, frame, aux_data, header_size, s->interlaced);
@@ -1244,5 +1244,6 @@ const FFCodec ff_vc2_encoder = {
     FF_CODEC_ENCODE_CB(vc2_encode_frame),
     .p.priv_class   = &vc2enc_class,
     .defaults       = vc2enc_defaults,
-    .p.pix_fmts     = allowed_pix_fmts
+    .p.pix_fmts     = allowed_pix_fmts,
+    .color_ranges   = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
 };

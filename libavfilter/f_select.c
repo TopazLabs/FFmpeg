@@ -93,6 +93,8 @@ static const char *const var_names[] = {
     "ih",                ///< ih: Represents the height of the input video frame.
     "iw",                ///< iw: Represents the width of the input video frame.
 
+    "view",
+
     NULL
 };
 
@@ -149,6 +151,8 @@ enum var_name {
 
     VAR_IH,
     VAR_IW,
+
+    VAR_VIEW,
 
     VAR_VARS_NB
 };
@@ -343,6 +347,7 @@ static void select_frame(AVFilterContext *ctx, AVFrame *frame)
     SelectContext *select = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
     FilterLink      *inl = ff_filter_link(inlink);
+    const AVFrameSideData *sd;
     double res;
 
     if (isnan(select->var_values[VAR_START_PTS]))
@@ -381,6 +386,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
             snprintf(buf, sizeof(buf), "%f", select->var_values[VAR_SCENE]);
             av_dict_set(&frame->metadata, "lavfi.scene_score", buf, 0);
         }
+
+        sd = av_frame_side_data_get(frame->side_data, frame->nb_side_data,
+                                    AV_FRAME_DATA_VIEW_ID);
+        select->var_values[VAR_VIEW] = sd ? *(int*)sd->data : NAN;
         break;
     }
 
@@ -506,13 +515,13 @@ const AVFilter ff_af_aselect = {
 
 #if CONFIG_SELECT_FILTER
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    SelectContext *select = ctx->priv;
+    const SelectContext *select = ctx->priv;
 
-    if (!select->do_scene_detect) {
-        return ff_default_query_formats(ctx);
-    } else {
+    if (select->do_scene_detect) {
         static const enum AVPixelFormat pix_fmts[] = {
             AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24, AV_PIX_FMT_RGBA,
             AV_PIX_FMT_ABGR, AV_PIX_FMT_BGRA, AV_PIX_FMT_GRAY8,
@@ -521,8 +530,9 @@ static int query_formats(AVFilterContext *ctx)
             AV_PIX_FMT_YUV420P10,
             AV_PIX_FMT_NONE
         };
-        return ff_set_common_formats_from_list(ctx, pix_fmts);
+        return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
     }
+    return 0;
 }
 
 DEFINE_OPTIONS(select, AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM);
@@ -555,7 +565,7 @@ const AVFilter ff_vf_select = {
     .priv_size     = sizeof(SelectContext),
     .priv_class    = &select_class,
     FILTER_INPUTS(avfilter_vf_select_inputs),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS | AVFILTER_FLAG_METADATA_ONLY,
 };
 #endif /* CONFIG_SELECT_FILTER */

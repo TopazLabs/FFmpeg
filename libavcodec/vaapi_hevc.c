@@ -96,7 +96,8 @@ static int find_frame_rps_type(const HEVCContext *h, const HEVCFrame *pic)
     return 0;
 }
 
-static void fill_vaapi_reference_frames(const HEVCContext *h, VAPictureParameterBufferHEVC *pp)
+static void fill_vaapi_reference_frames(const HEVCContext *h, const HEVCLayerContext *l,
+                                        VAPictureParameterBufferHEVC *pp)
 {
     const HEVCFrame *current_picture = h->cur_frame;
     int i, j, rps_type;
@@ -104,10 +105,10 @@ static void fill_vaapi_reference_frames(const HEVCContext *h, VAPictureParameter
     for (i = 0, j = 0; i < FF_ARRAY_ELEMS(pp->ReferenceFrames); i++) {
         const HEVCFrame *frame = NULL;
 
-        while (!frame && j < FF_ARRAY_ELEMS(h->DPB)) {
-            if ((&h->DPB[j] != current_picture || h->pps->pps_curr_pic_ref_enabled_flag) &&
-                (h->DPB[j].flags & (HEVC_FRAME_FLAG_LONG_REF | HEVC_FRAME_FLAG_SHORT_REF)))
-                frame = &h->DPB[j];
+        while (!frame && j < FF_ARRAY_ELEMS(l->DPB)) {
+            if ((&l->DPB[j] != current_picture || h->pps->pps_curr_pic_ref_enabled_flag) &&
+                (l->DPB[j].flags & (HEVC_FRAME_FLAG_LONG_REF | HEVC_FRAME_FLAG_SHORT_REF)))
+                frame = &l->DPB[j];
             j++;
         }
 
@@ -125,6 +126,7 @@ static int vaapi_hevc_start_frame(AVCodecContext          *avctx,
                                   av_unused uint32_t       size)
 {
     const HEVCContext        *h = avctx->priv_data;
+    const HEVCLayerContext   *l = &h->layers[h->cur_layer];
     VAAPIDecodePictureHEVC *pic = h->cur_frame->hwaccel_picture_private;
     const HEVCPPS          *pps = h->pps;
     const HEVCSPS          *sps = pps->sps;
@@ -208,7 +210,7 @@ static int vaapi_hevc_start_frame(AVCodecContext          *avctx,
     };
 
     fill_vaapi_pic(&pic_param->CurrPic, h->cur_frame, 0);
-    fill_vaapi_reference_frames(h, pic_param);
+    fill_vaapi_reference_frames(h, l, pic_param);
 
     if (pps->tiles_enabled_flag) {
         pic_param->num_tile_columns_minus1 = pps->num_tile_columns - 1;
@@ -405,7 +407,7 @@ static void fill_pred_weight_table(AVCodecContext *avctx,
 
     slice_param->luma_log2_weight_denom = sh->luma_log2_weight_denom;
 
-    if (h->ps.sps->chroma_format_idc) {
+    if (h->pps->sps->chroma_format_idc) {
         slice_param->delta_chroma_log2_weight_denom = sh->chroma_log2_weight_denom - sh->luma_log2_weight_denom;
     }
 
@@ -594,7 +596,7 @@ static int ptl_convert(const PTLCommon *general_ptl, H265RawProfileTierLevel *h2
 VAProfile ff_vaapi_parse_hevc_rext_scc_profile(AVCodecContext *avctx)
 {
     const HEVCContext *h = avctx->priv_data;
-    const HEVCSPS *sps = h->ps.sps;
+    const HEVCSPS *sps = h->pps->sps;
     const PTL *ptl = &sps->ptl;
     const PTLCommon *general_ptl = &ptl->general_ptl;
     const H265ProfileDescriptor *profile;

@@ -50,6 +50,10 @@ typedef struct HEVCSEIDynamicHDRVivid {
     AVBufferRef *info;
 } HEVCSEIDynamicHDRVivid;
 
+typedef struct HEVCSEILCEVC {
+    AVBufferRef *info;
+} HEVCSEILCEVC;
+
 typedef struct H2645SEIUnregistered {
     AVBufferRef **buf_ref;
     unsigned nb_buf_ref;
@@ -126,15 +130,18 @@ typedef struct H2645SEI {
     H2645SEIAFD afd;
     HEVCSEIDynamicHDRPlus  dynamic_hdr_plus;     //< HEVC only
     HEVCSEIDynamicHDRVivid dynamic_hdr_vivid;    //< HEVC only
+    HEVCSEILCEVC lcevc;
     H2645SEIUnregistered unregistered;
     H2645SEIFramePacking frame_packing;
     H2645SEIDisplayOrientation display_orientation;
     H2645SEIAlternativeTransfer alternative_transfer;
-    H2645SEIFilmGrainCharacteristics film_grain_characteristics;
     H2645SEIAmbientViewingEnvironment ambient_viewing_environment;
     H2645SEIMasteringDisplay mastering_display;
     H2645SEIContentLight content_light;
     AVFilmGrainAFGS1Params aom_film_grain;
+
+    // Dynamic allocations due to large size.
+    H2645SEIFilmGrainCharacteristics *film_grain_characteristics;
 } H2645SEI;
 
 enum {

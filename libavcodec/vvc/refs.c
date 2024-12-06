@@ -26,13 +26,10 @@
 #include "libavutil/thread.h"
 #include "libavcodec/refstruct.h"
 #include "libavcodec/thread.h"
+#include "libavcodec/decode.h"
 
 #include "refs.h"
 
-#define VVC_FRAME_FLAG_OUTPUT    (1 << 0)
-#define VVC_FRAME_FLAG_SHORT_REF (1 << 1)
-#define VVC_FRAME_FLAG_LONG_REF  (1 << 2)
-#define VVC_FRAME_FLAG_BUMPING   (1 << 3)
 
 typedef struct FrameProgress {
     atomic_int progress[VVC_PROGRESS_LAST];
@@ -63,6 +60,7 @@ void ff_vvc_unref_frame(VVCFrameContext *fc, VVCFrame *frame, int flags)
         ff_refstruct_unref(&frame->rpl_tab);
 
         frame->collocated_ref = NULL;
+        ff_refstruct_unref(&frame->hwaccel_picture_private);
     }
 }
 
@@ -157,6 +155,10 @@ static VVCFrame *alloc_frame(VVCContext *s, VVCFrameContext *fc)
         if (!frame->progress)
             goto fail;
 
+        ret = ff_hwaccel_frame_priv_alloc(s->avctx, &frame->hwaccel_picture_private);
+        if (ret < 0)
+            goto fail;
+
         return frame;
 fail:
         ff_vvc_unref_frame(fc, frame, ~0);
@@ -193,7 +195,7 @@ int ff_vvc_set_new_ref(VVCContext *s, VVCFrameContext *fc, AVFrame **frame)
     if (s->no_output_before_recovery_flag && (IS_RASL(s) || !GDR_IS_RECOVERED(s)))
         ref->flags = VVC_FRAME_FLAG_SHORT_REF;
     else if (ph->r->ph_pic_output_flag)
-        ref->flags = VVC_FRAME_FLAG_OUTPUT;
+        ref->flags = VVC_FRAME_FLAG_OUTPUT | VVC_FRAME_FLAG_SHORT_REF;
 
     if (!ph->r->ph_non_ref_pic_flag)
         ref->flags |= VVC_FRAME_FLAG_SHORT_REF;
@@ -588,12 +590,13 @@ void ff_vvc_report_progress(VVCFrame *frame, const VVCProgress vp, const int y)
     VVCProgressListener *l = NULL;
 
     ff_mutex_lock(&p->lock);
-
-    av_assert0(p->progress[vp] < y || p->progress[vp] == INT_MAX);
-    p->progress[vp] = y;
-    l = get_done_listener(p, vp);
-    ff_cond_signal(&p->cond);
-
+    if (p->progress[vp] < y) {
+        // Due to the nature of thread scheduling, later progress may reach this point before earlier progress.
+        // Therefore, we only update the progress when p->progress[vp] < y.
+        p->progress[vp] = y;
+        l = get_done_listener(p, vp);
+        ff_cond_signal(&p->cond);
+    }
     ff_mutex_unlock(&p->lock);
 
     while (l) {

@@ -33,6 +33,7 @@
 #include "cbs_h264.h"
 #include "codec_internal.h"
 #include "h264.h"
+#include "hw_base_encode_h264.h"
 #include "h264_levels.h"
 #include "h2645data.h"
 #include "vaapi_encode.h"
@@ -67,6 +68,7 @@ typedef struct VAAPIEncodeH264Picture {
 
 typedef struct VAAPIEncodeH264Context {
     VAAPIEncodeContext common;
+    FFHWBaseEncodeH264 units;
 
     // User options.
     int qp;
@@ -85,18 +87,13 @@ typedef struct VAAPIEncodeH264Context {
     int fixed_qp_p;
     int fixed_qp_b;
 
-    int dpb_frames;
-
     // Writer structures.
     CodedBitstreamContext *cbc;
     CodedBitstreamFragment current_access_unit;
 
     H264RawAUD   raw_aud;
-    H264RawSPS   raw_sps;
-    H264RawPPS   raw_pps;
     H264RawSlice raw_slice;
 
-    H264RawSEIBufferingPeriod      sei_buffering_period;
     H264RawSEIPicTiming            sei_pic_timing;
     H264RawSEIRecoveryPoint        sei_recovery_point;
     SEIRawUserDataUnregistered     sei_identifier;
@@ -168,11 +165,11 @@ static int vaapi_encode_h264_write_sequence_header(AVCodecContext *avctx,
         priv->aud_needed = 0;
     }
 
-    err = vaapi_encode_h264_add_nal(avctx, au, &priv->raw_sps);
+    err = vaapi_encode_h264_add_nal(avctx, au, &priv->units.raw_sps);
     if (err < 0)
         goto fail;
 
-    err = vaapi_encode_h264_add_nal(avctx, au, &priv->raw_pps);
+    err = vaapi_encode_h264_add_nal(avctx, au, &priv->units.raw_pps);
     if (err < 0)
         goto fail;
 
@@ -209,7 +206,7 @@ fail:
 }
 
 static int vaapi_encode_h264_write_extra_header(AVCodecContext *avctx,
-                                                VAAPIEncodePicture *pic,
+                                                FFHWBaseEncodePicture *base,
                                                 int index, int *type,
                                                 char *data, size_t *data_len)
 {
@@ -233,10 +230,10 @@ static int vaapi_encode_h264_write_extra_header(AVCodecContext *avctx,
                 goto fail;
         }
         if (priv->sei_needed & SEI_TIMING) {
-            if (pic->base.type == FF_HW_PICTURE_TYPE_IDR) {
+            if (base->type == FF_HW_PICTURE_TYPE_IDR) {
                 err = ff_cbs_sei_add_message(priv->cbc, au, 1,
                                              SEI_TYPE_BUFFERING_PERIOD,
-                                             &priv->sei_buffering_period, NULL);
+                                             &priv->units.sei_buffering_period, NULL);
                 if (err < 0)
                     goto fail;
             }
@@ -298,240 +295,26 @@ static int vaapi_encode_h264_init_sequence_params(AVCodecContext *avctx)
     FFHWBaseEncodeContext        *base_ctx = avctx->priv_data;
     VAAPIEncodeContext                *ctx = avctx->priv_data;
     VAAPIEncodeH264Context           *priv = avctx->priv_data;
-    H264RawSPS                        *sps = &priv->raw_sps;
-    H264RawPPS                        *pps = &priv->raw_pps;
+    H264RawSPS                        *sps = &priv->units.raw_sps;
+    H264RawPPS                        *pps = &priv->units.raw_pps;
     VAEncSequenceParameterBufferH264 *vseq = ctx->codec_sequence_params;
     VAEncPictureParameterBufferH264  *vpic = ctx->codec_picture_params;
-    const AVPixFmtDescriptor *desc;
-    int bit_depth;
 
-    memset(sps, 0, sizeof(*sps));
-    memset(pps, 0, sizeof(*pps));
+    FFHWBaseEncodeH264Opts unit_opts = {
+        .flags = (priv->sei & SEI_TIMING) ? FF_HW_H264_SEI_TIMING : 0,
+        .mb_width = priv->mb_width,
+        .mb_height = priv->mb_height,
+        .cabac = priv->coder,
+        .hrd_buffer_size = ctx->hrd_params.buffer_size,
+        .fixed_qp_idr = priv->fixed_qp_idr,
+        .initial_buffer_fullness = ctx->hrd_params.initial_buffer_fullness,
+        .bit_rate = ctx->va_bit_rate,
+    };
 
-    desc = av_pix_fmt_desc_get(base_ctx->input_frames->sw_format);
-    av_assert0(desc);
-    if (desc->nb_components == 1 || desc->log2_chroma_w != 1 || desc->log2_chroma_h != 1) {
-        av_log(avctx, AV_LOG_ERROR, "Chroma format of input pixel format "
-                "%s is not supported.\n", desc->name);
-        return AVERROR(EINVAL);
-    }
-    bit_depth = desc->comp[0].depth;
-
-    sps->nal_unit_header.nal_ref_idc   = 3;
-    sps->nal_unit_header.nal_unit_type = H264_NAL_SPS;
-
-    sps->profile_idc = avctx->profile & 0xff;
-
-    if (avctx->profile == AV_PROFILE_H264_CONSTRAINED_BASELINE ||
-        avctx->profile == AV_PROFILE_H264_MAIN)
-        sps->constraint_set1_flag = 1;
-
-    if (avctx->profile == AV_PROFILE_H264_HIGH || avctx->profile == AV_PROFILE_H264_HIGH_10)
-        sps->constraint_set3_flag = base_ctx->gop_size == 1;
-
-    if (avctx->profile == AV_PROFILE_H264_MAIN ||
-        avctx->profile == AV_PROFILE_H264_HIGH || avctx->profile == AV_PROFILE_H264_HIGH_10) {
-        sps->constraint_set4_flag = 1;
-        sps->constraint_set5_flag = base_ctx->b_per_p == 0;
-    }
-
-    if (base_ctx->gop_size == 1)
-        priv->dpb_frames = 0;
-    else
-        priv->dpb_frames = 1 + base_ctx->max_b_depth;
-
-    if (avctx->level != AV_LEVEL_UNKNOWN) {
-        sps->level_idc = avctx->level;
-    } else {
-        const H264LevelDescriptor *level;
-        int framerate;
-
-        if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
-            framerate = avctx->framerate.num / avctx->framerate.den;
-        else
-            framerate = 0;
-
-        level = ff_h264_guess_level(sps->profile_idc,
-                                    avctx->bit_rate,
-                                    framerate,
-                                    priv->mb_width  * 16,
-                                    priv->mb_height * 16,
-                                    priv->dpb_frames);
-        if (level) {
-            av_log(avctx, AV_LOG_VERBOSE, "Using level %s.\n", level->name);
-            if (level->constraint_set3_flag)
-                sps->constraint_set3_flag = 1;
-            sps->level_idc = level->level_idc;
-        } else {
-            av_log(avctx, AV_LOG_WARNING, "Stream will not conform "
-                   "to any level: using level 6.2.\n");
-            sps->level_idc = 62;
-        }
-    }
-
-    sps->seq_parameter_set_id = 0;
-    sps->chroma_format_idc    = 1;
-    sps->bit_depth_luma_minus8 = bit_depth - 8;
-    sps->bit_depth_chroma_minus8 = bit_depth - 8;
-
-    sps->log2_max_frame_num_minus4 = 4;
-    sps->pic_order_cnt_type        = base_ctx->max_b_depth ? 0 : 2;
-    if (sps->pic_order_cnt_type == 0) {
-        sps->log2_max_pic_order_cnt_lsb_minus4 = 4;
-    }
-
-    sps->max_num_ref_frames = priv->dpb_frames;
-
-    sps->pic_width_in_mbs_minus1        = priv->mb_width  - 1;
-    sps->pic_height_in_map_units_minus1 = priv->mb_height - 1;
-
-    sps->frame_mbs_only_flag = 1;
-    sps->direct_8x8_inference_flag = 1;
-
-    if (avctx->width  != 16 * priv->mb_width ||
-        avctx->height != 16 * priv->mb_height) {
-        sps->frame_cropping_flag = 1;
-
-        sps->frame_crop_left_offset   = 0;
-        sps->frame_crop_right_offset  =
-            (16 * priv->mb_width - avctx->width) / 2;
-        sps->frame_crop_top_offset    = 0;
-        sps->frame_crop_bottom_offset =
-            (16 * priv->mb_height - avctx->height) / 2;
-    } else {
-        sps->frame_cropping_flag = 0;
-    }
-
-    sps->vui_parameters_present_flag = 1;
-
-    if (avctx->sample_aspect_ratio.num != 0 &&
-        avctx->sample_aspect_ratio.den != 0) {
-        int num, den, i;
-        av_reduce(&num, &den, avctx->sample_aspect_ratio.num,
-                  avctx->sample_aspect_ratio.den, 65535);
-        for (i = 0; i < FF_ARRAY_ELEMS(ff_h2645_pixel_aspect); i++) {
-            if (num == ff_h2645_pixel_aspect[i].num &&
-                den == ff_h2645_pixel_aspect[i].den) {
-                sps->vui.aspect_ratio_idc = i;
-                break;
-            }
-        }
-        if (i >= FF_ARRAY_ELEMS(ff_h2645_pixel_aspect)) {
-            sps->vui.aspect_ratio_idc = 255;
-            sps->vui.sar_width  = num;
-            sps->vui.sar_height = den;
-        }
-        sps->vui.aspect_ratio_info_present_flag = 1;
-    }
-
-    // Unspecified video format, from table E-2.
-    sps->vui.video_format             = 5;
-    sps->vui.video_full_range_flag    =
-        avctx->color_range == AVCOL_RANGE_JPEG;
-    sps->vui.colour_primaries         = avctx->color_primaries;
-    sps->vui.transfer_characteristics = avctx->color_trc;
-    sps->vui.matrix_coefficients      = avctx->colorspace;
-    if (avctx->color_primaries != AVCOL_PRI_UNSPECIFIED ||
-        avctx->color_trc       != AVCOL_TRC_UNSPECIFIED ||
-        avctx->colorspace      != AVCOL_SPC_UNSPECIFIED)
-        sps->vui.colour_description_present_flag = 1;
-    if (avctx->color_range     != AVCOL_RANGE_UNSPECIFIED ||
-        sps->vui.colour_description_present_flag)
-        sps->vui.video_signal_type_present_flag = 1;
-
-    if (avctx->chroma_sample_location != AVCHROMA_LOC_UNSPECIFIED) {
-        sps->vui.chroma_loc_info_present_flag = 1;
-        sps->vui.chroma_sample_loc_type_top_field    =
-        sps->vui.chroma_sample_loc_type_bottom_field =
-            avctx->chroma_sample_location - 1;
-    }
-
-    sps->vui.timing_info_present_flag = 1;
-    if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
-        sps->vui.num_units_in_tick = avctx->framerate.den;
-        sps->vui.time_scale        = 2 * avctx->framerate.num;
-        sps->vui.fixed_frame_rate_flag = 1;
-    } else {
-        sps->vui.num_units_in_tick = avctx->time_base.num;
-        sps->vui.time_scale        = 2 * avctx->time_base.den;
-        sps->vui.fixed_frame_rate_flag = 0;
-    }
-
-    if (priv->sei & SEI_TIMING) {
-        H264RawHRD *hrd = &sps->vui.nal_hrd_parameters;
-        H264RawSEIBufferingPeriod *bp = &priv->sei_buffering_period;
-
-        sps->vui.nal_hrd_parameters_present_flag = 1;
-
-        hrd->cpb_cnt_minus1 = 0;
-
-        // Try to scale these to a sensible range so that the
-        // golomb encode of the value is not overlong.
-        hrd->bit_rate_scale =
-            av_clip_uintp2(av_log2(ctx->va_bit_rate) - 15 - 6, 4);
-        hrd->bit_rate_value_minus1[0] =
-            (ctx->va_bit_rate >> hrd->bit_rate_scale + 6) - 1;
-
-        hrd->cpb_size_scale =
-            av_clip_uintp2(av_log2(ctx->hrd_params.buffer_size) - 15 - 4, 4);
-        hrd->cpb_size_value_minus1[0] =
-            (ctx->hrd_params.buffer_size >> hrd->cpb_size_scale + 4) - 1;
-
-        // CBR mode as defined for the HRD cannot be achieved without filler
-        // data, so this flag cannot be set even with VAAPI CBR modes.
-        hrd->cbr_flag[0] = 0;
-
-        hrd->initial_cpb_removal_delay_length_minus1 = 23;
-        hrd->cpb_removal_delay_length_minus1         = 23;
-        hrd->dpb_output_delay_length_minus1          = 7;
-        hrd->time_offset_length                      = 0;
-
-        bp->seq_parameter_set_id = sps->seq_parameter_set_id;
-
-        // This calculation can easily overflow 32 bits.
-        bp->nal.initial_cpb_removal_delay[0] = 90000 *
-            (uint64_t)ctx->hrd_params.initial_buffer_fullness /
-            ctx->hrd_params.buffer_size;
-        bp->nal.initial_cpb_removal_delay_offset[0] = 0;
-    } else {
-        sps->vui.nal_hrd_parameters_present_flag = 0;
-        sps->vui.low_delay_hrd_flag = 1 - sps->vui.fixed_frame_rate_flag;
-    }
-
-    sps->vui.bitstream_restriction_flag    = 1;
-    sps->vui.motion_vectors_over_pic_boundaries_flag = 1;
-    sps->vui.log2_max_mv_length_horizontal = 15;
-    sps->vui.log2_max_mv_length_vertical   = 15;
-    sps->vui.max_num_reorder_frames        = base_ctx->max_b_depth;
-    sps->vui.max_dec_frame_buffering       = base_ctx->max_b_depth + 1;
-
-    pps->nal_unit_header.nal_ref_idc = 3;
-    pps->nal_unit_header.nal_unit_type = H264_NAL_PPS;
-
-    pps->pic_parameter_set_id = 0;
-    pps->seq_parameter_set_id = 0;
-
-    pps->entropy_coding_mode_flag =
-        !(sps->profile_idc == AV_PROFILE_H264_BASELINE ||
-          sps->profile_idc == AV_PROFILE_H264_EXTENDED ||
-          sps->profile_idc == AV_PROFILE_H264_CAVLC_444);
-    if (!priv->coder && pps->entropy_coding_mode_flag)
-        pps->entropy_coding_mode_flag = 0;
-
-    pps->num_ref_idx_l0_default_active_minus1 = 0;
-    pps->num_ref_idx_l1_default_active_minus1 = 0;
-
-    pps->pic_init_qp_minus26 = priv->fixed_qp_idr - 26;
-
-    if (sps->profile_idc == AV_PROFILE_H264_BASELINE ||
-        sps->profile_idc == AV_PROFILE_H264_EXTENDED ||
-        sps->profile_idc == AV_PROFILE_H264_MAIN) {
-        pps->more_rbsp_data = 0;
-    } else {
-        pps->more_rbsp_data = 1;
-
-        pps->transform_8x8_mode_flag = 1;
-    }
+    int err = ff_hw_base_encode_init_params_h264(base_ctx, avctx,
+                                                 &priv->units, &unit_opts);
+    if (err < 0)
+        return err;
 
     *vseq = (VAEncSequenceParameterBufferH264) {
         .seq_parameter_set_id = sps->seq_parameter_set_id,
@@ -620,14 +403,17 @@ static int vaapi_encode_h264_init_sequence_params(AVCodecContext *avctx)
 }
 
 static int vaapi_encode_h264_init_picture_params(AVCodecContext *avctx,
-                                                 VAAPIEncodePicture *vaapi_pic)
+                                                 FFHWBaseEncodePicture *pic)
 {
     FFHWBaseEncodeContext       *base_ctx = avctx->priv_data;
+#if !CONFIG_VAAPI_1
+    VAAPIEncodeContext               *ctx = avctx->priv_data;
+#endif
     VAAPIEncodeH264Context          *priv = avctx->priv_data;
-    const FFHWBaseEncodePicture      *pic = &vaapi_pic->base;
-    VAAPIEncodeH264Picture          *hpic = pic->priv_data;
+    VAAPIEncodePicture         *vaapi_pic = pic->priv;
+    VAAPIEncodeH264Picture          *hpic = pic->codec_priv;
     FFHWBaseEncodePicture           *prev = pic->prev;
-    VAAPIEncodeH264Picture         *hprev = prev ? prev->priv_data : NULL;
+    VAAPIEncodeH264Picture         *hprev = prev ? prev->codec_priv : NULL;
     VAEncPictureParameterBufferH264 *vpic = vaapi_pic->codec_picture_params;
     int i, j = 0;
 
@@ -660,7 +446,7 @@ static int vaapi_encode_h264_init_picture_params(AVCodecContext *avctx,
         }
     }
     hpic->pic_order_cnt = pic->display_order - hpic->last_idr_frame;
-    if (priv->raw_sps.pic_order_cnt_type == 2) {
+    if (priv->units.raw_sps.pic_order_cnt_type == 2) {
         hpic->pic_order_cnt *= 2;
     }
 
@@ -736,10 +522,10 @@ static int vaapi_encode_h264_init_picture_params(AVCodecContext *avctx,
             VAAPIEncodeH264Picture *href;
 
             av_assert0(ref && ref->encode_order < pic->encode_order);
-            href = ref->priv_data;
+            href = ref->codec_priv;
 
             vpic->ReferenceFrames[j++] = (VAPictureH264) {
-                .picture_id          = ((VAAPIEncodePicture *)ref)->recon_surface,
+                .picture_id          = ((VAAPIEncodePicture *)ref->priv)->recon_surface,
                 .frame_idx           = href->frame_num,
                 .flags               = VA_PICTURE_H264_SHORT_TERM_REFERENCE,
                 .TopFieldOrderCnt    = href->pic_order_cnt,
@@ -766,37 +552,36 @@ static int vaapi_encode_h264_init_picture_params(AVCodecContext *avctx,
 }
 
 static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
-                                                   VAAPIEncodePicture *vaapi_pic,
-                                                   VAAPIEncodePicture **rpl0,
-                                                   VAAPIEncodePicture **rpl1,
+                                                   FFHWBaseEncodePicture *pic,
+                                                   FFHWBaseEncodePicture **rpl0,
+                                                   FFHWBaseEncodePicture **rpl1,
                                                    int *rpl_size)
 {
-    FFHWBaseEncodePicture *pic = &vaapi_pic->base;
     FFHWBaseEncodePicture *prev;
     VAAPIEncodeH264Picture *hp, *hn, *hc;
     int i, j, n = 0;
 
     prev = pic->prev;
     av_assert0(prev);
-    hp = pic->priv_data;
+    hp = pic->codec_priv;
 
     for (i = 0; i < pic->prev->nb_dpb_pics; i++) {
-        hn = prev->dpb[i]->priv_data;
+        hn = prev->dpb[i]->codec_priv;
         av_assert0(hn->frame_num < hp->frame_num);
 
         if (pic->type == FF_HW_PICTURE_TYPE_P) {
             for (j = n; j > 0; j--) {
-                hc = rpl0[j - 1]->base.priv_data;
+                hc = rpl0[j - 1]->codec_priv;
                 av_assert0(hc->frame_num != hn->frame_num);
                 if (hc->frame_num > hn->frame_num)
                     break;
                 rpl0[j] = rpl0[j - 1];
             }
-            rpl0[j] = (VAAPIEncodePicture *)prev->dpb[i];
+            rpl0[j] = prev->dpb[i];
 
         } else if (pic->type == FF_HW_PICTURE_TYPE_B) {
             for (j = n; j > 0; j--) {
-                hc = rpl0[j - 1]->base.priv_data;
+                hc = rpl0[j - 1]->codec_priv;
                 av_assert0(hc->pic_order_cnt != hp->pic_order_cnt);
                 if (hc->pic_order_cnt < hp->pic_order_cnt) {
                     if (hn->pic_order_cnt > hp->pic_order_cnt ||
@@ -808,10 +593,10 @@ static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
                 }
                 rpl0[j] = rpl0[j - 1];
             }
-            rpl0[j] = (VAAPIEncodePicture *)prev->dpb[i];
+            rpl0[j] = prev->dpb[i];
 
             for (j = n; j > 0; j--) {
-                hc = rpl1[j - 1]->base.priv_data;
+                hc = rpl1[j - 1]->codec_priv;
                 av_assert0(hc->pic_order_cnt != hp->pic_order_cnt);
                 if (hc->pic_order_cnt > hp->pic_order_cnt) {
                     if (hn->pic_order_cnt < hp->pic_order_cnt ||
@@ -823,7 +608,7 @@ static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
                 }
                 rpl1[j] = rpl1[j - 1];
             }
-            rpl1[j] = (VAAPIEncodePicture *)prev->dpb[i];
+            rpl1[j] = prev->dpb[i];
         }
 
         ++n;
@@ -835,7 +620,7 @@ static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
                 break;
         }
         if (i == n)
-            FFSWAP(VAAPIEncodePicture*, rpl1[0], rpl1[1]);
+            FFSWAP(FFHWBaseEncodePicture *, rpl1[0], rpl1[1]);
     }
 
     if (pic->type == FF_HW_PICTURE_TYPE_P ||
@@ -843,7 +628,7 @@ static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
         av_log(avctx, AV_LOG_DEBUG, "Default RefPicList0 for fn=%d/poc=%d:",
                hp->frame_num, hp->pic_order_cnt);
         for (i = 0; i < n; i++) {
-            hn = rpl0[i]->base.priv_data;
+            hn = rpl0[i]->codec_priv;
             av_log(avctx, AV_LOG_DEBUG, "  fn=%d/poc=%d",
                    hn->frame_num, hn->pic_order_cnt);
         }
@@ -853,7 +638,7 @@ static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
         av_log(avctx, AV_LOG_DEBUG, "Default RefPicList1 for fn=%d/poc=%d:",
                hp->frame_num, hp->pic_order_cnt);
         for (i = 0; i < n; i++) {
-            hn = rpl1[i]->base.priv_data;
+            hn = rpl1[i]->codec_priv;
             av_log(avctx, AV_LOG_DEBUG, "  fn=%d/poc=%d",
                    hn->frame_num, hn->pic_order_cnt);
         }
@@ -864,15 +649,15 @@ static void vaapi_encode_h264_default_ref_pic_list(AVCodecContext *avctx,
 }
 
 static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
-                                               VAAPIEncodePicture *vaapi_pic,
+                                               FFHWBaseEncodePicture *pic,
                                                VAAPIEncodeSlice *slice)
 {
     VAAPIEncodeH264Context          *priv = avctx->priv_data;
-    const FFHWBaseEncodePicture      *pic = &vaapi_pic->base;
-    VAAPIEncodeH264Picture          *hpic = pic->priv_data;
+    VAAPIEncodePicture         *vaapi_pic = pic->priv;
+    VAAPIEncodeH264Picture          *hpic = pic->codec_priv;
     FFHWBaseEncodePicture           *prev = pic->prev;
-    H264RawSPS                       *sps = &priv->raw_sps;
-    H264RawPPS                       *pps = &priv->raw_pps;
+    H264RawSPS                       *sps = &priv->units.raw_sps;
+    H264RawPPS                       *pps = &priv->units.raw_pps;
     H264RawSliceHeader                *sh = &priv->raw_slice.header;
     VAEncPictureParameterBufferH264 *vpic = vaapi_pic->codec_picture_params;
     VAEncSliceParameterBufferH264 *vslice = slice->codec_slice_params;
@@ -924,14 +709,14 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
                 ++keep;
             }
         }
-        av_assert0(keep <= priv->dpb_frames);
+        av_assert0(keep <= priv->units.dpb_frames);
 
         if (discard == 0) {
             sh->adaptive_ref_pic_marking_mode_flag = 0;
         } else {
             sh->adaptive_ref_pic_marking_mode_flag = 1;
             for (i = 0; i < discard; i++) {
-                VAAPIEncodeH264Picture *old = discard_list[i]->priv_data;
+                VAAPIEncodeH264Picture *old = discard_list[i]->codec_priv;
                 av_assert0(old->frame_num < hpic->frame_num);
                 sh->mmco[i].memory_management_control_operation = 1;
                 sh->mmco[i].difference_of_pic_nums_minus1 =
@@ -944,11 +729,11 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
     // If the intended references are not the first entries of RefPicListN
     // by default, use ref-pic-list-modification to move them there.
     if (pic->type == FF_HW_PICTURE_TYPE_P || pic->type == FF_HW_PICTURE_TYPE_B) {
-        VAAPIEncodePicture *def_l0[MAX_DPB_SIZE], *def_l1[MAX_DPB_SIZE];
+        FFHWBaseEncodePicture *def_l0[MAX_DPB_SIZE], *def_l1[MAX_DPB_SIZE];
         VAAPIEncodeH264Picture *href;
         int n;
 
-        vaapi_encode_h264_default_ref_pic_list(avctx, vaapi_pic,
+        vaapi_encode_h264_default_ref_pic_list(avctx, pic,
                                                def_l0, def_l1, &n);
 
         if (pic->type == FF_HW_PICTURE_TYPE_P) {
@@ -963,7 +748,7 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
             if (need_rplm) {
                 int pic_num = hpic->frame_num;
                 for (i = 0; i < pic->nb_refs[0]; i++) {
-                    href = pic->refs[0][i]->priv_data;
+                    href = pic->refs[0][i]->codec_priv;
                     av_assert0(href->frame_num != pic_num);
                     if (href->frame_num < pic_num) {
                         sh->rplm_l0[i].modification_of_pic_nums_idc = 0;
@@ -984,7 +769,7 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
             int n0 = 0, n1 = 0;
             for (i = 0; i < pic->nb_refs[0]; i++) {
                 av_assert0(pic->refs[0][i]);
-                href = pic->refs[0][i]->priv_data;
+                href = pic->refs[0][i]->codec_priv;
                 av_assert0(href->pic_order_cnt < hpic->pic_order_cnt);
                 if (pic->refs[0][i] != (FFHWBaseEncodePicture *)def_l0[n0])
                     need_rplm_l0 = 1;
@@ -993,7 +778,7 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
 
             for (i = 0; i < pic->nb_refs[1]; i++) {
                 av_assert0(pic->refs[1][i]);
-                href = pic->refs[1][i]->priv_data;
+                href = pic->refs[1][i]->codec_priv;
                 av_assert0(href->pic_order_cnt > hpic->pic_order_cnt);
                 if (pic->refs[1][i] != (FFHWBaseEncodePicture *)def_l1[n1])
                     need_rplm_l1 = 1;
@@ -1004,7 +789,7 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
             if (need_rplm_l0) {
                 int pic_num = hpic->frame_num;
                 for (i = j = 0; i < pic->nb_refs[0]; i++) {
-                    href = pic->refs[0][i]->priv_data;
+                    href = pic->refs[0][i]->codec_priv;
                     av_assert0(href->frame_num != pic_num);
                     if (href->frame_num < pic_num) {
                         sh->rplm_l0[j].modification_of_pic_nums_idc = 0;
@@ -1026,7 +811,7 @@ static int vaapi_encode_h264_init_slice_params(AVCodecContext *avctx,
             if (need_rplm_l1) {
                 int pic_num = hpic->frame_num;
                 for (i = j = 0; i < pic->nb_refs[1]; i++) {
-                    href = pic->refs[1][i]->priv_data;
+                    href = pic->refs[1][i]->codec_priv;
                     av_assert0(href->frame_num != pic_num);
                     if (href->frame_num < pic_num) {
                         sh->rplm_l1[j].modification_of_pic_nums_idc = 0;
@@ -1397,6 +1182,7 @@ const FFCodec ff_h264_vaapi_encoder = {
         AV_PIX_FMT_VAAPI,
         AV_PIX_FMT_NONE,
     },
+    .color_ranges   = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
     .hw_configs     = ff_vaapi_encode_hw_configs,
     .p.wrapper_name = "vaapi",
 };

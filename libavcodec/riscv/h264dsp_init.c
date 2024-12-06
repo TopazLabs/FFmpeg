@@ -40,6 +40,13 @@ void ff_h264_h_loop_filter_luma_8_rvv(uint8_t *pix, ptrdiff_t stride,
                                       int alpha, int beta, int8_t *tc0);
 void ff_h264_h_loop_filter_luma_mbaff_8_rvv(uint8_t *pix, ptrdiff_t stride,
                                             int alpha, int beta, int8_t *tc0);
+void ff_h264_v_loop_filter_chroma_8_rvv(uint8_t *pix, ptrdiff_t stride,
+                                        int alpha, int beta, int8_t *tc0);
+void ff_h264_h_loop_filter_chroma_8_rvv(uint8_t *pix, ptrdiff_t stride,
+                                        int alpha, int beta, int8_t *tc0);
+void ff_h264_h_loop_filter_chroma_mbaff_8_rvv(uint8_t *pix, ptrdiff_t stride,
+                                              int alpha, int beta,
+                                              int8_t *tc0);
 
 #define IDCT_DEPTH(depth) \
 void ff_h264_idct_add_##depth##_rvv(uint8_t *d, int16_t *s, int stride); \
@@ -89,18 +96,43 @@ av_cold void ff_h264dsp_init_riscv(H264DSPContext *dsp, const int bit_depth,
     if (flags & AV_CPU_FLAG_RVV_I32) {
         const bool zvl128b = ff_rv_vlen_least(128);
 
-        if (bit_depth == 8 && zvl128b) {
-            for (int i = 0; i < 4; i++) {
-                dsp->weight_h264_pixels_tab[i] =
-                    ff_h264_weight_funcs_8_rvv[i].weight;
-                dsp->biweight_h264_pixels_tab[i] =
-                    ff_h264_weight_funcs_8_rvv[i].biweight;
+        if (bit_depth == 8) {
+            if (zvl128b) {
+                if (flags & AV_CPU_FLAG_RVB)
+                    dsp->weight_h264_pixels_tab[0] =
+                        ff_h264_weight_funcs_8_rvv[0].weight;
+                dsp->biweight_h264_pixels_tab[0] =
+                    ff_h264_weight_funcs_8_rvv[0].biweight;
             }
+            if (flags & AV_CPU_FLAG_RVV_I64) {
+                dsp->weight_h264_pixels_tab[1] =
+                    ff_h264_weight_funcs_8_rvv[1].weight;
+                dsp->biweight_h264_pixels_tab[1] =
+                    ff_h264_weight_funcs_8_rvv[1].biweight;
+            }
+            dsp->weight_h264_pixels_tab[2] =
+                 ff_h264_weight_funcs_8_rvv[2].weight;
+            dsp->biweight_h264_pixels_tab[2] =
+                 ff_h264_weight_funcs_8_rvv[2].biweight;
+            dsp->weight_h264_pixels_tab[3] =
+                 ff_h264_weight_funcs_8_rvv[3].weight;
+            dsp->biweight_h264_pixels_tab[3] =
+                 ff_h264_weight_funcs_8_rvv[3].biweight;
+        }
 
+        if (bit_depth == 8 && zvl128b) {
             dsp->h264_v_loop_filter_luma = ff_h264_v_loop_filter_luma_8_rvv;
             dsp->h264_h_loop_filter_luma = ff_h264_h_loop_filter_luma_8_rvv;
             dsp->h264_h_loop_filter_luma_mbaff =
                 ff_h264_h_loop_filter_luma_mbaff_8_rvv;
+            dsp->h264_v_loop_filter_chroma =
+                ff_h264_v_loop_filter_chroma_8_rvv;
+            if (chroma_format_idc <= 1) {
+                dsp->h264_h_loop_filter_chroma =
+                    ff_h264_h_loop_filter_chroma_8_rvv;
+                dsp->h264_h_loop_filter_chroma_mbaff =
+                    ff_h264_h_loop_filter_chroma_mbaff_8_rvv;
+            }
 
             dsp->h264_idct_add  = ff_h264_idct_add_8_rvv;
             dsp->h264_idct8_add = ff_h264_idct8_add_8_rvv;

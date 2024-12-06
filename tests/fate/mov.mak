@@ -1,4 +1,4 @@
-FATE_MOV = fate-mov-3elist \
+FATE_MOV-$(call FRAMEMD5, MOV) = fate-mov-3elist \
            fate-mov-3elist-1ctts \
            fate-mov-1elist-1ctts \
            fate-mov-1elist-noctts \
@@ -17,7 +17,7 @@ FATE_MOV = fate-mov-3elist \
            fate-mov-stream-shorter-than-movie \
            fate-mov-pcm-remux \
 
-FATE_MOV_FFPROBE = fate-mov-neg-firstpts-discard \
+FATE_MOV_FFPROBE-$(call FRAMEMD5, MOV) = fate-mov-neg-firstpts-discard \
                    fate-mov-neg-firstpts-discard-vorbis \
                    fate-mov-aac-2048-priming \
                    fate-mov-zombie \
@@ -33,8 +33,8 @@ FATE_MOV_FFPROBE = fate-mov-neg-firstpts-discard \
 
 FATE_MOV_FASTSTART = fate-mov-faststart-4gb-overflow \
 
-FATE_SAMPLES_AVCONV += $(FATE_MOV)
-FATE_SAMPLES_FFPROBE += $(FATE_MOV_FFPROBE)
+FATE_SAMPLES_FFMPEG += $(FATE_MOV-yes)
+FATE_SAMPLES_FFPROBE += $(FATE_MOV_FFPROBE-yes)
 FATE_SAMPLES_FASTSTART += $(FATE_MOV_FASTSTART)
 
 # Make sure we handle edit lists correctly in normal cases.
@@ -164,6 +164,12 @@ FATE_MOV_FFMPEG_SAMPLES-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER) \
                            += fate-mov-heic-demux-still-image-multiple-items
 fate-mov-heic-demux-still-image-multiple-items: CMD = framecrc -i $(TARGET_SAMPLES)/heif-conformance/C003.heic -c:v copy -map 0
 
+# heic demuxing - still image with multiple items, exporting cropping and/or rotation information.
+FATE_MOV_FFMPEG_FFPROBE_SAMPLES-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER) \
+                           += fate-mov-heic-demux-clap-irot-imir
+fate-mov-heic-demux-clap-irot-imir: CMD = stream_demux mov $(TARGET_SAMPLES)/heif-conformance/MIAF007.heic "" "-c:v copy -map 0" \
+  "-show_entries stream=index,id:stream_disposition:stream_side_data_list"
+
 # heic demuxing - still image with multiple items in a grid.
 FATE_MOV_FFMPEG_FFPROBE_SAMPLES-$(call DEMMUX, MOV, FRAMECRC, HEVC_DECODER HEVC_PARSER) \
                            += fate-mov-heic-demux-still-image-grid
@@ -281,4 +287,4 @@ fate-mov-mp4-iamf-ambisonic_1: CMD = transcode wav $(SRC) mp4 "-auto_conversion_
 FATE_FFMPEG += $(FATE_MOV_FFMPEG-yes)
 FATE_FFMPEG_FFPROBE += $(FATE_MOV_FFMPEG_FFPROBE-yes)
 
-fate-mov: $(FATE_MOV) $(FATE_MOV_FFMPEG-yes) $(FATE_MOV_FFMPEG_FFPROBE-yes) $(FATE_MOV_FFPROBE) $(FATE_MOV_FASTSTART) $(FATE_MOV_FFMPEG_SAMPLES-yes) $(FATE_MOV_FFMPEG_FFPROBE_SAMPLES-yes)
+fate-mov: $(FATE_MOV-yes) $(FATE_MOV_FFMPEG-yes) $(FATE_MOV_FFMPEG_FFPROBE-yes) $(FATE_MOV_FFPROBE-yes) $(FATE_MOV_FASTSTART) $(FATE_MOV_FFMPEG_SAMPLES-yes) $(FATE_MOV_FFMPEG_FFPROBE_SAMPLES-yes)
