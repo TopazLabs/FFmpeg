@@ -35,6 +35,7 @@ static int vdpau_hevc_start_frame(AVCodecContext *avctx,
                                   const uint8_t *buffer, uint32_t size)
 {
     HEVCContext *h = avctx->priv_data;
+    const HEVCLayerContext *l = &h->layers[h->cur_layer];
     HEVCFrame *pic = h->cur_frame;
     struct vdpau_picture_context *pic_ctx = pic->hwaccel_picture_private;
 
@@ -205,7 +206,7 @@ static int vdpau_hevc_start_frame(AVCodecContext *avctx,
         }
     }
     /* See section 7.4.7.2 of the specification. */
-    info->NumPocTotalCurr = ff_hevc_frame_nb_refs(&h->sh, pps);
+    info->NumPocTotalCurr = ff_hevc_frame_nb_refs(&h->sh, pps, h->cur_layer);
     if (sh->short_term_ref_pic_set_sps_flag == 0 && sh->short_term_rps) {
         /* Corresponds to specification field, NumDeltaPocs[RefRpsIdx].
            Only applicable when short_term_ref_pic_set_sps_flag == 0.
@@ -236,8 +237,8 @@ static int vdpau_hevc_start_frame(AVCodecContext *avctx,
         info->PicOrderCntVal[i] = 0;
         info->IsLongTerm[i] = 0;
     }
-    for (size_t i = 0, j = 0; i < FF_ARRAY_ELEMS(h->DPB); i++) {
-        const HEVCFrame *frame = &h->DPB[i];
+    for (size_t i = 0, j = 0; i < FF_ARRAY_ELEMS(l->DPB); i++) {
+        const HEVCFrame *frame = &l->DPB[i];
         if (frame != h->cur_frame && (frame->flags & (HEVC_FRAME_FLAG_LONG_REF |
                                                 HEVC_FRAME_FLAG_SHORT_REF))) {
             if (j > 15) {
@@ -469,7 +470,7 @@ static int ptl_convert(const PTLCommon *general_ptl, H265RawProfileTierLevel *h2
 static int vdpau_hevc_parse_rext_profile(AVCodecContext *avctx, VdpDecoderProfile *vdp_profile)
 {
     const HEVCContext *h = avctx->priv_data;
-    const HEVCSPS *sps = h->ps.sps;
+    const HEVCSPS *sps = h->pps->sps;
     const PTL *ptl = &sps->ptl;
     const PTLCommon *general_ptl = &ptl->general_ptl;
     const H265ProfileDescriptor *profile;

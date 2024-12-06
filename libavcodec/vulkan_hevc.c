@@ -136,6 +136,7 @@ static int vk_hevc_fill_pict(AVCodecContext *avctx, HEVCFrame **ref_src,
                              HEVCFrame *pic, int is_current, int pic_id)
 {
     FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
+    FFVulkanDecodeShared *ctx = dec->shared_ctx;
     HEVCVulkanDecodePicture *hp = pic->hwaccel_picture_private;
     FFVulkanDecodePicture *vkpic = &hp->vp;
 
@@ -161,7 +162,7 @@ static int vk_hevc_fill_pict(AVCodecContext *avctx, HEVCFrame **ref_src,
         .sType = VK_STRUCTURE_TYPE_VIDEO_PICTURE_RESOURCE_INFO_KHR,
         .codedOffset = (VkOffset2D){ 0, 0 },
         .codedExtent = (VkExtent2D){ pic->f->width, pic->f->height },
-        .baseArrayLayer = dec->layered_dpb ? pic_id : 0,
+        .baseArrayLayer = ctx->common.layered_dpb ? pic_id : 0,
         .imageViewBinding = vkpic->img_view_ref,
     };
 
@@ -176,25 +177,6 @@ static int vk_hevc_fill_pict(AVCodecContext *avctx, HEVCFrame **ref_src,
         *ref_src = pic;
 
     return 0;
-}
-
-static StdVideoH265LevelIdc convert_to_vk_level_idc(int level_idc)
-{
-    switch (level_idc) {
-    case 10: return STD_VIDEO_H265_LEVEL_IDC_1_0;
-    case 20: return STD_VIDEO_H265_LEVEL_IDC_2_0;
-    case 21: return STD_VIDEO_H265_LEVEL_IDC_2_1;
-    case 30: return STD_VIDEO_H265_LEVEL_IDC_3_0;
-    case 31: return STD_VIDEO_H265_LEVEL_IDC_3_1;
-    case 40: return STD_VIDEO_H265_LEVEL_IDC_4_0;
-    case 41: return STD_VIDEO_H265_LEVEL_IDC_4_1;
-    case 50: return STD_VIDEO_H265_LEVEL_IDC_5_0;
-    case 51: return STD_VIDEO_H265_LEVEL_IDC_5_1;
-    case 60: return STD_VIDEO_H265_LEVEL_IDC_6_0;
-    case 61: return STD_VIDEO_H265_LEVEL_IDC_6_1;
-    default:
-    case 62: return STD_VIDEO_H265_LEVEL_IDC_6_2;
-    }
 }
 
 static void copy_scaling_list(const ScalingList *sl, StdVideoH265ScalingLists *vksl)
@@ -337,7 +319,7 @@ static void set_sps(const HEVCSPS *sps, int sps_idx,
             .general_frame_only_constraint_flag = sps->ptl.general_ptl.frame_only_constraint_flag,
         },
         .general_profile_idc = sps->ptl.general_ptl.profile_idc,
-        .general_level_idc = convert_to_vk_level_idc(sps->ptl.general_ptl.level_idc),
+        .general_level_idc = ff_vk_h265_level_to_vk(sps->ptl.general_ptl.level_idc),
     };
 
     for (int i = 0; i < sps->max_sub_layers; i++) {
@@ -606,8 +588,8 @@ static void set_vps(const HEVCVPS *vps,
             .general_non_packed_constraint_flag = vps->ptl.general_ptl.non_packed_constraint_flag,
             .general_frame_only_constraint_flag = vps->ptl.general_ptl.frame_only_constraint_flag,
         },
-        .general_profile_idc = vps->ptl.general_ptl.profile_idc,
-        .general_level_idc = convert_to_vk_level_idc(vps->ptl.general_ptl.level_idc),
+        .general_profile_idc = ff_vk_h265_profile_to_vk(vps->ptl.general_ptl.profile_idc),
+        .general_level_idc = ff_vk_h265_level_to_vk(vps->ptl.general_ptl.level_idc),
     };
 
     for (int i = 0; i < vps->vps_max_sub_layers; i++) {
@@ -731,6 +713,7 @@ static int vk_hevc_start_frame(AVCodecContext          *avctx,
 {
     int err;
     HEVCContext *h = avctx->priv_data;
+    HEVCLayerContext *l = &h->layers[h->cur_layer];
     HEVCFrame *pic = h->cur_frame;
     FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
     HEVCVulkanDecodePicture *hp = pic->hwaccel_picture_private;
@@ -762,8 +745,8 @@ static int vk_hevc_start_frame(AVCodecContext          *avctx,
     };
 
     /* Fill in references */
-    for (int i = 0; i < FF_ARRAY_ELEMS(h->DPB); i++) {
-        const HEVCFrame *ref = &h->DPB[i];
+    for (int i = 0; i < FF_ARRAY_ELEMS(l->DPB); i++) {
+        const HEVCFrame *ref = &l->DPB[i];
         int idx = nb_refs;
 
         if (!(ref->flags & (HEVC_FRAME_FLAG_SHORT_REF | HEVC_FRAME_FLAG_LONG_REF)))
@@ -790,8 +773,8 @@ static int vk_hevc_start_frame(AVCodecContext          *avctx,
     memset(hp->h265pic.RefPicSetStCurrBefore, 0xff, 8);
     for (int i = 0; i < h->rps[ST_CURR_BEF].nb_refs; i++) {
         HEVCFrame *frame = h->rps[ST_CURR_BEF].ref[i];
-        for (int j = 0; j < FF_ARRAY_ELEMS(h->DPB); j++) {
-            const HEVCFrame *ref = &h->DPB[j];
+        for (int j = 0; j < FF_ARRAY_ELEMS(l->DPB); j++) {
+            const HEVCFrame *ref = &l->DPB[j];
             if (ref == frame) {
                 hp->h265pic.RefPicSetStCurrBefore[i] = j;
                 break;
@@ -801,8 +784,8 @@ static int vk_hevc_start_frame(AVCodecContext          *avctx,
     memset(hp->h265pic.RefPicSetStCurrAfter, 0xff, 8);
     for (int i = 0; i < h->rps[ST_CURR_AFT].nb_refs; i++) {
         HEVCFrame *frame = h->rps[ST_CURR_AFT].ref[i];
-        for (int j = 0; j < FF_ARRAY_ELEMS(h->DPB); j++) {
-            const HEVCFrame *ref = &h->DPB[j];
+        for (int j = 0; j < FF_ARRAY_ELEMS(l->DPB); j++) {
+            const HEVCFrame *ref = &l->DPB[j];
             if (ref == frame) {
                 hp->h265pic.RefPicSetStCurrAfter[i] = j;
                 break;
@@ -812,8 +795,8 @@ static int vk_hevc_start_frame(AVCodecContext          *avctx,
     memset(hp->h265pic.RefPicSetLtCurr, 0xff, 8);
     for (int i = 0; i < h->rps[LT_CURR].nb_refs; i++) {
         HEVCFrame *frame = h->rps[LT_CURR].ref[i];
-        for (int j = 0; j < FF_ARRAY_ELEMS(h->DPB); j++) {
-            const HEVCFrame *ref = &h->DPB[j];
+        for (int j = 0; j < FF_ARRAY_ELEMS(l->DPB); j++) {
+            const HEVCFrame *ref = &l->DPB[j];
             if (ref == frame) {
                 hp->h265pic.RefPicSetLtCurr[i] = j;
                 break;

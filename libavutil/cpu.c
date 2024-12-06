@@ -49,6 +49,10 @@
 #include <unistd.h>
 #endif
 
+#if HAVE_GETAUXVAL || HAVE_ELF_AUX_INFO
+#include <sys/auxv.h>
+#endif
+
 static atomic_int cpu_flags = -1;
 static atomic_int cpu_count = -1;
 
@@ -116,6 +120,8 @@ int av_parse_cpu_caps(unsigned *flags, const char *s)
         { "flags"   , NULL, 0, AV_OPT_TYPE_FLAGS, { .i64 = 0 }, INT64_MIN, INT64_MAX, .unit = "flags" },
 #if   ARCH_PPC
         { "altivec" , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_ALTIVEC  },    .unit = "flags" },
+        { "vsx"     , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_VSX      },    .unit = "flags" },
+        { "power8"  , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_POWER8   },    .unit = "flags" },
 #elif ARCH_X86
         { "mmx"     , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_MMX      },    .unit = "flags" },
         { "mmx2"    , NULL, 0, AV_OPT_TYPE_CONST, { .i64 = AV_CPU_FLAG_MMX2     },    .unit = "flags" },
@@ -282,4 +288,21 @@ size_t av_cpu_max_align(void)
 #endif
 
     return 8;
+}
+
+unsigned long ff_getauxval(unsigned long type)
+{
+#if HAVE_GETAUXVAL
+    return getauxval(type);
+#elif HAVE_ELF_AUX_INFO
+    unsigned long aux = 0;
+    int ret = elf_aux_info(type, &aux, sizeof(aux));
+    if (ret != 0) {
+        errno = ret;
+    }
+    return aux;
+#else
+    errno = ENOSYS;
+    return 0;
+#endif
 }

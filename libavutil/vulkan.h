@@ -112,44 +112,6 @@ typedef struct FFVkQueueFamilyCtx {
     int nb_queues;
 } FFVkQueueFamilyCtx;
 
-typedef struct FFVulkanDescriptorSet {
-    VkDescriptorSetLayout  layout;
-    FFVkBuffer             buf;
-    uint8_t               *desc_mem;
-    VkDeviceSize           layout_size;
-    VkDeviceSize           aligned_size; /* descriptorBufferOffsetAlignment */
-    VkDeviceSize           total_size; /* Once registered to an exec context */
-    VkBufferUsageFlags     usage;
-
-    VkDescriptorSetLayoutBinding *binding;
-    VkDeviceSize *binding_offset;
-    int nb_bindings;
-
-    /* Descriptor set is shared between all submissions */
-    int singular;
-} FFVulkanDescriptorSet;
-
-typedef struct FFVulkanPipeline {
-    VkPipelineBindPoint bind_point;
-
-    /* Contexts */
-    VkPipelineLayout pipeline_layout;
-    VkPipeline       pipeline;
-
-    /* Push consts */
-    VkPushConstantRange *push_consts;
-    int push_consts_num;
-
-    /* Workgroup */
-    int wg_size[3];
-
-    /* Descriptors */
-    FFVulkanDescriptorSet *desc_set;
-    VkDescriptorBufferBindingInfoEXT *desc_bind;
-    uint32_t *bound_buffer_indices;
-    int nb_descriptor_sets;
-} FFVulkanPipeline;
-
 typedef struct FFVkExecContext {
     uint32_t idx;
     const struct FFVkExecPool *parent;
@@ -226,8 +188,56 @@ typedef struct FFVkExecPool {
     size_t qd_size;
 } FFVkExecPool;
 
+typedef struct FFVulkanDescriptorSet {
+    FFVkBuffer             buf;
+    uint8_t               *desc_mem;
+    VkDeviceSize           layout_size;
+    VkDeviceSize           aligned_size; /* descriptorBufferOffsetAlignment */
+    VkDeviceSize           total_size; /* Once registered to an exec context */
+    VkBufferUsageFlags     usage;
+
+    VkDescriptorSetLayoutBinding *binding;
+    VkDeviceSize *binding_offset;
+    int nb_bindings;
+
+    /* Descriptor set is shared between all submissions */
+    int singular;
+} FFVulkanDescriptorSet;
+
+typedef struct FFVulkanPipeline {
+    VkPipelineBindPoint bind_point;
+
+    /* Contexts */
+    VkPipelineLayout pipeline_layout;
+    VkPipeline       pipeline;
+
+    /* Push consts */
+    VkPushConstantRange *push_consts;
+    int push_consts_num;
+
+    /* Workgroup */
+    int wg_size[3];
+
+    /* Descriptor buffer */
+    VkDescriptorSetLayout *desc_layout;
+    FFVulkanDescriptorSet *desc_set;
+    VkDescriptorBufferBindingInfoEXT *desc_bind;
+    uint32_t *bound_buffer_indices;
+    int nb_descriptor_sets;
+
+    /* Descriptor pool */
+    int use_push;
+    VkDescriptorSet *desc_sets;
+    VkDescriptorPool desc_pool;
+    VkDescriptorPoolSize *desc_pool_size;
+    int nb_desc_pool_size;
+    int total_desc_sets;
+    FFVkExecPool *assoc_pool;
+} FFVulkanPipeline;
+
 typedef struct FFVulkanContext {
-    const AVClass *class; /* Filters and encoders use this */
+    const AVClass *class;
+    void *log_parent;
 
     FFVulkanFunctions     vkfn;
     FFVulkanExtensions    extensions;
@@ -251,6 +261,7 @@ typedef struct FFVulkanContext {
     VkPhysicalDeviceVulkan12Features feats_12;
     VkPhysicalDeviceFeatures2 feats;
 
+    AVBufferRef           *device_ref;
     AVHWDeviceContext     *device;
     AVVulkanDeviceContext *hwctx;
 
@@ -304,6 +315,14 @@ static inline void ff_vk_link_struct(void *chain, const void *in)
 extern const VkComponentMapping ff_comp_identity_map;
 
 /**
+ * Initializes the AVClass, in case this context is not used
+ * as the main user's context.
+ * May use either a frames context reference, or a device context reference.
+ */
+int ff_vk_init(FFVulkanContext *s, void *log_parent,
+               AVBufferRef *device_ref, AVBufferRef *frames_ref);
+
+/**
  * Converts Vulkan return values to strings
  */
 const char *ff_vk_ret2str(VkResult res);
@@ -347,10 +366,11 @@ FFVkExecContext *ff_vk_exec_get(FFVkExecPool *pool);
 
 /**
  * Performs nb_queries queries and returns their results and statuses.
- * Execution must have been waited on to produce valid results.
+ * 64_BIT and WITH_STATUS flags are ignored as 64_BIT must be specified via
+ * query_64bit in ff_vk_exec_pool_init() and WITH_STATUS is always enabled.
  */
 VkResult ff_vk_exec_get_query(FFVulkanContext *s, FFVkExecContext *e,
-                              void **data, int64_t *status);
+                              void **data, VkQueryResultFlagBits flags);
 
 /**
  * Start/submit/wait an execution.
@@ -372,6 +392,10 @@ void ff_vk_exec_wait(FFVulkanContext *s, FFVkExecContext *e);
  */
 int ff_vk_exec_add_dep_buf(FFVulkanContext *s, FFVkExecContext *e,
                            AVBufferRef **deps, int nb_deps, int ref);
+int ff_vk_exec_add_dep_bool_sem(FFVulkanContext *s, FFVkExecContext *e,
+                                VkSemaphore *sem, int nb,
+                                VkPipelineStageFlagBits2 stage,
+                                int wait); /* Ownership transferred if !wait */
 int ff_vk_exec_add_dep_frame(FFVulkanContext *s, FFVkExecContext *e, AVFrame *f,
                              VkPipelineStageFlagBits2 wait_stage,
                              VkPipelineStageFlagBits2 signal_stage);
@@ -493,8 +517,9 @@ void ff_vk_exec_bind_pipeline(FFVulkanContext *s, FFVkExecContext *e,
                               FFVulkanPipeline *pl);
 
 int ff_vk_set_descriptor_buffer(FFVulkanContext *s, FFVulkanPipeline *pl,
-                                FFVkExecContext *e, int set, int bind, int offs,
-                                VkDeviceAddress addr, VkDeviceSize len, VkFormat fmt);
+                                FFVkExecContext *e, int set, int bind, int elem,
+                                FFVkBuffer *buf, VkDeviceSize offset, VkDeviceSize len,
+                                VkFormat fmt);
 
 void ff_vk_update_descriptor_img_array(FFVulkanContext *s, FFVulkanPipeline *pl,
                                        FFVkExecContext *e, AVFrame *f,

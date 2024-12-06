@@ -18,6 +18,31 @@
  * You should have received a copy of the GNU General Public License along
  * with FFmpeg; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * Copyright © 2018, VideoLAN and dav1d authors
+ * Copyright © 2018, Two Orioles, LLC
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ *    list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ *    this list of conditions and the following disclaimer in the documentation
+ *    and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "config.h"
@@ -170,6 +195,9 @@ static const struct {
     #if CONFIG_ME_CMP
         { "motion", checkasm_check_motion },
     #endif
+    #if CONFIG_MPEGVIDEOENC
+        { "mpegvideoencdsp", checkasm_check_mpegvideoencdsp },
+    #endif
     #if CONFIG_OPUS_DECODER
         { "opusdsp", checkasm_check_opusdsp },
     #endif
@@ -255,6 +283,7 @@ static const struct {
     { "sw_rgb", checkasm_check_sw_rgb },
     { "sw_scale", checkasm_check_sw_scale },
     { "sw_yuv2rgb", checkasm_check_sw_yuv2rgb },
+    { "sw_yuv2yuv", checkasm_check_sw_yuv2yuv },
 #endif
 #if CONFIG_AVUTIL
         { "fixed_dsp", checkasm_check_fixed_dsp },
@@ -291,13 +320,13 @@ static const struct {
 #elif ARCH_RISCV
     { "RVI",      "rvi",      AV_CPU_FLAG_RVI },
     { "misaligned", "misaligned", AV_CPU_FLAG_RV_MISALIGNED },
-    { "RVBbasic", "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
+    { "RV_zbb",   "rvb_b",    AV_CPU_FLAG_RVB_BASIC },
     { "RVB",      "rvb",      AV_CPU_FLAG_RVB },
-    { "RVVi32",   "rvv_i32",  AV_CPU_FLAG_RVV_I32 },
-    { "RVVf32",   "rvv_f32",  AV_CPU_FLAG_RVV_F32 },
-    { "RVVi64",   "rvv_i64",  AV_CPU_FLAG_RVV_I64 },
-    { "RVVf64",   "rvv_f64",  AV_CPU_FLAG_RVV_F64 },
-    { "RV_Zvbb",  "rv_zvbb",  AV_CPU_FLAG_RV_ZVBB },
+    { "RV_zve32x","rvv_i32",  AV_CPU_FLAG_RVV_I32 },
+    { "RV_zve32f","rvv_f32",  AV_CPU_FLAG_RVV_F32 },
+    { "RV_zve64x","rvv_i64",  AV_CPU_FLAG_RVV_I64 },
+    { "RV_zve64d","rvv_f64",  AV_CPU_FLAG_RVV_F64 },
+    { "RV_zvbb",  "rv_zvbb",  AV_CPU_FLAG_RV_ZVBB },
 #elif ARCH_MIPS
     { "MMI",      "mmi",      AV_CPU_FLAG_MMI },
     { "MSA",      "msa",      AV_CPU_FLAG_MSA },
@@ -360,8 +389,10 @@ static struct {
 
     int cpu_flag;
     const char *cpu_flag_name;
-    const char *test_name;
+    const char *test_pattern;
     int verbose;
+    int csv;
+    int tsv;
     volatile sig_atomic_t catch_signals;
 } state;
 
@@ -573,6 +604,16 @@ static int measure_nop_time(void)
     return nop_sum / 500;
 }
 
+static inline double avg_cycles_per_call(const CheckasmPerf *const p)
+{
+    if (p->iterations) {
+        const double cycles = (double)(10 * p->cycles) / p->iterations - state.nop_time;
+        if (cycles > 0.0)
+            return cycles / 4.0; /* 4 calls per iteration */
+    }
+    return 0.0;
+}
+
 /* Print benchmark results */
 static void print_benchs(CheckasmFunc *f)
 {
@@ -582,11 +623,26 @@ static void print_benchs(CheckasmFunc *f)
         /* Only print functions with at least one assembly version */
         if (f->versions.cpu || f->versions.next) {
             CheckasmFuncVersion *v = &f->versions;
+            const CheckasmPerf *p = &v->perf;
+            const double baseline = avg_cycles_per_call(p);
+            double decicycles;
             do {
-                CheckasmPerf *p = &v->perf;
                 if (p->iterations) {
-                    int decicycles = (10*p->cycles/p->iterations - state.nop_time) / 4;
-                    printf("%s_%s: %d.%d\n", f->name, cpu_suffix(v->cpu), decicycles/10, decicycles%10);
+                    p = &v->perf;
+                    decicycles = avg_cycles_per_call(p);
+                    if (state.csv || state.tsv) {
+                        const char sep = state.csv ? ',' : '\t';
+                        printf("%s%c%s%c%.1f\n", f->name, sep,
+                               cpu_suffix(v->cpu), sep,
+                               decicycles / 10.0);
+                    } else {
+                        const int pad_length = 10 + 50 -
+                            printf("%s_%s:", f->name, cpu_suffix(v->cpu));
+                        const double ratio = decicycles ?
+                            baseline / decicycles : 0.0;
+                        printf("%*.1f (%5.2fx)\n", FFMAX(pad_length, 0),
+                            decicycles / 10.0, ratio);
+                    }
                 }
             } while ((v = v->next));
         }
@@ -719,6 +775,22 @@ static void signal_handler(int s) {
 }
 #endif
 
+/* Compares a string with a wildcard pattern. */
+static int wildstrcmp(const char *str, const char *pattern)
+{
+    const char *wild = strchr(pattern, '*');
+    if (wild) {
+        const size_t len = wild - pattern;
+        if (strncmp(str, pattern, len)) return 1;
+        while (*++wild == '*');
+        if (!*wild) return 0;
+        str += len;
+        while (*str && wildstrcmp(str, wild)) str++;
+        return !*str;
+    }
+    return strcmp(str, pattern);
+}
+
 /* Perform tests and benchmarks for the specified cpu flag if supported by the host */
 static void check_cpu_flag(const char *name, int flag)
 {
@@ -734,7 +806,7 @@ static void check_cpu_flag(const char *name, int flag)
 
         state.cpu_flag_name = name;
         for (i = 0; tests[i].func; i++) {
-            if (state.test_name && strcmp(tests[i].name, state.test_name))
+            if (state.test_pattern && wildstrcmp(tests[i].name, state.test_pattern))
                 continue;
             state.current_test_name = tests[i].name;
             tests[i].func();
@@ -766,7 +838,7 @@ static int bench_init_linux(void)
 #endif
     };
 
-    printf("benchmarking with Linux Perf Monitoring API\n");
+    fprintf(stderr, "benchmarking with Linux Perf Monitoring API\n");
 
     state.sysfd = syscall(__NR_perf_event_open, &attr, 0, -1, -1, 0);
     if (state.sysfd == -1) {
@@ -793,7 +865,7 @@ static int bench_init_ffmpeg(void)
         fprintf(stderr, "checkasm: unable to execute platform specific timer\n");
         return -1;
     }
-    printf("benchmarking with native FFmpeg timers\n");
+    fprintf(stderr, "benchmarking with native FFmpeg timers\n");
     return 0;
 #else
     fprintf(stderr, "checkasm: --bench is not supported on your system\n");
@@ -815,7 +887,7 @@ static int bench_init(void)
         return ret;
 
     state.nop_time = measure_nop_time();
-    printf("nop: %d.%d\n", state.nop_time/10, state.nop_time%10);
+    fprintf(stderr, "nop: %d.%d\n", state.nop_time/10, state.nop_time%10);
     return 0;
 }
 
@@ -829,7 +901,12 @@ static void bench_uninit(void)
 static int usage(const char *path)
 {
     fprintf(stderr,
-            "Usage: %s [--bench] [--runs=<ptwo>] [--test=<pattern>] [--verbose] [seed]\n",
+            "Usage: %s [options...] [seed]\n"
+            "  --test=<pattern> Run specific test.\n"
+            "  --bench          Run benchmark.\n"
+            "  --csv, --tsv     Output results in rows of comma or tab separated values.\n"
+            "  --runs=<ptwo>    Manual number of benchmark iterations to run 2**<ptwo>.\n"
+            "  --verbose        Increase verbosity.\n",
             path);
     return 1;
 }
@@ -874,9 +951,13 @@ int main(int argc, char *argv[])
                 state.bench_pattern = arg + 8;
                 state.bench_pattern_len = strlen(state.bench_pattern);
             } else
-                state.bench_pattern = "";
+                state.bench_pattern = "*";
         } else if (!strncmp(arg, "--test=", 7)) {
-            state.test_name = arg + 7;
+            state.test_pattern = arg + 7;
+        } else if (!strcmp(arg, "--csv")) {
+            state.csv = 1; state.tsv = 0;
+        } else if (!strcmp(arg, "--tsv")) {
+            state.csv = 0; state.tsv = 1;
         } else if (!strcmp(arg, "--verbose") || !strcmp(arg, "-v")) {
             state.verbose = 1;
         } else if (!strncmp(arg, "--runs=", 7)) {
@@ -976,7 +1057,7 @@ void *checkasm_check_func(void *func, const char *name, ...)
 int checkasm_bench_func(void)
 {
     return !state.num_failed && state.bench_pattern &&
-           !strncmp(state.current_func->name, state.bench_pattern, state.bench_pattern_len);
+           !wildstrcmp(state.current_func->name, state.bench_pattern);
 }
 
 /* Indicate that the current test has failed */
