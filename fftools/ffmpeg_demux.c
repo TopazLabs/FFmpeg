@@ -874,7 +874,8 @@ void ifile_close(InputFile **pf)
     av_freep(pf);
 }
 
-static int ist_use(InputStream *ist, int decoding_needed)
+static int ist_use(InputStream *ist, int decoding_needed,
+                   const ViewSpecifier *vs, SchedulerNode *src)
 {
     Demuxer      *d = demuxer_from_ifile(ist->file);
     DemuxStream *ds = ds_from_ist(ist);
@@ -954,11 +955,21 @@ static int ist_use(InputStream *ist, int decoding_needed)
         ds->sch_idx_dec = ret;
 
         ret = sch_connect(d->sch, SCH_DSTREAM(d->f.index, ds->sch_idx_stream),
-                                  SCH_DEC(ds->sch_idx_dec));
+                                  SCH_DEC_IN(ds->sch_idx_dec));
         if (ret < 0)
             return ret;
 
         d->have_audio_dec |= is_audio;
+    }
+
+    if (decoding_needed && ist->par->codec_type == AVMEDIA_TYPE_VIDEO) {
+        ret = dec_request_view(ist->decoder, vs, src);
+        if (ret < 0)
+            return ret;
+    } else {
+        *src = decoding_needed                             ?
+               SCH_DEC_OUT(ds->sch_idx_dec, 0)             :
+               SCH_DSTREAM(d->f.index, ds->sch_idx_stream);
     }
 
     return 0;
@@ -967,9 +978,10 @@ static int ist_use(InputStream *ist, int decoding_needed)
 int ist_output_add(InputStream *ist, OutputStream *ost)
 {
     DemuxStream *ds = ds_from_ist(ist);
+    SchedulerNode src;
     int ret;
 
-    ret = ist_use(ist, ost->enc ? DECODING_FOR_OST : 0);
+    ret = ist_use(ist, ost->enc ? DECODING_FOR_OST : 0, NULL, &src);
     if (ret < 0)
         return ret;
 
@@ -983,14 +995,16 @@ int ist_output_add(InputStream *ist, OutputStream *ost)
 }
 
 int ist_filter_add(InputStream *ist, InputFilter *ifilter, int is_simple,
-                   InputFilterOptions *opts)
+                   const ViewSpecifier *vs, InputFilterOptions *opts,
+                   SchedulerNode *src)
 {
     Demuxer      *d = demuxer_from_ifile(ist->file);
     DemuxStream *ds = ds_from_ist(ist);
     int64_t tsoffset = 0;
     int ret;
 
-    ret = ist_use(ist, is_simple ? DECODING_FOR_OST : DECODING_FOR_FILTER);
+    ret = ist_use(ist, is_simple ? DECODING_FOR_OST : DECODING_FOR_FILTER,
+                  vs, src);
     if (ret < 0)
         return ret;
 
@@ -1074,7 +1088,7 @@ int ist_filter_add(InputStream *ist, InputFilter *ifilter, int is_simple,
     opts->flags |= IFILTER_FLAG_AUTOROTATE * !!(ds->autorotate) |
                    IFILTER_FLAG_REINIT     * !!(ds->reinit_filters);
 
-    return ds->sch_idx_dec;
+    return 0;
 }
 
 static int choose_decoder(const OptionsContext *o, void *logctx,
@@ -1597,7 +1611,7 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
     InputFile *f;
     AVFormatContext *ic;
     const AVInputFormat *file_iformat = NULL;
-    int err, i, ret = 0;
+    int err, ret = 0;
     int64_t timestamp;
     AVDictionary *opts_used = NULL;
     const char*    video_codec_name = NULL;
@@ -1752,7 +1766,7 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
         return ret;
 
     /* apply forced codec ids */
-    for (i = 0; i < ic->nb_streams; i++) {
+    for (int i = 0; i < ic->nb_streams; i++) {
         const AVCodec *dummy;
         ret = choose_decoder(o, f, ic, ic->streams[i], HWACCEL_NONE, AV_HWDEVICE_TYPE_NONE,
                              &dummy);
@@ -1772,7 +1786,7 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
            first frames to get it. (used in mpeg case for example) */
         ret = avformat_find_stream_info(ic, opts);
 
-        for (i = 0; i < orig_nb_streams; i++)
+        for (int i = 0; i < orig_nb_streams; i++)
             av_dict_free(&opts[i]);
         av_freep(&opts);
 
@@ -1813,7 +1827,7 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
 
         if (!(ic->iformat->flags & AVFMT_SEEK_TO_PTS)) {
             int dts_heuristic = 0;
-            for (i=0; i<ic->nb_streams; i++) {
+            for (int i = 0; i < ic->nb_streams; i++) {
                 const AVCodecParameters *par = ic->streams[i]->codecpar;
                 if (par->video_delay) {
                     dts_heuristic = 1;
@@ -1887,10 +1901,8 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
     if (ret < 0)
         return ret;
 
-    for (i = 0; i < o->dump_attachment.nb_opt; i++) {
-        int j;
-
-        for (j = 0; j < f->nb_streams; j++) {
+    for (int i = 0; i < o->dump_attachment.nb_opt; i++) {
+        for (int j = 0; j < f->nb_streams; j++) {
             InputStream *ist = f->streams[j];
 
             if (check_stream_specifier(ic, ist->st, o->dump_attachment.opt[i].specifier) == 1) {

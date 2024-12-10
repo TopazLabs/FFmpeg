@@ -2299,8 +2299,8 @@ SEI_FUNC(sei_3d_reference_displays_info, (CodedBitstreamContext *ctx, RWContext 
         ue(prec_ref_viewing_dist, 0, 31);
     ue(num_ref_displays_minus1, 0, 31);
     for (i = 0; i <= current->num_ref_displays_minus1; i++) {
-        ues(left_view_id[i], 0, UINT8_MAX, 1, i);
-        ues(right_view_id[i], 0, UINT8_MAX, 1, i);
+        ues(left_view_id[i], 0, MAX_UINT_BITS(15), 1, i);
+        ues(right_view_id[i], 0, MAX_UINT_BITS(15), 1, i);
         us(6, exponent_ref_display_width[i], 0, 62, 1, i);
         if (!current->exponent_ref_display_width[i])
             length = FFMAX(0, (int)current->prec_ref_display_width - 30);
@@ -2359,6 +2359,35 @@ static int FUNC(sei)(CodedBitstreamContext *ctx, RWContext *rw,
                                        : HEVC_NAL_SEI_SUFFIX));
 
     CHECK(FUNC_SEI(message_list)(ctx, rw, &current->message_list, prefix));
+
+    CHECK(FUNC(rbsp_trailing_bits)(ctx, rw));
+
+    return 0;
+}
+
+
+static int FUNC(filler)(CodedBitstreamContext *ctx, RWContext *rw,
+                        H265RawFiller *current)
+{
+    int err;
+
+    HEADER("Filler Data");
+
+    CHECK(FUNC(nal_unit_header)(ctx, rw, &current->nal_unit_header,
+                                HEVC_NAL_FD_NUT));
+
+#ifdef READ
+    while (show_bits(rw, 8) == 0xff) {
+        fixed(8, ff_byte, 0xff);
+        ++current->filler_size;
+    }
+#else
+    {
+        uint32_t i;
+        for (i = 0; i < current->filler_size; i++)
+            fixed(8, ff_byte, 0xff);
+    }
+#endif
 
     CHECK(FUNC(rbsp_trailing_bits)(ctx, rw));
 

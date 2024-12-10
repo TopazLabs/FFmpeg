@@ -2,7 +2,7 @@
 VIDEO_FILTER = $(call ALLYES, $(1:%=%_FILTER) $(2) FILE_PROTOCOL IMAGE2_DEMUXER PGMYUV_DECODER RAWVIDEO_ENCODER NUT_MUXER MD5_PROTOCOL)
 
 FATE_FILTER_SAMPLES-$(call FILTERDEMDECENCMUX, PERMS OWDENOISE TRIM SCALE, SMJPEG, MJPEG, RAWVIDEO, RAWVIDEO, PIPE_PROTOCOL) += fate-filter-owdenoise-sample
-fate-filter-owdenoise-sample: CMD = ffmpeg -auto_conversion_filters -idct simple -i $(TARGET_SAMPLES)/smjpeg/scenwin.mjpg -vf "trim=duration=0.5,perms=random,owdenoise=10:20:20:enable=not(between(t\,0.2\,1.2))" -an -f rawvideo -
+fate-filter-owdenoise-sample: CMD = ffmpeg -auto_conversion_filters -idct simple -i $(TARGET_SAMPLES)/smjpeg/scenwin.mjpg -vf "trim=duration=0.5,perms=random,owdenoise=10:20:20:enable=not(between(t\,0.2\,1.2))" -an -f rawvideo -color_range mpeg -
 fate-filter-owdenoise-sample: REF = $(SAMPLES)/filter-reference/owdenoise-scenwin.raw
 fate-filter-owdenoise-sample: CMP_TARGET = 1
 fate-filter-owdenoise-sample: FUZZ = 3539
@@ -752,6 +752,12 @@ fate-filter-refcmp-ssim-rgb: CMD = refcmp_metadata ssim rgb24 0.015
 
 FATE_FILTER_REFCMP_METADATA-$(CONFIG_SSIM_FILTER) += fate-filter-refcmp-ssim-yuv
 fate-filter-refcmp-ssim-yuv: CMD = refcmp_metadata ssim yuv422p 0.015
+
+FATE_FILTER_REFCMP_METADATA-$(call ALLYES, XPSNR_FILTER SCALE_FILTER) += fate-filter-refcmp-xpsnr-rgb
+fate-filter-refcmp-xpsnr-rgb: CMD = refcmp_metadata xpsnr rgb24 0.002
+
+FATE_FILTER_REFCMP_METADATA-$(CONFIG_XPSNR_FILTER) += fate-filter-refcmp-xpsnr-yuv
+fate-filter-refcmp-xpsnr-yuv: CMD = refcmp_metadata xpsnr yuv422p 0.0015
 
 FATE_FILTER-$(call ALLYES, TESTSRC2_FILTER SPLIT_FILTER AVGBLUR_FILTER        \
                            METADATA_FILTER WRAPPED_AVFRAME_ENCODER NULL_MUXER \

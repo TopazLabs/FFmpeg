@@ -19,6 +19,7 @@
 #ifndef AVCODEC_VULKAN_VIDEO_H
 #define AVCODEC_VULKAN_VIDEO_H
 
+#include "avcodec.h"
 #include "vulkan.h"
 
 #include <vk_video/vulkan_video_codecs_common.h>
@@ -32,6 +33,14 @@ typedef struct FFVkVideoSession {
     VkVideoSessionKHR session;
     VkDeviceMemory *mem;
     uint32_t nb_mem;
+
+    VkSamplerYcbcrConversion yuv_sampler;
+
+    AVBufferRef *dpb_hwfc_ref;
+    int layered_dpb;
+    AVFrame *layered_frame;
+    VkImageView layered_view;
+    VkImageAspectFlags layered_aspect;
 } FFVkVideoCommon;
 
 /**
@@ -66,10 +75,28 @@ int ff_vk_video_qf_init(FFVulkanContext *s, FFVkQueueFamilyCtx *qf,
 int ff_vk_h264_level_to_av(StdVideoH264LevelIdc level);
 int ff_vk_h265_level_to_av(StdVideoH265LevelIdc level);
 
+StdVideoH264LevelIdc ff_vk_h264_level_to_vk(int level_idc);
+StdVideoH265LevelIdc ff_vk_h265_level_to_vk(int level_idc);
+
+/**
+ * Convert profile from/to AV to Vulkan
+ */
+StdVideoH264ProfileIdc ff_vk_h264_profile_to_vk(int profile);
+StdVideoH265ProfileIdc ff_vk_h265_profile_to_vk(int profile);
+int ff_vk_h264_profile_to_av(StdVideoH264ProfileIdc profile);
+int ff_vk_h265_profile_to_av(StdVideoH264ProfileIdc profile);
+
+/**
+ * Creates image views for video frames.
+ */
+int ff_vk_create_view(FFVulkanContext *s, FFVkVideoCommon *common,
+                      VkImageView *view, VkImageAspectFlags *aspect,
+                      AVVkFrame *src, VkFormat vkf, int is_dpb);
+
 /**
  * Initialize video session, allocating and binding necessary memory.
  */
-int ff_vk_video_common_init(void *log, FFVulkanContext *s,
+int ff_vk_video_common_init(AVCodecContext *avctx, FFVulkanContext *s,
                             FFVkVideoCommon *common,
                             VkVideoSessionCreateInfoKHR *session_create);
 
