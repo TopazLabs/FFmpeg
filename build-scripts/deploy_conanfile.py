@@ -11,7 +11,7 @@ class conanRecipe(ConanFile):
             self.options["libvpx"].shared = True
 
     def requirements(self):
-        self.requires("videoai/1.9.11-linux")
+        self.requires("videoai/1.9.12-linux")
         self.requires("zimg/3.0.5")
         if self.settings.os == "Macos" or self.settings.os == "Linux":
             self.requires("libvpx/1.11.0") #libvpx is static on Windows
