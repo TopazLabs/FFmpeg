@@ -116,8 +116,10 @@ static int config_props(AVFilterLink *outlink) {
       av_log(ctx, AV_LOG_VERBOSE, "SAR: %lf scale: %d x: %f y: %f v: %f\n", sar, tvai->basicInfo.scale, x, y, v);
     }
     info.frameCount = tvai->estimateFrameCount;
-    av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", info.basic.modelName, info.basic.scale, 
-            info.basic.device.index, info.basic.device.maxMemory, info.basic.device.extraThreadCount, info.basic.canDownloadModel);
+    av_log(ctx, AV_LOG_VERBOSE,
+        "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n",
+        tvai->basicInfo.modelName, tvai->basicInfo.scale, tvai->basicInfo.device.index,
+        tvai->basicInfo.device.maxMemory, tvai->basicInfo.device.extraThreadCount, tvai->basicInfo.canDownloadModel);
     ff_av_dict_log(ctx, "Parameters", tvai->parameters);
     if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeUpscaling, outlink, &(tvai->basicInfo), tvai->estimateFrameCount > 0, tvai->modelParameters, tvai->modelParameterCount)) {
         return AVERROR(EINVAL);
