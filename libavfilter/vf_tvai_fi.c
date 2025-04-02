@@ -111,6 +111,7 @@ static int config_props(AVFilterLink *outlink) {
     info.basic.framerate = av_q2d(fOutlink->frame_rate);
     if(tvai->timebaseUpdated) {
         outlink->time_base  = av_inv_q(fOutlink->frame_rate);
+        outlink->time_base = av_gcd_q(outlink->time_base, inlink->time_base, INT_MAX, outlink->time_base);
     }
     info.basic.timebase = av_q2d(outlink->time_base);
 
