@@ -356,8 +356,15 @@ static int gen_connect(URLContext *s, RTMPContext *rt)
 
         while(fourcc_data - rt->enhanced_codecs < fourcc_str_len) {
             unsigned char fourcc[5];
-            if (!strncmp(fourcc_data, "hvc1", 4) ||
+            if (!strncmp(fourcc_data, "ac-3", 4) ||
                 !strncmp(fourcc_data, "av01", 4) ||
+                !strncmp(fourcc_data, "avc1", 4) ||
+                !strncmp(fourcc_data, "ec-3", 4) ||
+                !strncmp(fourcc_data, "fLaC", 4) ||
+                !strncmp(fourcc_data, "hvc1", 4) ||
+                !strncmp(fourcc_data, ".mp3", 4) ||
+                !strncmp(fourcc_data, "mp4a", 4) ||
+                !strncmp(fourcc_data, "Opus", 4) ||
                 !strncmp(fourcc_data, "vp09", 4)) {
                     av_strlcpy(fourcc, fourcc_data, sizeof(fourcc));
                     ff_amf_write_string(&p, fourcc);
@@ -1997,7 +2004,7 @@ static int send_invoke_response(URLContext *s, RTMPPacket *pkt)
         pp = spkt.data;
         ff_amf_write_string(&pp, "onFCPublish");
     } else if (!strcmp(command, "publish")) {
-        char statusmsg[128];
+        char statusmsg[sizeof(filename) + 32];
         snprintf(statusmsg, sizeof(statusmsg), "%s is now published", filename);
         ret = write_begin(s);
         if (ret < 0)
@@ -2918,10 +2925,6 @@ reconnect:
     return 0;
 
 fail:
-    av_freep(&rt->playpath);
-    av_freep(&rt->tcurl);
-    av_freep(&rt->flashver);
-    av_dict_free(opts);
     rtmp_close(s);
     return ret;
 }
@@ -3046,7 +3049,12 @@ static int rtmp_write(URLContext *s, const uint8_t *buf, int size)
                                              pkttype, ts, pktsize)) < 0)
                 return ret;
 
-            rt->out_pkt.extra = rt->stream_id;
+            // If rt->listen, then we're running as a a server and should
+            // use the ID that we've sent in Stream Begin and in the
+            // _result to createStream.
+            // Otherwise, we're running as a client and should use the ID
+            // that we've received in the createStream from the server.
+            rt->out_pkt.extra = (rt->listen) ? rt->nb_streamid : rt->stream_id;
             rt->flv_data = rt->out_pkt.data;
         }
 

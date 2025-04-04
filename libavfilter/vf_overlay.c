@@ -55,9 +55,6 @@ static const char *const var_names[] = {
     "x",
     "y",
     "n",            ///< number of frame
-#if FF_API_FRAME_PKT
-    "pos",          ///< position in the file
-#endif
     "t",            ///< timestamp expressed in seconds
     NULL
 };
@@ -161,9 +158,11 @@ static const enum AVPixelFormat alpha_pix_fmts[] = {
     AV_PIX_FMT_BGRA, AV_PIX_FMT_GBRAP, AV_PIX_FMT_NONE
 };
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    OverlayContext *s = ctx->priv;
+    const OverlayContext *s = ctx->priv;
 
     /* overlay formats contains alpha, for avoiding conversion with alpha information loss */
     static const enum AVPixelFormat main_pix_fmts_yuv420[] = {
@@ -268,18 +267,18 @@ static int query_formats(AVFilterContext *ctx)
         overlay_formats = overlay_pix_fmts_gbrp;
         break;
     case OVERLAY_FORMAT_AUTO:
-        return ff_set_common_formats_from_list(ctx, alpha_pix_fmts);
+        return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, alpha_pix_fmts);
     default:
         av_assert0(0);
     }
 
     formats = ff_make_format_list(main_formats);
-    if ((ret = ff_formats_ref(formats, &ctx->inputs[MAIN]->outcfg.formats)) < 0 ||
-        (ret = ff_formats_ref(formats, &ctx->outputs[MAIN]->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_in[MAIN]->formats)) < 0 ||
+        (ret = ff_formats_ref(formats, &cfg_out[MAIN]->formats)) < 0)
         return ret;
 
     return ff_formats_ref(ff_make_format_list(overlay_formats),
-                          &ctx->inputs[OVERLAY]->outcfg.formats);
+                          &cfg_in[OVERLAY]->formats);
 }
 
 static int config_input_overlay(AVFilterLink *inlink)
@@ -303,9 +302,6 @@ static int config_input_overlay(AVFilterLink *inlink)
     s->var_values[VAR_Y]     = NAN;
     s->var_values[VAR_N]     = 0;
     s->var_values[VAR_T]     = NAN;
-#if FF_API_FRAME_PKT
-    s->var_values[VAR_POS]   = NAN;
-#endif
 
     if ((ret = set_expr(&s->x_pexpr,      s->x_expr,      "x",      ctx)) < 0 ||
         (ret = set_expr(&s->y_pexpr,      s->y_expr,      "y",      ctx)) < 0)
@@ -703,28 +699,28 @@ static int blend_slice_##format_(AVFilterContext *ctx, void *arg, int jobnr, int
 }
 
 //                            FMT          FN             H  V  A  D
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv420,      yuv_8_8bits,   1, 1, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva420,     yuv_8_8bits,   1, 1, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv420p10,   yuv_16_10bits, 1, 1, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva420p10,  yuv_16_10bits, 1, 1, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv422p10,   yuv_16_10bits, 1, 0, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva422p10,  yuv_16_10bits, 1, 0, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv422,      yuv_8_8bits,   1, 0, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva422,     yuv_8_8bits,   1, 0, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv444,      yuv_8_8bits,   0, 0, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva444,     yuv_8_8bits,   0, 0, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv444p10,   yuv_16_10bits, 0, 0, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva444p10,  yuv_16_10bits, 0, 0, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(gbrp,        planar_rgb,    0, 0, 0, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(gbrap,       planar_rgb,    0, 0, 1, 1);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv420_pm,   yuv_8_8bits,   1, 1, 0, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva420_pm,  yuv_8_8bits,   1, 1, 1, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv422_pm,   yuv_8_8bits,   1, 0, 0, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva422_pm,  yuv_8_8bits,   1, 0, 1, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuv444_pm,   yuv_8_8bits,   0, 0, 0, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(yuva444_pm,  yuv_8_8bits,   0, 0, 1, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(gbrp_pm,     planar_rgb,    0, 0, 0, 0);
-DEFINE_BLEND_SLICE_PLANAR_FMT(gbrap_pm,    planar_rgb,    0, 0, 1, 0);
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv420,      yuv_8_8bits,   1, 1, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva420,     yuv_8_8bits,   1, 1, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv420p10,   yuv_16_10bits, 1, 1, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva420p10,  yuv_16_10bits, 1, 1, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv422p10,   yuv_16_10bits, 1, 0, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva422p10,  yuv_16_10bits, 1, 0, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv422,      yuv_8_8bits,   1, 0, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva422,     yuv_8_8bits,   1, 0, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv444,      yuv_8_8bits,   0, 0, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva444,     yuv_8_8bits,   0, 0, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv444p10,   yuv_16_10bits, 0, 0, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva444p10,  yuv_16_10bits, 0, 0, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(gbrp,        planar_rgb,    0, 0, 0, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(gbrap,       planar_rgb,    0, 0, 1, 1)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv420_pm,   yuv_8_8bits,   1, 1, 0, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva420_pm,  yuv_8_8bits,   1, 1, 1, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv422_pm,   yuv_8_8bits,   1, 0, 0, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva422_pm,  yuv_8_8bits,   1, 0, 1, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuv444_pm,   yuv_8_8bits,   0, 0, 0, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(yuva444_pm,  yuv_8_8bits,   0, 0, 1, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(gbrp_pm,     planar_rgb,    0, 0, 0, 0)
+DEFINE_BLEND_SLICE_PLANAR_FMT(gbrap_pm,    planar_rgb,    0, 0, 1, 0)
 
 #define DEFINE_BLEND_SLICE_PACKED_FMT(format_, blend_slice_fn_suffix_, main_has_alpha_, direct_) \
 static int blend_slice_##format_(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)        \
@@ -739,10 +735,10 @@ static int blend_slice_##format_(AVFilterContext *ctx, void *arg, int jobnr, int
 }
 
 //                            FMT      FN   A  D
-DEFINE_BLEND_SLICE_PACKED_FMT(rgb,     rgb, 0, 1);
-DEFINE_BLEND_SLICE_PACKED_FMT(rgba,    rgb, 1, 1);
-DEFINE_BLEND_SLICE_PACKED_FMT(rgb_pm,  rgb, 0, 0);
-DEFINE_BLEND_SLICE_PACKED_FMT(rgba_pm, rgb, 1, 0);
+DEFINE_BLEND_SLICE_PACKED_FMT(rgb,     rgb, 0, 1)
+DEFINE_BLEND_SLICE_PACKED_FMT(rgba,    rgb, 1, 1)
+DEFINE_BLEND_SLICE_PACKED_FMT(rgb_pm,  rgb, 0, 0)
+DEFINE_BLEND_SLICE_PACKED_FMT(rgba_pm, rgb, 1, 0)
 
 static int config_input_main(AVFilterLink *inlink)
 {
@@ -895,14 +891,6 @@ static int do_blend(FFFrameSync *fs)
         s->var_values[VAR_N] = inl->frame_count_out;
         s->var_values[VAR_T] = mainpic->pts == AV_NOPTS_VALUE ?
             NAN : mainpic->pts * av_q2d(inlink->time_base);
-#if FF_API_FRAME_PKT
-FF_DISABLE_DEPRECATION_WARNINGS
-        {
-            int64_t pos = mainpic->pkt_pos;
-            s->var_values[VAR_POS] = pos == -1 ? NAN : pos;
-        }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
         s->var_values[VAR_OVERLAY_W] = s->var_values[VAR_OW] = second->width;
         s->var_values[VAR_OVERLAY_H] = s->var_values[VAR_OH] = second->height;
@@ -944,10 +932,11 @@ static int activate(AVFilterContext *ctx)
 
 #define OFFSET(x) offsetof(OverlayContext, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
+#define TFLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption overlay_options[] = {
-    { "x", "set the x expression", OFFSET(x_expr), AV_OPT_TYPE_STRING, {.str = "0"}, 0, 0, FLAGS },
-    { "y", "set the y expression", OFFSET(y_expr), AV_OPT_TYPE_STRING, {.str = "0"}, 0, 0, FLAGS },
+    { "x", "set the x expression", OFFSET(x_expr), AV_OPT_TYPE_STRING, {.str = "0"}, 0, 0, TFLAGS },
+    { "y", "set the y expression", OFFSET(y_expr), AV_OPT_TYPE_STRING, {.str = "0"}, 0, 0, TFLAGS },
     { "eof_action", "Action to take when encountering EOF from secondary input ",
         OFFSET(fs.opt_eof_action), AV_OPT_TYPE_INT, { .i64 = EOF_ACTION_REPEAT },
         EOF_ACTION_REPEAT, EOF_ACTION_PASS, .flags = FLAGS, .unit = "eof_action" },
@@ -998,19 +987,19 @@ static const AVFilterPad avfilter_vf_overlay_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_overlay = {
-    .name          = "overlay",
-    .description   = NULL_IF_CONFIG_SMALL("Overlay a video source on top of the input."),
+const FFFilter ff_vf_overlay = {
+    .p.name        = "overlay",
+    .p.description = NULL_IF_CONFIG_SMALL("Overlay a video source on top of the input."),
+    .p.priv_class  = &overlay_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .preinit       = overlay_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
     .priv_size     = sizeof(OverlayContext),
-    .priv_class    = &overlay_class,
     .activate      = activate,
     .process_command = process_command,
     FILTER_INPUTS(avfilter_vf_overlay_inputs),
     FILTER_OUTPUTS(avfilter_vf_overlay_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                     AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
 };

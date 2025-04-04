@@ -1314,12 +1314,11 @@ static av_cold void uninit(AVFilterContext *ctx)
     common_uninit(ctx->priv);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_NONE };
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
@@ -1331,20 +1330,16 @@ static int query_formats(AVFilterContext *ctx)
 
     /* set input audio formats */
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0)
         return ret;
 
-    layouts = ff_make_channel_layout_list(channel_layouts);
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
+    ret = ff_set_common_channel_layouts_from_list2(ctx, cfg_in, cfg_out, channel_layouts);
+    if (ret < 0)
         return ret;
 
     /* set output video format */
     formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
     return 0;
@@ -1603,15 +1598,15 @@ static const AVFilterPad showcqt_outputs[] = {
     },
 };
 
-const AVFilter ff_avf_showcqt = {
-    .name          = "showcqt",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a CQT (Constant/Clamped Q Transform) spectrum video output."),
+const FFFilter ff_avf_showcqt = {
+    .p.name        = "showcqt",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to a CQT (Constant/Clamped Q Transform) spectrum video output."),
+    .p.priv_class  = &showcqt_class,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,
     .priv_size     = sizeof(ShowCQTContext),
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showcqt_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &showcqt_class,
+    FILTER_QUERY_FUNC2(query_formats),
 };

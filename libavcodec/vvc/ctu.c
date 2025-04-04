@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavcodec/refstruct.h"
+#include "libavutil/refstruct.h"
 
 #include "cabac.h"
 #include "ctu.h"
@@ -38,7 +38,7 @@ typedef enum VVCModeType {
     MODE_TYPE_INTRA,
 } VVCModeType;
 
-static void set_tb_pos(const VVCFrameContext *fc, const TransformBlock *tb)
+static void set_tb_size(const VVCFrameContext *fc, const TransformBlock *tb)
 {
     const int x_tb      = tb->x0 >> MIN_TU_LOG2;
     const int y_tb      = tb->y0 >> MIN_TU_LOG2;
@@ -50,10 +50,6 @@ static void set_tb_pos(const VVCFrameContext *fc, const TransformBlock *tb)
 
     for (int y = y_tb; y < end; y++) {
         const int off = y * fc->ps.pps->min_tu_width + x_tb;
-        for (int i = 0; i < width; i++) {
-            fc->tab.tb_pos_x0[is_chroma][off + i] = tb->x0;
-            fc->tab.tb_pos_y0[is_chroma][off + i] = tb->y0;
-        }
         memset(fc->tab.tb_width [is_chroma] + off, tb->tb_width,  width);
         memset(fc->tab.tb_height[is_chroma] + off, tb->tb_height, width);
     }
@@ -213,7 +209,7 @@ static void set_qp_c(VVCLocalContext *lc)
 
 static TransformUnit* alloc_tu(VVCFrameContext *fc, CodingUnit *cu)
 {
-    TransformUnit *tu = ff_refstruct_pool_get(fc->tu_pool);
+    TransformUnit *tu = av_refstruct_pool_get(fc->tu_pool);
     if (!tu)
         return NULL;
 
@@ -241,6 +237,7 @@ static TransformUnit* add_tu(VVCFrameContext *fc, CodingUnit *cu, const int x0, 
     tu->height = tu_height;
     tu->joint_cbcr_residual_flag = 0;
     memset(tu->coded_flag, 0, sizeof(tu->coded_flag));
+    tu->avail[LUMA] = tu->avail[CHROMA] = 0;
     tu->nb_tbs = 0;
 
     return tu;
@@ -267,6 +264,7 @@ static TransformBlock* add_tb(TransformUnit *tu, VVCLocalContext *lc,
     tb->ts = 0;
     tb->coeffs = lc->coeffs;
     lc->coeffs += tb_width * tb_height;
+    tu->avail[!!c_idx] = true;
     return tb;
 }
 
@@ -395,7 +393,7 @@ static int hls_transform_unit(VVCLocalContext *lc, int x0, int y0,int tu_width, 
             set_tb_tab(fc->tab.tu_coded_flag[tb->c_idx], tu->coded_flag[tb->c_idx], fc, tb);
         }
         if (tb->c_idx != CR)
-            set_tb_pos(fc, tb);
+            set_tb_size(fc, tb);
         if (tb->c_idx == CB)
             set_tb_tab(fc->tab.tu_joint_cbcr_residual_flag, tu->joint_cbcr_residual_flag, fc, tb);
     }
@@ -512,7 +510,7 @@ static int skipped_transform_tree(VVCLocalContext *lc, int x0, int y0,int tu_wid
         for (int i = c_start; i < c_end; i++) {
             TransformBlock *tb = add_tb(tu, lc, x0, y0, tu_width >> sps->hshift[i], tu_height >> sps->vshift[i], i);
             if (i != CR)
-                set_tb_pos(fc, tb);
+                set_tb_size(fc, tb);
         }
     }
 
@@ -948,6 +946,12 @@ static void derive_chroma_intra_pred_mode(VVCLocalContext *lc,
     }
 }
 
+static av_always_inline uint8_t pack_mip_info(int intra_mip_flag,
+    int intra_mip_transposed_flag, int intra_mip_mode)
+{
+    return (intra_mip_mode << 2) | (intra_mip_transposed_flag << 1) | intra_mip_flag;
+}
+
 static void intra_luma_pred_modes(VVCLocalContext *lc)
 {
     VVCFrameContext *fc             = lc->fc;
@@ -976,9 +980,9 @@ static void intra_luma_pred_modes(VVCLocalContext *lc)
             int x = y_cb * pps->min_cb_width + x_cb;
             for (int y = 0; y < (cb_height>>log2_min_cb_size); y++) {
                 int width = cb_width>>log2_min_cb_size;
-                memset(&fc->tab.imf[x],  cu->intra_mip_flag, width);
-                fc->tab.imtf[x] = intra_mip_transposed_flag;
-                fc->tab.imm[x]  = intra_mip_mode;
+                const uint8_t mip_info = pack_mip_info(cu->intra_mip_flag,
+                        intra_mip_transposed_flag, intra_mip_mode);
+                memset(&fc->tab.imf[x], mip_info, width);
                 x += pps->min_cb_width;
             }
             cu->intra_pred_mode_y = intra_mip_mode;
@@ -1180,7 +1184,7 @@ static CodingUnit* alloc_cu(VVCLocalContext *lc, const int x0, const int y0)
     const int rx        = x0 >> sps->ctb_log2_size_y;
     const int ry        = y0 >> sps->ctb_log2_size_y;
     CodingUnit **cus    = fc->tab.cus + ry * pps->ctb_width + rx;
-    CodingUnit *cu      = ff_refstruct_pool_get(fc->cu_pool);
+    CodingUnit *cu      = av_refstruct_pool_get(fc->cu_pool);
 
     if (!cu)
         return NULL;
@@ -1240,16 +1244,18 @@ static void set_cu_tabs(const VVCLocalContext *lc, const CodingUnit *cu)
 
     set_cb_tab(lc, fc->tab.mmi, pu->mi.motion_model_idc);
     set_cb_tab(lc, fc->tab.msf, pu->merge_subblock_flag);
-    if (cu->tree_type != DUAL_TREE_CHROMA)
+    if (cu->tree_type != DUAL_TREE_CHROMA) {
         set_cb_tab(lc, fc->tab.skip, cu->skip_flag);
+        set_cb_tab(lc, fc->tab.pcmf[LUMA], cu->bdpcm_flag[LUMA]);
+    }
+    if (cu->tree_type != DUAL_TREE_LUMA)
+        set_cb_tab(lc, fc->tab.pcmf[CHROMA], cu->bdpcm_flag[CHROMA]);
 
     while (tu) {
           for (int j = 0; j < tu->nb_tbs; j++) {
             const TransformBlock *tb = tu->tbs + j;
             if (tb->c_idx != LUMA)
                 set_qp_c_tab(lc, tu, tb);
-            if (tb->c_idx != CR && cu->bdpcm_flag[tb->c_idx])
-                set_tb_tab(fc->tab.pcmf[tb->c_idx], 1, fc, tb);
         }
         tu = tu->next;
     }
@@ -1493,7 +1499,7 @@ static int hls_merge_data(VVCLocalContext *lc)
 
 static void hls_mvd_coding(VVCLocalContext *lc, Mv* mvd)
 {
-    int16_t mv[2];
+    int32_t mv[2];
 
     for (int i = 0; i < 2; i++) {
         mv[i] = ff_vvc_abs_mvd_greater0_flag(lc);
@@ -1778,15 +1784,17 @@ static int inter_data(VVCLocalContext *lc)
         pu->general_merge_flag = ff_vvc_general_merge_flag(lc);
 
     if (pu->general_merge_flag) {
-        hls_merge_data(lc);
-    } else if (cu->pred_mode == MODE_IBC){
+        ret = hls_merge_data(lc);
+    } else if (cu->pred_mode == MODE_IBC) {
         ret = mvp_data_ibc(lc);
     } else {
         ret = mvp_data(lc);
     }
 
-    if (cu->pred_mode == MODE_IBC)
-    {
+    if (ret)
+        return ret;
+
+    if (cu->pred_mode == MODE_IBC) {
         ff_vvc_update_hmvp(lc, mi);
     } else if (!pu->merge_gpm_flag && !pu->inter_affine_flag && !pu->merge_subblock_flag) {
         refine_regular_subblock(lc);
@@ -2286,6 +2294,7 @@ static void alf_params(VVCLocalContext *lc, const int rx, const int ry)
     ALFParams *alf                = &CTB(fc->tab.alf, rx, ry);
 
     alf->ctb_flag[LUMA] = alf->ctb_flag[CB] = alf->ctb_flag[CR] = 0;
+    alf->ctb_cc_idc[0] = alf->ctb_cc_idc[1] = 0;
     if (sh->sh_alf_enabled_flag) {
         alf->ctb_flag[LUMA] = ff_vvc_alf_ctb_flag(lc, rx, ry, LUMA);
         if (alf->ctb_flag[LUMA]) {
@@ -2316,7 +2325,6 @@ static void alf_params(VVCLocalContext *lc, const int rx, const int ry)
         const uint8_t cc_enabled[] = { sh->sh_alf_cc_cb_enabled_flag, sh->sh_alf_cc_cr_enabled_flag };
         const uint8_t cc_aps_id[]  = { sh->sh_alf_cc_cb_aps_id, sh->sh_alf_cc_cr_aps_id };
         for (int i = 0; i < 2; i++) {
-            alf->ctb_cc_idc[i] = 0;
             if (cc_enabled[i]) {
                 const VVCALF *aps = fc->ps.alf_list[cc_aps_id[i]];
                 alf->ctb_cc_idc[i] = ff_vvc_alf_ctb_cc_idc(lc, rx, ry, i, aps->num_cc_filters[i]);
@@ -2385,13 +2393,19 @@ static int has_inter_luma(const CodingUnit *cu)
     return cu->pred_mode != MODE_INTRA && cu->pred_mode != MODE_PLT && cu->tree_type != DUAL_TREE_CHROMA;
 }
 
-static int pred_get_y(const int y0, const Mv *mv, const int height)
+static int pred_get_y(const VVCLocalContext *lc, const int y0, const Mv *mv, const int height)
 {
-    return FFMAX(0, y0 + (mv->y >> 4) + height);
+    const VVCPPS *pps = lc->fc->ps.pps;
+    const int idx     = lc->sc->sh.r->curr_subpic_idx;
+    const int top     = pps->subpic_y[idx];
+    const int bottom  = top + pps->subpic_height[idx];
+
+    return av_clip(y0 + (mv->y >> 4) + height, top, bottom);
 }
 
-static void cu_get_max_y(const CodingUnit *cu, int max_y[2][VVC_MAX_REF_ENTRIES], const VVCFrameContext *fc)
+static void cu_get_max_y(const CodingUnit *cu, int max_y[2][VVC_MAX_REF_ENTRIES], const VVCLocalContext *lc)
 {
+    const VVCFrameContext *fc   = lc->fc;
     const PredictionUnit *pu    = &cu->pu;
 
     if (pu->merge_gpm_flag) {
@@ -2399,7 +2413,7 @@ static void cu_get_max_y(const CodingUnit *cu, int max_y[2][VVC_MAX_REF_ENTRIES]
             const MvField *mvf  = pu->gpm_mv + i;
             const int lx        = mvf->pred_flag - PF_L0;
             const int idx       = mvf->ref_idx[lx];
-            const int y         = pred_get_y(cu->y0, mvf->mv + lx, cu->cb_height);
+            const int y         = pred_get_y(lc, cu->y0, mvf->mv + lx, cu->cb_height);
 
             max_y[lx][idx]      = FFMAX(max_y[lx][idx], y);
         }
@@ -2417,7 +2431,7 @@ static void cu_get_max_y(const CodingUnit *cu, int max_y[2][VVC_MAX_REF_ENTRIES]
                     const PredFlag mask = 1 << lx;
                     if (mvf->pred_flag & mask) {
                         const int idx   = mvf->ref_idx[lx];
-                        const int y     = pred_get_y(y0, mvf->mv + lx, sbh);
+                        const int y     = pred_get_y(lc, y0, mvf->mv + lx, sbh);
 
                         max_y[lx][idx]  = FFMAX(max_y[lx][idx], y + max_dmvr_off);
                     }
@@ -2444,7 +2458,7 @@ static void ctu_get_pred(VVCLocalContext *lc, const int rs)
 
     while (cu) {
         if (has_inter_luma(cu)) {
-            cu_get_max_y(cu, ctu->max_y, fc);
+            cu_get_max_y(cu, ctu->max_y, lc);
             ctu->has_dmvr |= cu->pu.dmvr_flag;
         }
         cu = cu->next;
@@ -2542,11 +2556,11 @@ void ff_vvc_ctu_free_cus(CodingUnit **cus)
         while (*head) {
             TransformUnit *tu = *head;
             *head = tu->next;
-            ff_refstruct_unref(&tu);
+            av_refstruct_unref(&tu);
         }
         cu->tus.tail = NULL;
 
-        ff_refstruct_unref(&cu);
+        av_refstruct_unref(&cu);
     }
 }
 

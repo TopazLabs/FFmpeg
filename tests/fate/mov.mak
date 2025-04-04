@@ -164,6 +164,12 @@ FATE_MOV_FFMPEG_SAMPLES-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER) \
                            += fate-mov-heic-demux-still-image-multiple-items
 fate-mov-heic-demux-still-image-multiple-items: CMD = framecrc -i $(TARGET_SAMPLES)/heif-conformance/C003.heic -c:v copy -map 0
 
+# heic demuxing - still image with multiple items, exporting cropping and/or rotation information.
+FATE_MOV_FFMPEG_FFPROBE_SAMPLES-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER) \
+                           += fate-mov-heic-demux-clap-irot-imir
+fate-mov-heic-demux-clap-irot-imir: CMD = stream_demux mov $(TARGET_SAMPLES)/heif-conformance/MIAF007.heic "" "-c:v copy -map 0" \
+  "-show_entries stream=index,id:stream_disposition:stream_side_data_list"
+
 # heic demuxing - still image with multiple items in a grid.
 FATE_MOV_FFMPEG_FFPROBE_SAMPLES-$(call DEMMUX, MOV, FRAMECRC, HEVC_DECODER HEVC_PARSER) \
                            += fate-mov-heic-demux-still-image-grid
@@ -219,7 +225,7 @@ fate-mov-pcm-remux: CMP = oneline
 fate-mov-pcm-remux: REF = e76115bc392d702da38f523216bba165
 
 FATE_MOV_FFMPEG-$(call TRANSCODE, RAWVIDEO, MOV, TESTSRC_FILTER SETPTS_FILTER) += fate-mov-vfr
-fate-mov-vfr: CMD = md5 -filter_complex testsrc=size=2x2:duration=1,setpts=N*N -c rawvideo -fflags +bitexact -f mov
+fate-mov-vfr: CMD = md5 -filter_complex testsrc=size=2x2:duration=1,setpts=N*N:strip_fps=1 -c rawvideo -fflags +bitexact -f mov
 fate-mov-vfr: CMP = oneline
 fate-mov-vfr: REF = 1558b4a9398d8635783c93f84eb5a60d
 

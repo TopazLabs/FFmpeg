@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/mem.h"
 
@@ -1144,7 +1145,7 @@ static int init_base_units(AVCodecContext *avctx)
         if (!data)
             return AVERROR(ENOMEM);
     } else {
-        av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for H.264 units = %lu\n", data_size);
+        av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for H.264 units = %"SIZE_SPECIFIER"\n", data_size);
         return err;
     }
 
@@ -1657,10 +1658,7 @@ const FFCodec ff_h264_vulkan_encoder = {
                       AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vulkan_encode_h264_defaults,
-    .p.pix_fmts = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_VULKAN,
-        AV_PIX_FMT_NONE,
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_VULKAN),
     .hw_configs     = ff_vulkan_encode_hw_configs,
     .p.wrapper_name = "vulkan",
 };

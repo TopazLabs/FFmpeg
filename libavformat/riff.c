@@ -220,8 +220,12 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_RAWVIDEO,     MKTAG( 3 ,  0 ,  0 ,  0 ) },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('I', '4', '2', '0') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', 'U', 'Y', '2') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', '2', '1', '0') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', '2', '1', '6') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', '4', '1', '6') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', '4', '2', '2') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('V', '4', '2', '2') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', '4', '1', '0') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('Y', 'U', 'N', 'V') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('U', 'Y', 'N', 'V') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('U', 'Y', 'N', 'Y') },
@@ -296,14 +300,20 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('I', '4', 'C', 'B') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('I', '0', 'F', 'L') },
     { AV_CODEC_ID_RAWVIDEO,     MKTAG('I', '0', 'F', 'B') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('v', '3', '0', '8') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('v', '4', '0', '8') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('v', '4', '1', '0') },
+    { AV_CODEC_ID_RAWVIDEO,     MKTAG('y', '4', '0', '8') },
     { AV_CODEC_ID_FRWU,         MKTAG('F', 'R', 'W', 'U') },
     { AV_CODEC_ID_R10K,         MKTAG('R', '1', '0', 'k') },
     { AV_CODEC_ID_R210,         MKTAG('r', '2', '1', '0') },
     { AV_CODEC_ID_V210,         MKTAG('v', '2', '1', '0') },
     { AV_CODEC_ID_V210,         MKTAG('C', '2', '1', '0') },
+#if FF_API_V408_CODECID
     { AV_CODEC_ID_V308,         MKTAG('v', '3', '0', '8') },
     { AV_CODEC_ID_V408,         MKTAG('v', '4', '0', '8') },
     { AV_CODEC_ID_V410,         MKTAG('v', '4', '1', '0') },
+#endif
     { AV_CODEC_ID_YUV4,         MKTAG('y', 'u', 'v', '4') },
     { AV_CODEC_ID_INDEO3,       MKTAG('I', 'V', '3', '1') },
     { AV_CODEC_ID_INDEO3,       MKTAG('I', 'V', '3', '2') },
@@ -507,6 +517,7 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_VMIX,         MKTAG('V', 'M', 'X', '1') },
     { AV_CODEC_ID_LEAD,         MKTAG('L', 'E', 'A', 'D') },
     { AV_CODEC_ID_EVC,          MKTAG('e', 'v', 'c', '1') },
+    { AV_CODEC_ID_RV60,         MKTAG('R', 'V', '6', '0') },
     { AV_CODEC_ID_NONE,         0 }
 };
 
@@ -553,7 +564,7 @@ const AVCodecTag ff_codec_wav_tags[] = {
     /* rogue format number */
     { AV_CODEC_ID_ADPCM_IMA_DK3,   0x0062 },
     { AV_CODEC_ID_ADPCM_G726,      0x0064 },
-    { AV_CODEC_ID_ADPCM_IMA_WAV,   0x0069 },
+    { AV_CODEC_ID_ADPCM_IMA_XBOX,  0x0069 },
     { AV_CODEC_ID_METASOUND,       0x0075 },
     { AV_CODEC_ID_G729,            0x0083 },
     { AV_CODEC_ID_AAC,             0x00ff },

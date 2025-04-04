@@ -71,17 +71,6 @@
 
 #include "libavutil/thread.h"
 
-#if !HAVE_THREADS
-#  ifdef pthread_mutex_lock
-#    undef pthread_mutex_lock
-#  endif
-#  define pthread_mutex_lock(a) do{}while(0)
-#  ifdef pthread_mutex_unlock
-#    undef pthread_mutex_unlock
-#  endif
-#  define pthread_mutex_unlock(a) do{}while(0)
-#endif
-
 // attached as opaque_ref to packets/frames
 typedef struct FrameData {
     int64_t pkt_pos;
@@ -104,6 +93,7 @@ typedef struct InputFile {
 const char program_name[] = "ffprobe";
 const int program_birth_year = 2007;
 
+static int do_analyze_frames = 0;
 static int do_bitexact = 0;
 static int do_count_frames = 0;
 static int do_count_packets = 0;
@@ -385,10 +375,11 @@ static int nb_streams;
 static uint64_t *nb_streams_packets;
 static uint64_t *nb_streams_frames;
 static int *selected_streams;
+static int *streams_with_closed_captions;
+static int *streams_with_film_grain;
 
-#if HAVE_THREADS
-pthread_mutex_t log_mutex;
-#endif
+static AVMutex log_mutex = AV_MUTEX_INITIALIZER;
+
 typedef struct LogBuffer {
     char *context_name;
     int log_level;
@@ -415,7 +406,7 @@ static void log_callback(void *ptr, int level, const char *fmt, va_list vl)
     va_end(vl2);
 
 #if HAVE_THREADS
-    pthread_mutex_lock(&log_mutex);
+    ff_mutex_lock(&log_mutex);
 
     new_log_buffer = av_realloc_array(log_buffer, log_buffer_size + 1, sizeof(*log_buffer));
     if (new_log_buffer) {
@@ -446,7 +437,7 @@ static void log_callback(void *ptr, int level, const char *fmt, va_list vl)
         log_buffer_size ++;
     }
 
-    pthread_mutex_unlock(&log_mutex);
+    ff_mutex_unlock(&log_mutex);
 #endif
 }
 
@@ -2660,6 +2651,31 @@ static void print_private_data(WriterContext *w, void *priv_data)
     }
 }
 
+static void print_pixel_format(WriterContext *w, enum AVPixelFormat pix_fmt)
+{
+    const char *s = av_get_pix_fmt_name(pix_fmt);
+    enum AVPixelFormat swapped_pix_fmt;
+
+    if (!s) {
+        print_str_opt("pix_fmt", "unknown");
+    } else if (!do_bitexact ||
+               (swapped_pix_fmt = av_pix_fmt_swap_endianness(pix_fmt)) == AV_PIX_FMT_NONE) {
+        print_str    ("pix_fmt", s);
+    } else {
+        const char *s2 = av_get_pix_fmt_name(swapped_pix_fmt);
+        char buf[128];
+        size_t i = 0;
+
+        while (s[i] && s[i] == s2[i] && i < sizeof(buf) - 1) {
+            buf[i] = s[i];
+            i++;
+        }
+        buf[i] = '\0';
+
+        print_str    ("pix_fmt", buf);
+    }
+}
+
 static void print_color_range(WriterContext *w, enum AVColorRange color_range)
 {
     const char *val = av_color_range_name(color_range);
@@ -2715,7 +2731,7 @@ static void clear_log(int need_lock)
     int i;
 
     if (need_lock)
-        pthread_mutex_lock(&log_mutex);
+        ff_mutex_lock(&log_mutex);
     for (i=0; i<log_buffer_size; i++) {
         av_freep(&log_buffer[i].context_name);
         av_freep(&log_buffer[i].parent_name);
@@ -2723,15 +2739,15 @@ static void clear_log(int need_lock)
     }
     log_buffer_size = 0;
     if(need_lock)
-        pthread_mutex_unlock(&log_mutex);
+        ff_mutex_unlock(&log_mutex);
 }
 
 static int show_log(WriterContext *w, int section_ids, int section_id, int log_level)
 {
     int i;
-    pthread_mutex_lock(&log_mutex);
+    ff_mutex_lock(&log_mutex);
     if (!log_buffer_size) {
-        pthread_mutex_unlock(&log_mutex);
+        ff_mutex_unlock(&log_mutex);
         return 0;
     }
     writer_print_section_header(w, NULL, section_ids);
@@ -2754,7 +2770,7 @@ static int show_log(WriterContext *w, int section_ids, int section_id, int log_l
         }
     }
     clear_log(0);
-    pthread_mutex_unlock(&log_mutex);
+    ff_mutex_unlock(&log_mutex);
 
     writer_print_section_footer(w);
 
@@ -2968,9 +2984,7 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
         print_int("crop_bottom",            frame->crop_bottom);
         print_int("crop_left",              frame->crop_left);
         print_int("crop_right",             frame->crop_right);
-        s = av_get_pix_fmt_name(frame->format);
-        if (s) print_str    ("pix_fmt", s);
-        else   print_str_opt("pix_fmt", "unknown");
+        print_pixel_format(w, frame->format);
         sar = av_guess_sample_aspect_ratio(fmt_ctx, stream, frame);
         if (sar.num) {
             print_q("sample_aspect_ratio", sar, ':');
@@ -2980,6 +2994,7 @@ static void show_frame(WriterContext *w, AVFrame *frame, AVStream *stream,
         print_fmt("pict_type",              "%c", av_get_picture_type_char(frame->pict_type));
         print_int("interlaced_frame",       !!(frame->flags & AV_FRAME_FLAG_INTERLACED));
         print_int("top_field_first",        !!(frame->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST));
+        print_int("lossless",               !!(frame->flags & AV_FRAME_FLAG_LOSSLESS));
         print_int("repeat_pict",            frame->repeat_pict);
 
         print_color_range(w, frame->color_range);
@@ -3072,6 +3087,16 @@ static av_always_inline int process_frame(WriterContext *w,
                 show_subtitle(w, &sub, ifile->streams[pkt->stream_index].st, fmt_ctx);
             else
                 show_frame(w, frame, ifile->streams[pkt->stream_index].st, fmt_ctx);
+
+        if (!is_sub && do_analyze_frames) {
+            for (int i = 0; i < frame->nb_side_data; i++) {
+                if (frame->side_data[i]->type == AV_FRAME_DATA_A53_CC)
+                    streams_with_closed_captions[pkt->stream_index] = 1;
+                else if (frame->side_data[i]->type == AV_FRAME_DATA_FILM_GRAIN_PARAMS)
+                    streams_with_film_grain[pkt->stream_index] = 1;
+            }
+        }
+
         if (is_sub)
             avsubtitle_free(&sub);
     }
@@ -3154,6 +3179,8 @@ static int read_interval_packets(WriterContext *w, InputFile *ifile,
             REALLOCZ_ARRAY_STREAM(nb_streams_frames,  nb_streams, fmt_ctx->nb_streams);
             REALLOCZ_ARRAY_STREAM(nb_streams_packets, nb_streams, fmt_ctx->nb_streams);
             REALLOCZ_ARRAY_STREAM(selected_streams,   nb_streams, fmt_ctx->nb_streams);
+            REALLOCZ_ARRAY_STREAM(streams_with_closed_captions,   nb_streams, fmt_ctx->nb_streams);
+            REALLOCZ_ARRAY_STREAM(streams_with_film_grain,        nb_streams, fmt_ctx->nb_streams);
             nb_streams = fmt_ctx->nb_streams;
         }
         if (selected_streams[pkt->stream_index]) {
@@ -3337,8 +3364,11 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
         if (dec_ctx) {
             print_int("coded_width",  dec_ctx->coded_width);
             print_int("coded_height", dec_ctx->coded_height);
-            print_int("closed_captions", !!(dec_ctx->properties & FF_CODEC_PROPERTY_CLOSED_CAPTIONS));
-            print_int("film_grain", !!(dec_ctx->properties & FF_CODEC_PROPERTY_FILM_GRAIN));
+
+            if (do_analyze_frames) {
+                print_int("closed_captions", streams_with_closed_captions[stream->index]);
+                print_int("film_grain",      streams_with_film_grain[stream->index]);
+            }
         }
         print_int("has_b_frames", par->video_delay);
         sar = av_guess_sample_aspect_ratio(fmt_ctx, stream, NULL);
@@ -3353,9 +3383,7 @@ static int show_stream(WriterContext *w, AVFormatContext *fmt_ctx, int stream_id
             print_str_opt("sample_aspect_ratio", "N/A");
             print_str_opt("display_aspect_ratio", "N/A");
         }
-        s = av_get_pix_fmt_name(par->format);
-        if (s) print_str    ("pix_fmt", s);
-        else   print_str_opt("pix_fmt", "unknown");
+        print_pixel_format(w, par->format);
         print_int("level",   par->level);
 
         print_color_range(w, par->color_range);
@@ -4005,7 +4033,8 @@ static int probe_file(WriterContext *wctx, const char *filename,
     int ret, i;
     int section_id;
 
-    do_read_frames = do_show_frames || do_count_frames;
+    do_analyze_frames = do_analyze_frames && do_show_streams;
+    do_read_frames = do_show_frames || do_count_frames || do_analyze_frames;
     do_read_packets = do_show_packets || do_count_packets;
 
     ret = open_input_file(&ifile, filename, print_filename);
@@ -4018,6 +4047,8 @@ static int probe_file(WriterContext *wctx, const char *filename,
     REALLOCZ_ARRAY_STREAM(nb_streams_frames,0,ifile.fmt_ctx->nb_streams);
     REALLOCZ_ARRAY_STREAM(nb_streams_packets,0,ifile.fmt_ctx->nb_streams);
     REALLOCZ_ARRAY_STREAM(selected_streams,0,ifile.fmt_ctx->nb_streams);
+    REALLOCZ_ARRAY_STREAM(streams_with_closed_captions,0,ifile.fmt_ctx->nb_streams);
+    REALLOCZ_ARRAY_STREAM(streams_with_film_grain,0,ifile.fmt_ctx->nb_streams);
 
     for (i = 0; i < ifile.fmt_ctx->nb_streams; i++) {
         if (stream_specifier) {
@@ -4080,6 +4111,8 @@ end:
     av_freep(&nb_streams_frames);
     av_freep(&nb_streams_packets);
     av_freep(&selected_streams);
+    av_freep(&streams_with_closed_captions);
+    av_freep(&streams_with_film_grain);
 
     return ret;
 }
@@ -4602,6 +4635,7 @@ static const OptionDef real_options[] = {
     { "show_optional_fields",  OPT_TYPE_FUNC, OPT_FUNC_ARG, { .func_arg = &opt_show_optional_fields }, "show optional fields" },
     { "show_private_data",     OPT_TYPE_BOOL,        0, { &show_private_data }, "show private data" },
     { "private",               OPT_TYPE_BOOL,        0, { &show_private_data }, "same as show_private_data" },
+    { "analyze_frames",        OPT_TYPE_BOOL,        0, { &do_analyze_frames }, "analyze frames to provide additional stream-level information" },
     { "bitexact",              OPT_TYPE_BOOL,        0, {&do_bitexact}, "force bitexact output" },
     { "read_intervals",        OPT_TYPE_FUNC, OPT_FUNC_ARG, {.func_arg = opt_read_intervals}, "set read intervals", "read_intervals" },
     { "i",                     OPT_TYPE_FUNC, OPT_FUNC_ARG, {.func_arg = opt_input_file_i}, "read specified file", "input_file"},
@@ -4638,12 +4672,6 @@ int main(int argc, char **argv)
 
     init_dynload();
 
-#if HAVE_THREADS
-    ret = pthread_mutex_init(&log_mutex, NULL);
-    if (ret != 0) {
-        goto end;
-    }
-#endif
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
 
     options = real_options;
@@ -4790,10 +4818,6 @@ end:
         av_dict_free(&(sections[i].entries_to_show));
 
     avformat_network_deinit();
-
-#if HAVE_THREADS
-    pthread_mutex_destroy(&log_mutex);
-#endif
 
     return ret < 0;
 }

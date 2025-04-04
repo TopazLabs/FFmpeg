@@ -20,7 +20,7 @@
 #define AVCODEC_VULKAN_VIDEO_H
 
 #include "avcodec.h"
-#include "vulkan.h"
+#include "libavutil/vulkan.h"
 
 #include <vk_video/vulkan_video_codecs_common.h>
 
@@ -64,12 +64,6 @@ VkVideoChromaSubsamplingFlagBitsKHR ff_vk_subsampling_from_av_desc(const AVPixFm
 VkVideoComponentBitDepthFlagBitsKHR ff_vk_depth_from_av_depth(int depth);
 
 /**
- * Chooses a QF and loads it into a context.
- */
-int ff_vk_video_qf_init(FFVulkanContext *s, FFVkQueueFamilyCtx *qf,
-                        VkQueueFlagBits family, VkVideoCodecOperationFlagBitsKHR caps);
-
-/**
  * Convert level from Vulkan to AV.
  */
 int ff_vk_h264_level_to_av(StdVideoH264LevelIdc level);
@@ -83,8 +77,6 @@ StdVideoH265LevelIdc ff_vk_h265_level_to_vk(int level_idc);
  */
 StdVideoH264ProfileIdc ff_vk_h264_profile_to_vk(int profile);
 StdVideoH265ProfileIdc ff_vk_h265_profile_to_vk(int profile);
-int ff_vk_h264_profile_to_av(StdVideoH264ProfileIdc profile);
-int ff_vk_h265_profile_to_av(StdVideoH264ProfileIdc profile);
 
 /**
  * Creates image views for video frames.

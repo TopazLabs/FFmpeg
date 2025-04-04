@@ -538,7 +538,9 @@ static av_cold void flush(AVCodecContext *avctx)
         }
     }
 
+#if CONFIG_AAC_DECODER
     ff_aac_usac_reset_state(ac, &ac->oc[1]);
+#endif
 }
 
 /**
@@ -1107,6 +1109,8 @@ static av_cold int decode_close(AVCodecContext *avctx)
             AACUsacElemConfig *ec = &usac->elems[j];
             av_freep(&ec->ext.pl_data);
         }
+
+        av_channel_layout_uninit(&ac->oc[i].ch_layout);
     }
 
     for (int type = 0; type < FF_ARRAY_ELEMS(ac->che); type++) {
@@ -1743,6 +1747,7 @@ int ff_aac_decode_ics(AACDecContext *ac, SingleChannelElement *sce,
 
     return 0;
 fail:
+    memset(sce->sfo, 0, sizeof(sce->sfo));
     tns->present = 0;
     return ret;
 }
@@ -2194,6 +2199,7 @@ static int aac_decode_er_frame(AVCodecContext *avctx, AVFrame *frame,
 
     ac->frame->nb_samples = samples;
     ac->frame->sample_rate = avctx->sample_rate;
+    ac->frame->flags |= AV_FRAME_FLAG_KEY;
     *got_frame_ptr = 1;
 
     skip_bits_long(gb, get_bits_left(gb));
@@ -2354,6 +2360,7 @@ static int decode_frame_ga(AVCodecContext *avctx, AACDecContext *ac,
     if (samples) {
         ac->frame->nb_samples = samples;
         ac->frame->sample_rate = avctx->sample_rate;
+        ac->frame->flags |= AV_FRAME_FLAG_KEY;
         *got_frame_ptr = 1;
     } else {
         av_frame_unref(ac->frame);
@@ -2384,7 +2391,8 @@ static int aac_decode_frame_int(AVCodecContext *avctx, AVFrame *frame,
     ac->frame = frame;
     *got_frame_ptr = 0;
 
-    if (show_bits(gb, 12) == 0xfff) {
+    // USAC can't be packed into ADTS due to field size limitations.
+    if (show_bits(gb, 12) == 0xfff && ac->oc[1].m4ac.object_type != AOT_USAC) {
         if ((err = parse_adts_frame_header(ac, gb)) < 0) {
             av_log(avctx, AV_LOG_ERROR, "Error decoding AAC frame header.\n");
             goto fail;
@@ -2540,12 +2548,10 @@ const FFCodec ff_aac_decoder = {
     .init            = ff_aac_decode_init_float,
     .close           = decode_close,
     FF_CODEC_DECODE_CB(aac_decode_frame),
-    .p.sample_fmts   = (const enum AVSampleFormat[]) {
-        AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE
-    },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
     .p.capabilities  = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    .p.ch_layouts    = ff_aac_ch_layout,
+    CODEC_CH_LAYOUTS_ARRAY(ff_aac_ch_layout),
     .flush = flush,
     .p.profiles      = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
 };
@@ -2562,12 +2568,10 @@ const FFCodec ff_aac_fixed_decoder = {
     .init            = ff_aac_decode_init_fixed,
     .close           = decode_close,
     FF_CODEC_DECODE_CB(aac_decode_frame),
-    .p.sample_fmts   = (const enum AVSampleFormat[]) {
-        AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_NONE
-    },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S32P),
     .p.capabilities  = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    .p.ch_layouts    = ff_aac_ch_layout,
+    CODEC_CH_LAYOUTS_ARRAY(ff_aac_ch_layout),
     .p.profiles      = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
     .flush = flush,
 };

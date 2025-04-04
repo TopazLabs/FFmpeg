@@ -1,6 +1,18 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
+version <next>:
+- yasm support dropped, users need to use nasm
+- VVC VAAPI decoder
+- RealVideo 6.0 decoder
+- OpenMAX encoders deprecated
+- libx265 alpha layer encoding
+- ADPCM IMA Xbox decoder
+- Enhanced FLV v2: Multitrack audio/video, modern codec support
+- Animated JPEG XL encoding (via libjxl)
+- VVC in Matroska
+- CENC AV1 support in MP4 muxer
+
 version 7.1:
 - Raw Captions with Time (RCWT) closed caption demuxer
 - LC3/LC3plus decoding/encoding using external library liblc3
@@ -27,6 +39,20 @@ version 7.1:
 - LCEVC enhancement data exporting in H.26x and MP4/ISOBMFF
 - LCEVC filter
 - MV-HEVC decoding
+- minor stream specifier syntax changes:
+    - when matching by metadata (:m:<key>:<val>), the colon character
+      in keys or values now has to be backslash-escaped
+    - in optional maps (-map ....?) with a metadata-matching stream specifier,
+      the value has to be separated from the question mark by a colon, i.e.
+      -map ....:m:<key>:<val>:? (otherwise it would be ambiguous whether the
+      question mark is a part of <val> or not)
+    - multiple stream types in a single specifier (e.g. :s:s:0) now cause an
+      error, as such a specifier makes no sense
+- Mastering Display and Content Light Level metadata support in hevc_nvenc
+  and av1_nvenc encoders
+- libswresample now accepts custom order channel layouts as input, with some
+  constrains
+- FFV1 parser
 
 
 version 7.0:

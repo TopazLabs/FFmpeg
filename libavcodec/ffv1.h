@@ -28,6 +28,7 @@
  * FF Video Codec 1 (a lossless codec)
  */
 
+#include "libavutil/attributes.h"
 #include "avcodec.h"
 #include "get_bits.h"
 #include "mathops.h"
@@ -44,6 +45,8 @@
 #define CONTEXT_SIZE 32
 
 #define MAX_QUANT_TABLES 8
+#define MAX_QUANT_TABLE_SIZE 256
+#define MAX_QUANT_TABLE_MASK (MAX_QUANT_TABLE_SIZE - 1)
 #define MAX_CONTEXT_INPUTS 5
 
 #define AC_GOLOMB_RICE          0
@@ -52,8 +55,8 @@
 #define AC_RANGE_DEFAULT_TAB_FORCE -2
 
 typedef struct VlcState {
+    uint32_t error_sum;
     int16_t drift;
-    uint16_t error_sum;
     int8_t bias;
     uint8_t count;
 } VlcState;
@@ -75,11 +78,13 @@ typedef struct FFV1SliceContext {
     int slice_height;
     int slice_x;
     int slice_y;
+    int sx, sy;
 
     int run_index;
     int slice_coding_mode;
     int slice_rct_by_coef;
     int slice_rct_ry_coef;
+    int remap;
 
     // RefStruct reference, array of MAX_PLANES elements
     PlaneContext *plane;
@@ -101,6 +106,15 @@ typedef struct FFV1SliceContext {
             uint64_t (*rc_stat2[MAX_QUANT_TABLES])[32][2];
         };
     };
+    union {
+        uint16_t   bitmap  [4][65536]; //float encode
+        uint16_t   fltmap  [4][65536]; //halffloat encode & decode
+        uint32_t   fltmap32[4][65536]; //float decode
+    };
+    struct Unit {
+        uint32_t val; //this is unneeded if you accept a dereference on each access
+        uint16_t ndx;
+    } unit[4][65536];
 } FFV1SliceContext;
 
 typedef struct FFV1Context {
@@ -110,6 +124,7 @@ typedef struct FFV1Context {
     uint64_t (*rc_stat2[MAX_QUANT_TABLES])[32][2];
     int version;
     int micro_version;
+    int combined_version;
     int width, height;
     int chroma_planes;
     int chroma_h_shift, chroma_v_shift;
@@ -118,15 +133,22 @@ typedef struct FFV1Context {
     int64_t picture_number;
     int key_frame;
     ProgressFrame picture, last_picture;
+    void *hwaccel_picture_private, *hwaccel_last_picture_private;
+    uint32_t crcref;
+    enum AVPixelFormat pix_fmt;
+    enum AVPixelFormat configured_pix_fmt;
 
     const AVFrame *cur_enc_frame;
     int plane_count;
     int ac;                              ///< 1=range coder <-> 0=golomb rice
-    int16_t quant_tables[MAX_QUANT_TABLES][MAX_CONTEXT_INPUTS][256];
+    int16_t quant_tables[MAX_QUANT_TABLES][MAX_CONTEXT_INPUTS][MAX_QUANT_TABLE_SIZE];
     int context_count[MAX_QUANT_TABLES];
     uint8_t state_transition[256];
     uint8_t (*initial_states[MAX_QUANT_TABLES])[32];
     int colorspace;
+    int flt;
+    int remap_mode;
+    int remap_optimizer;
 
     int use32bit;
 
@@ -134,6 +156,7 @@ typedef struct FFV1Context {
     int intra;
     int key_frame_ok;
     int context_model;
+    int qtable;
 
     int bits_per_raw_sample;
     int packed_at_lsb;
@@ -162,14 +185,25 @@ typedef struct FFV1Context {
     uint8_t           frame_damaged;
 } FFV1Context;
 
-int ff_ffv1_common_init(AVCodecContext *avctx);
+int ff_ffv1_common_init(AVCodecContext *avctx, FFV1Context *s);
 int ff_ffv1_init_slice_state(const FFV1Context *f, FFV1SliceContext *sc);
 int ff_ffv1_init_slices_state(FFV1Context *f);
 int ff_ffv1_init_slice_contexts(FFV1Context *f);
 PlaneContext *ff_ffv1_planes_alloc(void);
 int ff_ffv1_allocate_initial_states(FFV1Context *f);
 void ff_ffv1_clear_slice_state(const FFV1Context *f, FFV1SliceContext *sc);
-int ff_ffv1_close(AVCodecContext *avctx);
+void ff_ffv1_close(FFV1Context *s);
+int ff_need_new_slices(int width, int num_h_slices, int chroma_shift);
+int ff_ffv1_parse_header(FFV1Context *f, RangeCoder *c, uint8_t *state);
+int ff_ffv1_read_extra_header(FFV1Context *f);
+int ff_ffv1_read_quant_tables(RangeCoder *c,
+                              int16_t quant_table[MAX_CONTEXT_INPUTS][256]);
+int ff_ffv1_get_symbol(RangeCoder *c, uint8_t *state, int is_signed);
+
+/**
+ * This is intended for both width and height
+ */
+int ff_slice_coord(const FFV1Context *f, int width, int sx, int num_h_slices, int chroma_shift);
 
 static av_always_inline int fold(int diff, int bits)
 {
@@ -208,6 +242,31 @@ static inline void update_vlc_state(VlcState *const state, const int v)
 
     state->drift = drift;
     state->count = count;
+}
+
+
+static inline av_flatten int get_symbol_inline(RangeCoder *c, uint8_t *state,
+                                               int is_signed)
+{
+    if (get_rac(c, state + 0))
+        return 0;
+    else {
+        int e;
+        unsigned a;
+        e = 0;
+        while (get_rac(c, state + 1 + FFMIN(e, 9))) { // 1..10
+            e++;
+            if (e > 31)
+                return AVERROR_INVALIDDATA;
+        }
+
+        a = 1;
+        for (int i = e - 1; i >= 0; i--)
+            a += a + get_rac(c, state + 22 + FFMIN(i, 9));  // 22..31
+
+        e = -(is_signed && get_rac(c, state + 11 + FFMIN(e, 10))); // 11..21
+        return (a ^ e) - e;
+    }
 }
 
 #endif /* AVCODEC_FFV1_H */
