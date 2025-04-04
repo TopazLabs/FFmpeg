@@ -28,4 +28,4 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig":$PKG_CONFIG_PATH
 
 # Add yasm to PATH
 SCRIPT_DIR_UNIX=$(cygpath -u "$(dirname "$0")")
-export PATH="${SCRIPT_DIR_UNIX}/../../conan/lib3rdparty/yasm/bin":$PATH
+export PATH="${SCRIPT_DIR_UNIX}/../../conan/lib3rdparty/nasm/bin":$PATH
