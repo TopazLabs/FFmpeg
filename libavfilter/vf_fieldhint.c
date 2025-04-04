@@ -223,19 +223,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
     switch (hint) {
     case '+':
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        out->interlaced_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         out->flags |= AV_FRAME_FLAG_INTERLACED;
         break;
     case '-':
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        out->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         out->flags &= ~AV_FRAME_FLAG_INTERLACED;
         break;
     case '=':
@@ -323,11 +313,11 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_vf_fieldhint = {
-    .name          = "fieldhint",
-    .description   = NULL_IF_CONFIG_SMALL("Field matching using hints."),
+const FFFilter ff_vf_fieldhint = {
+    .p.name        = "fieldhint",
+    .p.description = NULL_IF_CONFIG_SMALL("Field matching using hints."),
+    .p.priv_class  = &fieldhint_class,
     .priv_size     = sizeof(FieldHintContext),
-    .priv_class    = &fieldhint_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),

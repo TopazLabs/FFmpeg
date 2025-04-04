@@ -161,12 +161,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                       FFMIN(s->planeheight[1], ff_filter_get_nb_threads(ctx)));
 
     out->pts = s->double_weave ? s->prev->pts : in->pts / 2;
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    out->interlaced_frame = 1;
-    out->top_field_first = !s->first_field;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     out->flags |= AV_FRAME_FLAG_INTERLACED;
     if (s->first_field)
         out->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
@@ -204,16 +198,16 @@ static const AVFilterPad weave_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_weave = {
-    .name          = "weave",
-    .description   = NULL_IF_CONFIG_SMALL("Weave input video fields into frames."),
+const FFFilter ff_vf_weave = {
+    .p.name        = "weave",
+    .p.description = NULL_IF_CONFIG_SMALL("Weave input video fields into frames."),
+    .p.priv_class  = &weave_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(WeaveContext),
-    .priv_class    = &weave_class,
     .uninit        = uninit,
     FILTER_INPUTS(weave_inputs),
     FILTER_OUTPUTS(weave_outputs),
     FILTER_QUERY_FUNC2(query_formats),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };
 
 static av_cold int init(AVFilterContext *ctx)
@@ -226,15 +220,15 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-const AVFilter ff_vf_doubleweave = {
-    .name          = "doubleweave",
-    .description   = NULL_IF_CONFIG_SMALL("Weave input video fields into double number of frames."),
-    .priv_class    = &weave_class,
+const FFFilter ff_vf_doubleweave = {
+    .p.name        = "doubleweave",
+    .p.description = NULL_IF_CONFIG_SMALL("Weave input video fields into double number of frames."),
+    .p.priv_class  = &weave_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(WeaveContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(weave_inputs),
     FILTER_OUTPUTS(weave_outputs),
     FILTER_QUERY_FUNC2(query_formats),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

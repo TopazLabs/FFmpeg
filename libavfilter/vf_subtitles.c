@@ -182,12 +182,18 @@ static int query_formats(const AVFilterContext *ctx,
 
 static int config_input(AVFilterLink *inlink)
 {
-    AssContext *ass = inlink->dst->priv;
+    AVFilterContext *ctx = inlink->dst;
+    AssContext *ass = ctx->priv;
+    int ret;
 
-    ff_draw_init2(&ass->draw, inlink->format,
-                  ass_get_color_space(ass->track->YCbCrMatrix, inlink->colorspace),
-                  ass_get_color_range(ass->track->YCbCrMatrix, inlink->color_range),
-                  ass->alpha ? FF_DRAW_PROCESS_ALPHA : 0);
+    ret = ff_draw_init2(&ass->draw, inlink->format,
+                        ass_get_color_space(ass->track->YCbCrMatrix, inlink->colorspace),
+                        ass_get_color_range(ass->track->YCbCrMatrix, inlink->color_range),
+                        ass->alpha ? FF_DRAW_PROCESS_ALPHA : 0);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
+        return ret;
+    }
 
     ass_set_frame_size  (ass->renderer, inlink->w, inlink->h);
     if (ass->original_w && ass->original_h) {
@@ -286,16 +292,16 @@ static av_cold int init_ass(AVFilterContext *ctx)
     return 0;
 }
 
-const AVFilter ff_vf_ass = {
-    .name          = "ass",
-    .description   = NULL_IF_CONFIG_SMALL("Render ASS subtitles onto input video using the libass library."),
+const FFFilter ff_vf_ass = {
+    .p.name        = "ass",
+    .p.description = NULL_IF_CONFIG_SMALL("Render ASS subtitles onto input video using the libass library."),
+    .p.priv_class  = &ass_class,
     .priv_size     = sizeof(AssContext),
     .init          = init_ass,
     .uninit        = uninit,
     FILTER_INPUTS(ass_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
-    .priv_class    = &ass_class,
 };
 #endif
 
@@ -541,15 +547,15 @@ end:
     return ret;
 }
 
-const AVFilter ff_vf_subtitles = {
-    .name          = "subtitles",
-    .description   = NULL_IF_CONFIG_SMALL("Render text subtitles onto input video using the libass library."),
+const FFFilter ff_vf_subtitles = {
+    .p.name        = "subtitles",
+    .p.description = NULL_IF_CONFIG_SMALL("Render text subtitles onto input video using the libass library."),
+    .p.priv_class  = &subtitles_class,
     .priv_size     = sizeof(AssContext),
     .init          = init_subtitles,
     .uninit        = uninit,
     FILTER_INPUTS(ass_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
-    .priv_class    = &subtitles_class,
 };
 #endif

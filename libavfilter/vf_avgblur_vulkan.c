@@ -31,8 +31,7 @@ typedef struct AvgBlurVulkanContext {
 
     int initialized;
     FFVkExecPool e;
-    FFVkQueueFamilyCtx qf;
-    VkSampler sampler;
+    AVVulkanDeviceQueueFamily *qf;
     FFVulkanShader shd;
 
     /* Push constants / options */
@@ -52,7 +51,7 @@ static const char blur_kernel[] = {
     C(1,     vec4 sum = vec4(0);                                              )
     C(1,     for (int y = -filter_len.y; y <= filter_len.y; y++)              )
     C(1,        for (int x = -filter_len.x; x <= filter_len.x; x++)           )
-    C(2,            sum += texture(input_img[idx], pos + ivec2(x, y));        )
+    C(2,            sum += imageLoad(input_img[idx], pos + ivec2(x, y));      )
     C(0,                                                                      )
     C(1,     imageStore(output_img[idx], pos, sum * filter_norm);             )
     C(0, }                                                                    )
@@ -77,9 +76,14 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
         return AVERROR_EXTERNAL;
     }
 
-    ff_vk_qf_init(vkctx, &s->qf, VK_QUEUE_COMPUTE_BIT);
-    RET(ff_vk_exec_pool_init(vkctx, &s->qf, &s->e, s->qf.nb_queues*4, 0, 0, 0, NULL));
-    RET(ff_vk_init_sampler(vkctx, &s->sampler, 1, VK_FILTER_LINEAR));
+    s->qf = ff_vk_qf_find(vkctx, VK_QUEUE_COMPUTE_BIT, 0);
+    if (!s->qf) {
+        av_log(ctx, AV_LOG_ERROR, "Device has no compute queues\n");
+        err = AVERROR(ENOTSUP);
+        goto fail;
+    }
+
+    RET(ff_vk_exec_pool_init(vkctx, s->qf, &s->e, s->qf->num*4, 0, 0, 0, NULL));
     RET(ff_vk_shader_init(vkctx, &s->shd, "avgblur",
                           VK_SHADER_STAGE_COMPUTE_BIT,
                           NULL, 0,
@@ -90,11 +94,12 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
     desc = (FFVulkanDescriptorSetBinding []) {
         {
             .name       = "input_img",
-            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
+            .mem_quali  = "readonly",
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
-            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "output_img",
@@ -122,6 +127,7 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
     GLSLC(0, void main()                                                  );
     GLSLC(0, {                                                            );
     GLSLC(1,     ivec2 size;                                              );
+    GLSLC(1,     vec4 res;                                                );
     GLSLC(1,     const ivec2 pos = ivec2(gl_GlobalInvocationID.xy);       );
     for (int i = 0; i < planes; i++) {
         GLSLC(0,                                                          );
@@ -131,7 +137,7 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in)
         if (s->planes & (1 << i)) {
             GLSLF(1, distort(pos, %i);                                  ,i);
         } else {
-            GLSLF(1, vec4 res = texture(input_img[%i], pos);            ,i);
+            GLSLF(1, res = imageLoad(input_img[%i], pos);               ,i);
             GLSLF(1, imageStore(output_img[%i], pos, res);              ,i);
         }
     }
@@ -180,7 +186,8 @@ static int avgblur_vulkan_filter_frame(AVFilterLink *link, AVFrame *in)
         RET(init_filter(ctx, in));
 
     RET(ff_vk_filter_process_simple(&s->vkctx, &s->e, &s->shd,
-                                    out, in, s->sampler, &s->opts, sizeof(s->opts)));
+                                    out, in, VK_NULL_HANDLE,
+                                    &s->opts, sizeof(s->opts)));
 
     err = av_frame_copy_props(out, in);
     if (err < 0)
@@ -200,14 +207,9 @@ static void avgblur_vulkan_uninit(AVFilterContext *avctx)
 {
     AvgBlurVulkanContext *s = avctx->priv;
     FFVulkanContext *vkctx = &s->vkctx;
-    FFVulkanFunctions *vk = &vkctx->vkfn;
 
     ff_vk_exec_pool_free(vkctx, &s->e);
     ff_vk_shader_free(vkctx, &s->shd);
-
-    if (s->sampler)
-        vk->DestroySampler(vkctx->hwctx->act_dev, s->sampler,
-                           vkctx->hwctx->alloc);
 
     ff_vk_uninit(&s->vkctx);
 
@@ -242,16 +244,16 @@ static const AVFilterPad avgblur_vulkan_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_avgblur_vulkan = {
-    .name           = "avgblur_vulkan",
-    .description    = NULL_IF_CONFIG_SMALL("Apply avgblur mask to input video"),
+const FFFilter ff_vf_avgblur_vulkan = {
+    .p.name         = "avgblur_vulkan",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply avgblur mask to input video"),
+    .p.priv_class   = &avgblur_vulkan_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(AvgBlurVulkanContext),
     .init           = &ff_vk_filter_init,
     .uninit         = &avgblur_vulkan_uninit,
     FILTER_INPUTS(avgblur_vulkan_inputs),
     FILTER_OUTPUTS(avgblur_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
-    .priv_class     = &avgblur_vulkan_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

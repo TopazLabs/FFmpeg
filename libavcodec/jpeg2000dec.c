@@ -542,9 +542,13 @@ static int get_cox(Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *c)
     /* set integer 9/7 DWT in case of BITEXACT flag */
     if ((s->avctx->flags & AV_CODEC_FLAG_BITEXACT) && (c->transform == FF_DWT97))
         c->transform = FF_DWT97_INT;
+#if FF_API_CODEC_PROPS
     else if (c->transform == FF_DWT53) {
+FF_DISABLE_DEPRECATION_WARNINGS
         s->avctx->properties |= FF_CODEC_PROPERTY_LOSSLESS;
+FF_ENABLE_DEPRECATION_WARNINGS
     }
+#endif
 
     if (c->csty & JPEG2000_CSTY_PREC) {
         int i;
@@ -1517,6 +1521,7 @@ static int jpeg2000_decode_packet(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile,
                 }
             }
             av_freep(&cblk->lengthinc);
+            cblk->nb_lengthinc = 0;
         }
     }
     // Save state of stream
@@ -1886,10 +1891,10 @@ static void decode_sigpass(Jpeg2000T1Context *t1, int width, int height,
                     if (ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ff_jpeg2000_getsigctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask, bandno))) {
                         int xorbit, ctxno = ff_jpeg2000_getsgnctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask, &xorbit);
                         if (t1->mqc.raw) {
-                            t1->data[(y) * t1->stride + x] |= ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) << 31;
+                            t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno)) << 31;
                             t1->data[(y) * t1->stride + x] |= mask;
                         } else {
-                            t1->data[(y) * t1->stride + x] |= (ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
+                            t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
                             t1->data[(y) * t1->stride + x] |= mask;
                         }
                         ff_jpeg2000_set_significance(t1, x, y,
@@ -1969,7 +1974,7 @@ static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t
                     int xorbit;
                     int ctxno = ff_jpeg2000_getsgnctxno(t1->flags[(y + 1) * t1->stride + x + 1] & flags_mask,
                                                         &xorbit);
-                    t1->data[(y) * t1->stride + x] |= (ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
+                    t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
                     t1->data[(y) * t1->stride + x] |= mask;
                     ff_jpeg2000_set_significance(t1, x, y, t1->data[(y) * t1->stride + x] & INT32_MIN);
                 }
@@ -2890,6 +2895,10 @@ static int jpeg2000_decode_frame(AVCodecContext *avctx, AVFrame *picture,
             break;
         }
     }
+
+    for (int x = 0; x < s->ncomponents && s->codsty[x].transform == FF_DWT53;)
+        if (++x == s->ncomponents)
+            picture->flags |= AV_FRAME_FLAG_LOSSLESS;
 
     avctx->execute2(avctx, jpeg2000_decode_tile, picture, NULL, s->numXtiles * s->numYtiles);
 

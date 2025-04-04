@@ -33,9 +33,8 @@ typedef struct OverlayVulkanContext {
 
     int initialized;
     FFVkExecPool e;
-    FFVkQueueFamilyCtx qf;
+    AVVulkanDeviceQueueFamily *qf;
     FFVulkanShader shd;
-    VkSampler sampler;
 
     /* Push constants / options */
     struct {
@@ -55,10 +54,10 @@ static const char overlay_noalpha[] = {
     C(1,     if ((o_offset[i].x <= pos.x) && (o_offset[i].y <= pos.y) &&
                  (pos.x < (o_offset[i].x + o_size[i].x)) &&
                  (pos.y < (o_offset[i].y + o_size[i].y))) {                    )
-    C(2,         vec4 res = texture(overlay_img[i], pos - o_offset[i]);        )
+    C(2,         vec4 res = imageLoad(overlay_img[i], pos - o_offset[i]);      )
     C(2,         imageStore(output_img[i], pos, res);                          )
     C(1,     } else {                                                          )
-    C(2,         vec4 res = texture(main_img[i], pos);                         )
+    C(2,         vec4 res = imageLoad(main_img[i], pos);                       )
     C(2,         imageStore(output_img[i], pos, res);                          )
     C(1,     }                                                                 )
     C(0, }                                                                     )
@@ -67,11 +66,11 @@ static const char overlay_noalpha[] = {
 static const char overlay_alpha[] = {
     C(0, void overlay_alpha_opaque(int i, ivec2 pos)                           )
     C(0, {                                                                     )
-    C(1,     vec4 res = texture(main_img[i], pos);                             )
+    C(1,     vec4 res = imageLoad(main_img[i], pos);                           )
     C(1,     if ((o_offset[i].x <= pos.x) && (o_offset[i].y <= pos.y) &&
                  (pos.x < (o_offset[i].x + o_size[i].x)) &&
                  (pos.y < (o_offset[i].y + o_size[i].y))) {                    )
-    C(2,         vec4 ovr = texture(overlay_img[i], pos - o_offset[i]);        )
+    C(2,         vec4 ovr = imageLoad(overlay_img[i], pos - o_offset[i]);      )
     C(2,         res = ovr * ovr.a + res * (1.0f - ovr.a);                     )
     C(2,         res.a = 1.0f;                                                 )
     C(2,         imageStore(output_img[i], pos, res);                          )
@@ -101,9 +100,14 @@ static av_cold int init_filter(AVFilterContext *ctx)
         return AVERROR_EXTERNAL;
     }
 
-    ff_vk_qf_init(vkctx, &s->qf, VK_QUEUE_COMPUTE_BIT);
-    RET(ff_vk_exec_pool_init(vkctx, &s->qf, &s->e, s->qf.nb_queues*4, 0, 0, 0, NULL));
-    RET(ff_vk_init_sampler(vkctx, &s->sampler, 1, VK_FILTER_NEAREST));
+    s->qf = ff_vk_qf_find(vkctx, VK_QUEUE_COMPUTE_BIT, 0);
+    if (!s->qf) {
+        av_log(ctx, AV_LOG_ERROR, "Device has no compute queues\n");
+        err = AVERROR(ENOTSUP);
+        goto fail;
+    }
+
+    RET(ff_vk_exec_pool_init(vkctx, s->qf, &s->e, s->qf->num*4, 0, 0, 0, NULL));
     RET(ff_vk_shader_init(vkctx, &s->shd, "overlay",
                           VK_SHADER_STAGE_COMPUTE_BIT,
                           NULL, 0,
@@ -122,19 +126,21 @@ static av_cold int init_filter(AVFilterContext *ctx)
     desc = (FFVulkanDescriptorSetBinding []) {
         {
             .name       = "main_img",
-            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
+            .mem_quali  = "readonly",
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
-            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "overlay_img",
-            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
+            .mem_quali  = "readonly",
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
-            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "output_img",
@@ -234,7 +240,7 @@ static int overlay_vulkan_blend(FFFrameSync *fs)
 
     RET(ff_vk_filter_process_Nin(&s->vkctx, &s->e, &s->shd,
                                  out, (AVFrame *[]){ input_main, input_overlay }, 2,
-                                 s->sampler, &s->opts, sizeof(s->opts)));
+                                 VK_NULL_HANDLE, &s->opts, sizeof(s->opts)));
 
     err = av_frame_copy_props(out, input_main);
     if (err < 0)
@@ -284,14 +290,9 @@ static void overlay_vulkan_uninit(AVFilterContext *avctx)
 {
     OverlayVulkanContext *s = avctx->priv;
     FFVulkanContext *vkctx = &s->vkctx;
-    FFVulkanFunctions *vk = &vkctx->vkfn;
 
     ff_vk_exec_pool_free(vkctx, &s->e);
     ff_vk_shader_free(vkctx, &s->shd);
-
-    if (s->sampler)
-        vk->DestroySampler(vkctx->hwctx->act_dev, s->sampler,
-                           vkctx->hwctx->alloc);
 
     ff_vk_uninit(&s->vkctx);
     ff_framesync_uninit(&s->fs);
@@ -330,9 +331,11 @@ static const AVFilterPad overlay_vulkan_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_overlay_vulkan = {
-    .name           = "overlay_vulkan",
-    .description    = NULL_IF_CONFIG_SMALL("Overlay a source on top of another"),
+const FFFilter ff_vf_overlay_vulkan = {
+    .p.name         = "overlay_vulkan",
+    .p.description  = NULL_IF_CONFIG_SMALL("Overlay a source on top of another"),
+    .p.priv_class   = &overlay_vulkan_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(OverlayVulkanContext),
     .init           = &overlay_vulkan_init,
     .uninit         = &overlay_vulkan_uninit,
@@ -340,7 +343,5 @@ const AVFilter ff_vf_overlay_vulkan = {
     FILTER_INPUTS(overlay_vulkan_inputs),
     FILTER_OUTPUTS(overlay_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
-    .priv_class     = &overlay_vulkan_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

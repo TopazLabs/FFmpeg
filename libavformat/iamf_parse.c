@@ -319,7 +319,7 @@ static int update_extradata(AVCodecParameters *codecpar)
             return ret;
 
         put_bits32(&pb, get_bits_long(&gb, 32)); // min/max blocksize
-        put_bits64(&pb, 48, get_bits64(&gb, 48)); // min/max framesize
+        put_bits63(&pb, 48, get_bits64(&gb, 48)); // min/max framesize
         put_bits(&pb, 20, get_bits(&gb, 20)); // samplerate
         skip_bits(&gb, 3);
         put_bits(&pb, 3, codecpar->ch_layout.nb_channels - 1);
@@ -356,6 +356,7 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
         AVIAMFLayer *layer;
         int loudspeaker_layout, output_gain_is_present_flag;
         int substream_count, coupled_substream_count;
+        int expanded_loudspeaker_layout = -1;
         int ret, byte = avio_r8(pb);
 
         layer = av_iamf_audio_element_add_layer(audio_element->element);
@@ -379,7 +380,11 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
             layer->output_gain = av_make_q(sign_extend(avio_rb16(pb), 16), 1 << 8);
         }
 
-        if (loudspeaker_layout < 10)
+        if (!i && loudspeaker_layout == 15)
+            expanded_loudspeaker_layout = avio_r8(pb);
+        if (expanded_loudspeaker_layout > 0 && expanded_loudspeaker_layout < 13)
+            av_channel_layout_copy(&layer->ch_layout, &ff_iamf_expanded_scalable_ch_layouts[expanded_loudspeaker_layout]);
+        else if (loudspeaker_layout < 10)
             av_channel_layout_copy(&layer->ch_layout, &ff_iamf_scalable_ch_layouts[loudspeaker_layout]);
         else
             layer->ch_layout = (AVChannelLayout){ .order = AV_CHANNEL_ORDER_UNSPEC,
@@ -417,7 +422,7 @@ static int ambisonics_config(void *s, AVIOContext *pb,
 
     output_channel_count = avio_r8(pb);  // C
     substream_count = avio_r8(pb);  // N
-    if (audio_element->nb_substreams != substream_count)
+    if (audio_element->nb_substreams != substream_count || output_channel_count == 0)
         return AVERROR_INVALIDDATA;
 
     order = floor(sqrt(output_channel_count - 1));
@@ -496,6 +501,7 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
     AVIAMFParamDefinition *param;
     unsigned int parameter_id, parameter_rate, mode;
     unsigned int duration = 0, constant_subblock_duration = 0, nb_subblocks = 0;
+    unsigned int total_duration = 0;
     size_t param_size;
 
     parameter_id = ffio_read_leb(pb);
@@ -516,8 +522,10 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
         constant_subblock_duration = ffio_read_leb(pb);
         if (constant_subblock_duration == 0)
             nb_subblocks = ffio_read_leb(pb);
-        else
+        else {
             nb_subblocks = duration / constant_subblock_duration;
+            total_duration = duration;
+        }
     }
 
     param = av_iamf_param_definition_alloc(type, nb_subblocks, &param_size);
@@ -528,8 +536,11 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
         void *subblock = av_iamf_param_definition_get_subblock(param, i);
         unsigned int subblock_duration = constant_subblock_duration;
 
-        if (constant_subblock_duration == 0)
+        if (constant_subblock_duration == 0) {
             subblock_duration = ffio_read_leb(pb);
+            total_duration += subblock_duration;
+        } else if (i == nb_subblocks - 1)
+            subblock_duration = duration - i * constant_subblock_duration;
 
         switch (type) {
         case AV_IAMF_PARAMETER_DEFINITION_MIX_GAIN: {
@@ -555,6 +566,12 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
             av_free(param);
             return AVERROR_INVALIDDATA;
         }
+    }
+
+    if (!mode && !constant_subblock_duration && total_duration != duration) {
+        av_log(s, AV_LOG_ERROR, "Invalid subblock durations in parameter_id %u\n", parameter_id);
+        av_free(param);
+        return AVERROR_INVALIDDATA;
     }
 
     param->parameter_id = parameter_id;
@@ -716,6 +733,12 @@ static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
     }
 
     num_parameters = ffio_read_leb(pbc);
+    if (num_parameters > 2 && audio_element_type == 0) {
+        av_log(s, AV_LOG_ERROR, "Audio Element parameter count %u is invalid"
+                                " for Channel representations\n", num_parameters);
+        ret = AVERROR_INVALIDDATA;
+        goto fail;
+    }
     if (num_parameters && audio_element_type != 0) {
         av_log(s, AV_LOG_ERROR, "Audio Element parameter count %u is invalid"
                                 " for Scene representations\n", num_parameters);
@@ -729,11 +752,19 @@ static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
         type = ffio_read_leb(pbc);
         if (type == AV_IAMF_PARAMETER_DEFINITION_MIX_GAIN)
             ret = AVERROR_INVALIDDATA;
-        else if (type == AV_IAMF_PARAMETER_DEFINITION_DEMIXING)
+        else if (type == AV_IAMF_PARAMETER_DEFINITION_DEMIXING) {
+            if (element->demixing_info) {
+                ret = AVERROR_INVALIDDATA;
+                goto fail;
+            }
             ret = param_parse(s, c, pbc, type, audio_element, &element->demixing_info);
-        else if (type == AV_IAMF_PARAMETER_DEFINITION_RECON_GAIN)
+        } else if (type == AV_IAMF_PARAMETER_DEFINITION_RECON_GAIN) {
+            if (element->recon_gain_info) {
+                ret = AVERROR_INVALIDDATA;
+                goto fail;
+            }
             ret = param_parse(s, c, pbc, type, audio_element, &element->recon_gain_info);
-        else {
+        } else {
             unsigned param_definition_size = ffio_read_leb(pbc);
             avio_skip(pbc, param_definition_size);
         }

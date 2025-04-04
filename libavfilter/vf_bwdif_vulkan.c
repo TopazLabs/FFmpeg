@@ -33,8 +33,7 @@ typedef struct BWDIFVulkanContext {
 
     int initialized;
     FFVkExecPool e;
-    FFVkQueueFamilyCtx qf;
-    VkSampler sampler;
+    AVVulkanDeviceQueueFamily *qf;
     FFVulkanShader shd;
 } BWDIFVulkanContext;
 
@@ -65,9 +64,14 @@ static av_cold int init_filter(AVFilterContext *ctx)
         return AVERROR_EXTERNAL;
     }
 
-    ff_vk_qf_init(vkctx, &s->qf, VK_QUEUE_COMPUTE_BIT);
-    RET(ff_vk_exec_pool_init(vkctx, &s->qf, &s->e, s->qf.nb_queues*4, 0, 0, 0, NULL));
-    RET(ff_vk_init_sampler(vkctx, &s->sampler, 1, VK_FILTER_NEAREST));
+    s->qf = ff_vk_qf_find(vkctx, VK_QUEUE_COMPUTE_BIT, 0);
+    if (!s->qf) {
+        av_log(ctx, AV_LOG_ERROR, "Device has no compute queues\n");
+        err = AVERROR(ENOTSUP);
+        goto fail;
+    }
+
+    RET(ff_vk_exec_pool_init(vkctx, s->qf, &s->e, s->qf->num*4, 0, 0, 0, NULL));
 
     RET(ff_vk_shader_init(vkctx, &s->shd, "bwdif",
                           VK_SHADER_STAGE_COMPUTE_BIT,
@@ -79,27 +83,30 @@ static av_cold int init_filter(AVFilterContext *ctx)
     desc = (FFVulkanDescriptorSetBinding []) {
         {
             .name       = "prev",
-            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
+            .mem_quali  = "readonly",
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
-            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "cur",
-            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
+            .mem_quali  = "readonly",
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
-            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "next",
-            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
+            .mem_quali  = "readonly",
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
-            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "dst",
@@ -160,7 +167,7 @@ static av_cold int init_filter(AVFilterContext *ctx)
             GLSLC(2, if (!IS_WITHIN(pos, size))                                    );
             GLSLC(3,     return;                                                   );
         }
-        GLSLF(2,     imageStore(dst[%i], pos, texture(cur[%i], pos));              ,i, i);
+        GLSLF(2,     imageStore(dst[%i], pos, imageLoad(cur[%i], pos));            ,i, i);
     }
     GLSLC(1,     }                                                                 );
     GLSLC(0, }                                                                     );
@@ -195,7 +202,7 @@ static void bwdif_vulkan_filter_frame(AVFilterContext *ctx, AVFrame *dst,
 
     ff_vk_filter_process_Nin(&s->vkctx, &s->e, &s->shd, dst,
                              (AVFrame *[]){ y->prev, y->cur, y->next }, 3,
-                             s->sampler, &params, sizeof(params));
+                             VK_NULL_HANDLE, &params, sizeof(params));
 
     if (y->current_field == YADIF_FIELD_END)
         y->current_field = YADIF_FIELD_NORMAL;
@@ -205,14 +212,9 @@ static void bwdif_vulkan_uninit(AVFilterContext *avctx)
 {
     BWDIFVulkanContext *s = avctx->priv;
     FFVulkanContext *vkctx = &s->vkctx;
-    FFVulkanFunctions *vk = &vkctx->vkfn;
 
     ff_vk_exec_pool_free(vkctx, &s->e);
     ff_vk_shader_free(vkctx, &s->shd);
-
-    if (s->sampler)
-        vk->DestroySampler(vkctx->hwctx->act_dev, s->sampler,
-                           vkctx->hwctx->alloc);
 
     ff_vk_uninit(&s->vkctx);
 
@@ -319,17 +321,17 @@ static const AVFilterPad bwdif_vulkan_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_bwdif_vulkan = {
-    .name           = "bwdif_vulkan",
-    .description    = NULL_IF_CONFIG_SMALL("Deinterlace Vulkan frames via bwdif"),
+const FFFilter ff_vf_bwdif_vulkan = {
+    .p.name         = "bwdif_vulkan",
+    .p.description  = NULL_IF_CONFIG_SMALL("Deinterlace Vulkan frames via bwdif"),
+    .p.priv_class   = &bwdif_vulkan_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE |
+                      AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size      = sizeof(BWDIFVulkanContext),
     .init           = &ff_vk_filter_init,
     .uninit         = &bwdif_vulkan_uninit,
     FILTER_INPUTS(bwdif_vulkan_inputs),
     FILTER_OUTPUTS(bwdif_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
-    .priv_class     = &bwdif_vulkan_class,
-    .flags          = AVFILTER_FLAG_HWDEVICE |
-                      AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

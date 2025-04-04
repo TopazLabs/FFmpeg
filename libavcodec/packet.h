@@ -356,10 +356,6 @@ enum AVPacketSideDataType {
     AV_PKT_DATA_NB
 };
 
-#if FF_API_QUALITY_FACTOR
-#define AV_PKT_DATA_QUALITY_FACTOR AV_PKT_DATA_QUALITY_STATS //DEPRECATED
-#endif
-
 /**
  * This structure stores auxiliary information for decoding, presenting, or
  * otherwise processing the coded stream. It is typically exported by demuxers
@@ -879,6 +875,13 @@ int av_packet_make_writable(AVPacket *pkt);
  *               converted
  */
 void av_packet_rescale_ts(AVPacket *pkt, AVRational tb_src, AVRational tb_dst);
+
+/**
+ * Allocate an AVContainerFifo instance for AVPacket.
+ *
+ * @param flags currently unused
+ */
+struct AVContainerFifo *av_container_fifo_alloc_avpacket(unsigned flags);
 
 /**
  * @}

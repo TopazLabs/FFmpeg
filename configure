@@ -365,6 +365,7 @@ External library support:
   --disable-vdpau          disable Nvidia Video Decode and Presentation API for Unix code [autodetect]
   --disable-videotoolbox   disable VideoToolbox code [autodetect]
   --disable-vulkan         disable Vulkan code [autodetect]
+  --enable-vulkan-static   statically link to libvulkan [no]
 
 Toolchain options:
   --arch=ARCH              select architecture [$arch]
@@ -428,6 +429,7 @@ Toolchain options:
   --enable-thumb           compile for Thumb instruction set
   --enable-lto[=arg]       use link-time optimization
   --env="ENV=override"     override the environment variables
+  --disable-response-files Don't pass the list of objects to linker in a file [autodetect]
 
 Advanced options (experts only):
   --malloc-prefix=PREFIX   prefix malloc and related names with PREFIX
@@ -1523,7 +1525,7 @@ test_pkg_config(){
     funcs="$4"
     shift 4
     disable $name
-    test_cmd $pkg_config --exists --print-errors $pkg_version || return
+    test_cmd $pkg_config --exists --print-errors "$pkg_version" || return
     pkg_cflags=$($pkg_config --cflags $pkg_config_flags $pkg)
     pkg_libs=$($pkg_config --libs $pkg_config_flags $pkg)
     pkg_incdir=$($pkg_config --variable=includedir $pkg_config_flags $pkg)
@@ -1543,7 +1545,7 @@ test_pkg_config_cpp(){
     cond="$4"
     shift 4
     disable $name
-    test_cmd $pkg_config --exists --print-errors $pkg_version || return
+    test_cmd $pkg_config --exists --print-errors "$pkg_version" || return
     pkg_cflags=$($pkg_config --cflags $pkg_config_flags $pkg)
     pkg_incdir=$($pkg_config --variable=includedir $pkg_config_flags $pkg)
     pkg_incflags=$($pkg_config --cflags-only-I $pkg_config_flags $pkg)
@@ -1990,6 +1992,7 @@ EXTERNAL_LIBRARY_LIST="
     pocketsphinx
     vapoursynth
     tvai
+    vulkan_static
 "
 
 HWACCEL_AUTODETECT_LIBRARY_LIST="
@@ -2225,6 +2228,7 @@ ARCH_EXT_LIST_PPC="
     ldbrx
     power8
     ppc4xx
+    vec_xl
     vsx
 "
 
@@ -2286,11 +2290,6 @@ HEADERS_LIST="
     cdio_paranoia_paranoia_h
     cuda_h
     dispatch_dispatch_h
-    dev_bktr_ioctl_bt848_h
-    dev_bktr_ioctl_meteor_h
-    dev_ic_bt8xx_h
-    dev_video_bktr_ioctl_bt848_h
-    dev_video_meteor_ioctl_meteor_h
     direct_h
     dirent_h
     dxgidebug_h
@@ -2300,11 +2299,8 @@ HEADERS_LIST="
     io_h
     linux_dma_buf_h
     linux_perf_event_h
-    machine_ioctl_bt848_h
-    machine_ioctl_meteor_h
     malloc_h
     opencv2_core_core_c_h
-    OpenGL_gl3_h
     poll_h
     pthread_np_h
     sys_hwprobe_h
@@ -2491,6 +2487,7 @@ TYPES_LIST="
     kCVImageBufferColorPrimaries_ITU_R_2020
     kCVImageBufferTransferFunction_ITU_R_2020
     kCVImageBufferTransferFunction_SMPTE_ST_428_1
+    kVTQPModulationLevel_Default
     socklen_t
     struct_addrinfo
     struct_group_source_req
@@ -2668,6 +2665,7 @@ CMDLINE_SELECT="
     extra_warnings
     logging
     optimizations
+    response_files
     rpath
     stripping
     version_tracking
@@ -2777,6 +2775,7 @@ altivec_deps="ppc"
 dcbzl_deps="ppc"
 ldbrx_deps="ppc"
 ppc4xx_deps="ppc"
+vec_xl_deps="altivec"
 vsx_deps="altivec"
 power8_deps="vsx"
 
@@ -2883,6 +2882,7 @@ h264parse_select="golomb"
 h264_sei_select="atsc_a53 golomb"
 hevcparse_select="golomb"
 hevc_sei_select="atsc_a53 golomb"
+iso_writer_select="golomb"
 frame_thread_encoder_deps="encoders threads"
 iamfdec_deps="iamf"
 iamfdec_select="iso_media mpeg4audio"
@@ -2959,6 +2959,7 @@ eamad_decoder_select="aandcttables blockdsp bswapdsp"
 eatgq_decoder_select="aandcttables"
 eatqi_decoder_select="aandcttables blockdsp bswapdsp"
 exr_decoder_deps="zlib"
+exr_decoder_select="bswapdsp"
 exr_encoder_deps="zlib"
 ffv1_decoder_select="rangecoder"
 ffv1_encoder_select="rangecoder"
@@ -3007,7 +3008,7 @@ ipu_decoder_select="mpegvideodec"
 jpegls_decoder_select="mjpeg_decoder"
 jv_decoder_select="blockdsp"
 lagarith_decoder_select="llviddsp"
-lead_decoder_select="idctdsp jpegtables"
+lead_decoder_select="blockdsp idctdsp jpegtables"
 ljpeg_encoder_select="jpegtables"
 lscr_decoder_select="inflate_wrapper"
 magicyuv_decoder_select="llviddsp"
@@ -3192,6 +3193,8 @@ av1_videotoolbox_hwaccel_deps="videotoolbox"
 av1_videotoolbox_hwaccel_select="av1_decoder"
 av1_vulkan_hwaccel_deps="vulkan"
 av1_vulkan_hwaccel_select="av1_decoder"
+ffv1_vulkan_hwaccel_deps="vulkan spirv_compiler"
+ffv1_vulkan_hwaccel_select="ffv1_decoder"
 h263_vaapi_hwaccel_deps="vaapi"
 h263_vaapi_hwaccel_select="h263_decoder"
 h263_videotoolbox_hwaccel_deps="videotoolbox"
@@ -3358,6 +3361,7 @@ amrnb_mediacodec_decoder_select="amr_parser"
 amrwb_mediacodec_decoder_deps="mediacodec"
 amrwb_mediacodec_decoder_select="amr_parser"
 av1_amf_encoder_deps="amf"
+av1_amf_decoder_deps="amf"
 av1_cuvid_decoder_deps="cuvid CUVIDAV1PICPARAMS"
 av1_mediacodec_decoder_deps="mediacodec"
 av1_mediacodec_encoder_deps="mediacodec"
@@ -3373,6 +3377,7 @@ av1_vaapi_encoder_select="cbs_av1 vaapi_encode"
 h263_v4l2m2m_decoder_deps="v4l2_m2m h263_v4l2_m2m"
 h263_v4l2m2m_encoder_deps="v4l2_m2m h263_v4l2_m2m"
 h264_amf_encoder_deps="amf"
+h264_amf_decoder_deps="amf"
 h264_cuvid_decoder_deps="cuvid"
 h264_cuvid_decoder_select="h264_mp4toannexb_bsf"
 h264_mediacodec_decoder_deps="mediacodec"
@@ -3394,6 +3399,7 @@ h264_v4l2m2m_decoder_deps="v4l2_m2m h264_v4l2_m2m"
 h264_v4l2m2m_decoder_select="h264_mp4toannexb_bsf"
 h264_v4l2m2m_encoder_deps="v4l2_m2m h264_v4l2_m2m"
 hevc_amf_encoder_deps="amf"
+hevc_amf_decoder_deps="amf"
 hevc_cuvid_decoder_deps="cuvid"
 hevc_cuvid_decoder_select="hevc_mp4toannexb_bsf"
 hevc_d3d12va_encoder_select="cbs_h265 d3d12va_encode"
@@ -3469,6 +3475,7 @@ vvc_qsv_decoder_select="vvc_mp4toannexb_bsf qsvdec"
 aac_parser_select="adts_header mpeg4audio"
 av1_parser_select="cbs_av1"
 evc_parser_select="evcparse"
+ffv1_parser_select="rangecoder"
 ftr_parser_select="adts_header mpeg4audio"
 h264_parser_select="golomb h264dsp h264parse h264_sei"
 hevc_parser_select="hevcparse hevc_sei"
@@ -3561,6 +3568,8 @@ libgsm_ms_decoder_deps="libgsm"
 libgsm_ms_encoder_deps="libgsm"
 libilbc_decoder_deps="libilbc"
 libilbc_encoder_deps="libilbc"
+libjxl_anim_decoder_deps="libjxl libjxl_threads"
+libjxl_anim_encoder_deps="libjxl libjxl_threads"
 libjxl_decoder_deps="libjxl libjxl_threads"
 libjxl_encoder_deps="libjxl libjxl_threads"
 libkvazaar_encoder_deps="libkvazaar"
@@ -3620,7 +3629,7 @@ libxvid_encoder_deps="libxvid"
 libzvbi_teletext_decoder_deps="libzvbi"
 vapoursynth_demuxer_deps="vapoursynth"
 videotoolbox_suggest="coreservices"
-videotoolbox_deps="corefoundation coremedia corevideo"
+videotoolbox_deps="corefoundation coremedia corevideo VTDecompressionSessionDecodeFrame"
 videotoolbox_encoder_deps="videotoolbox VTCompressionSessionPrepareToEncodeFrames"
 
 # demuxers / muxers
@@ -3735,9 +3744,8 @@ alsa_outdev_deps="alsa"
 avfoundation_indev_deps="avfoundation corevideo coremedia pthreads"
 avfoundation_indev_suggest="coregraphics applicationservices"
 avfoundation_indev_extralibs="-framework Foundation"
-audiotoolbox_outdev_deps="audiotoolbox pthreads"
+audiotoolbox_outdev_deps="audiotoolbox pthreads AudioObjectPropertyAddress"
 audiotoolbox_outdev_extralibs="-framework AudioToolbox -framework CoreAudio"
-bktr_indev_deps_any="dev_bktr_ioctl_bt848_h machine_ioctl_bt848_h dev_video_bktr_ioctl_bt848_h dev_ic_bt8xx_h"
 caca_outdev_deps="libcaca"
 decklink_deps_any="libdl LoadLibrary"
 decklink_indev_deps="decklink threads"
@@ -3762,13 +3770,10 @@ lavfi_indev_deps="avfilter"
 libcdio_indev_deps="libcdio"
 libdc1394_indev_deps="libdc1394"
 openal_indev_deps="openal"
-opengl_outdev_deps="opengl"
-opengl_outdev_suggest="sdl2"
 oss_indev_deps_any="sys_soundcard_h"
 oss_outdev_deps_any="sys_soundcard_h"
 pulse_indev_deps="libpulse"
 pulse_outdev_deps="libpulse"
-sdl2_outdev_deps="sdl2"
 sndio_indev_deps="sndio"
 sndio_outdev_deps="sndio"
 v4l2_indev_deps_any="linux_videodev2_h sys_videoio_h"
@@ -3913,6 +3918,7 @@ iccdetect_filter_deps="lcms2"
 iccgen_filter_deps="lcms2"
 identity_filter_select="scene_sad"
 interlace_filter_deps="gpl"
+interlace_vulkan_filter_deps="vulkan spirv_compiler"
 kerndeint_filter_deps="gpl"
 ladspa_filter_deps="ladspa libdl"
 lcevc_filter_deps="liblcevc_dec"
@@ -3961,6 +3967,8 @@ rubberband_filter_deps="librubberband"
 sab_filter_deps="gpl swscale"
 scale2ref_filter_deps="swscale"
 scale_filter_deps="swscale"
+sr_amf_filter_deps="amf"
+vpp_amf_filter_deps="amf"
 scale_qsv_filter_deps="libmfx"
 scale_qsv_filter_select="qsvvpp"
 scdet_filter_select="scene_sad"
@@ -4138,6 +4146,7 @@ objformat="elf32"
 x86asmexe_default="nasm"
 windres_default="windres"
 striptype="direct"
+response_files_default="auto"
 
 # OS
 target_os_default=$(tolower $(uname -s))
@@ -4270,7 +4279,7 @@ find_things_extern(){
 
 find_filters_extern(){
     file=$source_path/$1
-    sed -n 's/^extern const AVFilter ff_[avfsinkrc]\{2,5\}_\([[:alnum:]_]\{1,\}\);/\1_filter/p' $file
+    sed -n 's/^extern const FFFilter ff_[avfsinkrc]\{2,5\}_\([[:alnum:]_]\{1,\}\);/\1_filter/p' $file
 }
 
 FILTER_LIST=$(find_filters_extern libavfilter/allfilters.c)
@@ -5183,7 +5192,7 @@ test -n "$cc_type" && enable $cc_type ||
 : ${dep_cc_default:=$cc}
 : ${ld_default:=$cc}
 : ${host_ld_default:=$host_cc}
-set_default ar as objcc dep_cc ld ln_s host_ld windres
+set_default ar as objcc dep_cc ld ln_s host_ld windres response_files
 
 probe_cc as "$as"
 asflags_filter=$_flags_filter
@@ -6421,6 +6430,11 @@ elif enabled ppc; then
         check_cpp_condition power8 "altivec.h" "defined(_ARCH_PWR8)"
     fi
 
+    if enabled altivec; then
+        check_cc vec_xl altivec.h "const unsigned char *y1i = { 0 };
+                                   vector unsigned char y0 = vec_xl(0, y1i);"
+    fi
+
 elif enabled riscv; then
 
     enabled rv && check_inline_asm rv '".option arch, +zbb\nrev8 t0, t1"'
@@ -6686,6 +6700,7 @@ check_headers termios.h
 check_headers unistd.h
 check_headers valgrind/valgrind.h
 check_func_headers VideoToolbox/VTCompressionSession.h VTCompressionSessionPrepareToEncodeFrames -framework VideoToolbox
+check_func_headers VideoToolbox/VideoToolbox.h VTDecompressionSessionDecodeFrame -framework VideoToolbox
 check_func_headers VideoToolbox/VideoToolbox.h VTPixelTransferSessionCreate -framework VideoToolbox
 check_func_headers VideoToolbox/VideoToolbox.h VTPixelRotationSessionCreate -framework VideoToolbox
 check_headers windows.h
@@ -6726,6 +6741,10 @@ check_apple_framework CoreMedia
 check_apple_framework CoreVideo
 check_apple_framework CoreAudio
 
+enabled audiotoolbox && {
+    check_type AudioToolbox/AudioToolbox.h AudioObjectPropertyAddress
+}
+
 enabled avfoundation && {
     disable coregraphics applicationservices
     check_lib coregraphics        CoreGraphics/CoreGraphics.h               CGGetActiveDisplayList "-framework CoreGraphics" ||
@@ -6751,6 +6770,7 @@ enabled videotoolbox && {
     check_func_headers CoreVideo/CVImageBuffer.h kCVImageBufferColorPrimaries_ITU_R_2020 "-framework CoreVideo"
     check_func_headers CoreVideo/CVImageBuffer.h kCVImageBufferTransferFunction_ITU_R_2020 "-framework CoreVideo"
     check_func_headers CoreVideo/CVImageBuffer.h kCVImageBufferTransferFunction_SMPTE_ST_428_1 "-framework CoreVideo"
+    check_func_headers VideoToolbox/VTCompressionProperties.h kVTQPModulationLevel_Default "-framework CoreVideo"
 }
 
 enabled metal && test_cmd $metalcc -v || disable metal
@@ -7017,7 +7037,7 @@ enabled libopus           && {
         require_pkg_config libopus opus opus_multistream.h opus_multistream_surround_encoder_create
     }
 }
-enabled libplacebo        && require_pkg_config libplacebo "libplacebo >= 4.192.0" libplacebo/vulkan.h pl_vulkan_create
+enabled libplacebo        && require_pkg_config libplacebo "libplacebo >= 5.229.0" libplacebo/vulkan.h pl_vulkan_create
 enabled libpulse          && require_pkg_config libpulse libpulse pulse/pulseaudio.h pa_context_new
 enabled libqrencode       && require_pkg_config libqrencode libqrencode qrencode.h QRcode_encodeString
 enabled libquirc          && require libquirc quirc.h quirc_decode -lquirc
@@ -7218,7 +7238,7 @@ enabled makeinfo \
 disabled makeinfo_html && texi2html --help 2> /dev/null | grep -q 'init-file' && enable texi2html || disable texi2html
 perl -v            > /dev/null 2>&1 && enable perl      || disable perl
 pod2man --help     > /dev/null 2>&1 && enable pod2man   || disable pod2man
-rsync --help 2> /dev/null | grep -q 'contimeout' && enable rsync_contimeout || disable rsync_contimeout
+rsync --help 2> /dev/null | grep -q 'contimeout=' && enable rsync_contimeout || disable rsync_contimeout
 xmllint --version  > /dev/null 2>&1 && enable xmllint   || disable xmllint
 
 check_headers linux/fb.h
@@ -7250,12 +7270,6 @@ check_lib vfw32 "windows.h vfw.h" capCreateCaptureWindow -lvfw32
 check_cpp_condition vfwcap_defines vfw.h "WM_CAP_DRIVER_CONNECT > WM_USER"
 
 check_type "dshow.h" IBaseFilter
-
-# check for ioctl_meteor.h, ioctl_bt848.h and alternatives
-check_headers "dev/bktr/ioctl_meteor.h dev/bktr/ioctl_bt848.h"                   ||
-    check_headers "machine/ioctl_meteor.h machine/ioctl_bt848.h"                 ||
-    check_headers "dev/video/meteor/ioctl_meteor.h dev/video/bktr/ioctl_bt848.h" ||
-    check_headers "dev/ic/bt8xx.h"
 
 if check_struct sys/soundcard.h audio_buf_info bytes; then
     enable_sanitized sys/soundcard.h
@@ -7392,7 +7406,10 @@ enabled vdpau &&
 enabled vdpau &&
     check_lib vdpau_x11 "vdpau/vdpau.h vdpau/vdpau_x11.h" vdp_device_create_x11 -lvdpau -lX11
 
-if enabled vulkan; then
+if enabled_all vulkan vulkan_static; then
+    check_pkg_config vulkan "vulkan >= 1.3.277" "vulkan/vulkan.h" "defined VK_VERSION_1_3" ||
+        check_lib vulkan "vulkan/vulkan.h" vkGetInstanceProcAddr -lvulkan
+elif enabled vulkan; then
     check_pkg_config_header_only vulkan "vulkan >= 1.3.277" "vulkan/vulkan.h" "defined VK_VERSION_1_3" ||
         check_cpp_condition vulkan "vulkan/vulkan.h" "defined(VK_VERSION_1_4) || (defined(VK_VERSION_1_3) && VK_HEADER_VERSION >= 277)"
 fi
@@ -7441,7 +7458,7 @@ fi
 
 enabled amf &&
     check_cpp_condition amf "AMF/core/Version.h" \
-        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400210000"
+        "(AMF_VERSION_MAJOR << 48 | AMF_VERSION_MINOR << 32 | AMF_VERSION_RELEASE << 16 | AMF_VERSION_BUILD_NUM) >= 0x0001000400230000"
 
 # Funny iconv installations are not unusual, so check it after all flags have been set
 if enabled libc_iconv; then
@@ -7489,6 +7506,10 @@ check_disable_warning -Wno-unused-const-variable
 check_disable_warning -Wno-bool-operation
 check_disable_warning -Wno-char-subscripts
 check_disable_warning -Wno-implicit-const-int-float-conversion
+
+# Disable mixed decl and code warning for Objective-C
+test_objcflags $unknown_warning_flags '-Wdeclaration-after-statement' &&
+    add_objcflags '-Wno-declaration-after-statement'
 
 check_disable_warning_headers(){
     warning_flag=-W${1#-Wno-}
@@ -7737,6 +7758,19 @@ case $ld_type in
     ;;
 esac
 
+if [ "$response_files" != "no" ]; then
+    ar_out=${FFTMPDIR}/test$LIBSUF
+    respfile="@/dev/null"
+    out_arg="$(echo $ar_o | sed "s;\$@;$ar_out;g")"
+    if test_cmd $ar $arflags $out_arg $respfile; then
+        response_files="yes"
+    elif [ "$response_files" = "auto" ]; then
+        response_files="no"
+    else
+        die "Response files are not available with this toolchain. Exiting"
+    fi
+fi
+
 enable frame_thread_encoder
 
 enabled asm || { arch=c; disable $ARCH_LIST $ARCH_EXT_LIST; }
@@ -7873,10 +7907,6 @@ enabled zoompan_filter      && prepend avfilter_deps "swscale"
 
 enabled lavfi_indev         && prepend avdevice_deps "avfilter"
 
-#FIXME
-enabled_any sdl2_outdev opengl_outdev && enabled sdl2 &&
-    add_cflags $(filter_out '-Dmain=SDL_main' $sdl2_cflags)
-
 enabled opus_decoder    && prepend avcodec_deps "swresample"
 
 # reorder the items at var $1 to align with the items order at var $2 .
@@ -7988,6 +8018,7 @@ if enabled ppc; then
     echo "POWER8 enabled            ${power8-no}"
     echo "PPC 4xx optimizations     ${ppc4xx-no}"
     echo "dcbzl available           ${dcbzl-no}"
+    echo "vec_xl available          ${vec_xl-no}"
 fi
 if enabled loongarch; then
     echo "LSX enabled               ${lsx-no}"
@@ -8116,6 +8147,7 @@ DEPX86ASM=$x86asmexe
 DEPX86ASMFLAGS=\$(X86ASMFLAGS)
 AR=$ar
 ARFLAGS=$arflags
+RESPONSE_FILES=$response_files
 AR_O=$ar_o
 AR_CMD=$ar
 NM_CMD=$nm
@@ -8130,7 +8162,7 @@ LN_S=$ln_s
 CPPFLAGS=$CPPFLAGS
 CFLAGS=$CFLAGS
 CXXFLAGS=$CXXFLAGS
-OBJCCFLAGS=$OBJCFLAGS
+OBJCFLAGS=$OBJCFLAGS
 ASFLAGS=$ASFLAGS
 NVCCFLAGS=$nvccflags
 AS_C=$AS_C
@@ -8238,7 +8270,7 @@ cat > $TMPH <<EOF
 #define FFMPEG_CONFIG_H
 #define FFMPEG_CONFIGURATION "$(c_escape $FFMPEG_CONFIGURATION)"
 #define FFMPEG_LICENSE "$(c_escape $license)"
-#define CONFIG_THIS_YEAR 2024
+#define CONFIG_THIS_YEAR 2025
 #define FFMPEG_DATADIR "$(eval c_escape $datadir)"
 #define AVCONV_DATADIR "$(eval c_escape $datadir)"
 #define CC_IDENT "$(c_escape ${cc_ident:-Unknown compiler})"
@@ -8317,7 +8349,7 @@ cp_if_changed $TMPH libavutil/avconfig.h
 # full_filter_name_foo=vf_foo
 # full_filter_name_bar=asrc_bar
 # ...
-eval "$(sed -n "s/^extern const AVFilter ff_\([avfsinkrc]\{2,5\}\)_\(.*\);/full_filter_name_\2=\1_\2/p" $source_path/libavfilter/allfilters.c)"
+eval "$(sed -n "s/^extern const FFFilter ff_\([avfsinkrc]\{2,5\}\)_\(.*\);/full_filter_name_\2=\1_\2/p" $source_path/libavfilter/allfilters.c)"
 
 # generate the lists of enabled components
 print_enabled_components(){
@@ -8351,7 +8383,7 @@ print_enabled_components(){
     cp_if_changed $TMPH $file
 }
 
-print_enabled_components libavfilter/filter_list.c AVFilter filter_list $FILTER_LIST
+print_enabled_components libavfilter/filter_list.c FFFilter filter_list $FILTER_LIST
 print_enabled_components libavcodec/codec_list.c FFCodec codec_list $CODEC_LIST
 print_enabled_components libavcodec/parser_list.c AVCodecParser parser_list $PARSER_LIST
 print_enabled_components libavcodec/bsf_list.c FFBitStreamFilter bitstream_filters $BSF_LIST

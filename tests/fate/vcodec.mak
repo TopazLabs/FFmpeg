@@ -204,7 +204,7 @@ fate-vsynth%-flv:                ENCOPTS = -qscale 10
 fate-vsynth%-flv:                FMT     = flv
 
 FATE_VCODEC-$(call ENCDEC, H261, AVI)   += h261 h261-trellis
-fate-vsynth%-h261:               ENCOPTS = -qscale 11
+fate-vsynth%-h261:               ENCOPTS = -qscale 11 -flags +loop
 fate-vsynth%-h261-trellis:       ENCOPTS = -qscale 12 -trellis 1 -mbd rd
 
 FATE_VCODEC-$(call ENCDEC, H263, AVI)   += h263 h263-obmc h263p
@@ -263,7 +263,7 @@ FATE_VCODEC-$(call ENCDEC, MPEG2VIDEO, MPEG2VIDEO MPEGVIDEO) += $(FATE_MPEG2)
 $(FATE_MPEG2:%=fate-vsynth\%-%): FMT    = mpeg2video
 $(FATE_MPEG2:%=fate-vsynth\%-%): CODEC  = mpeg2video
 
-fate-vsynth%-mpeg2:              ENCOPTS = -qscale 10
+fate-vsynth%-mpeg2:              ENCOPTS = -qscale 10 -alternate_scan 1
 fate-vsynth%-mpeg2-422:          ENCOPTS = -b:v 1000k                   \
                                            -bf 2                        \
                                            -trellis 1                   \
@@ -306,7 +306,8 @@ fate-vsynth%-mpeg4:              FMT     = mp4
 fate-vsynth%-mpeg4-adap:         ENCOPTS = -b 550k -bf 2 -flags +mv4     \
                                            -trellis 1 -cmp 1 -subcmp 2   \
                                            -mbd rd -scplx_mask 0.3       \
-                                           -mpv_flags +mv0
+                                           -mpv_flags +mv0               \
+                                           -b_strategy 1 -b_sensitivity 5
 
 fate-vsynth%-mpeg4-adv:          ENCOPTS = -qscale 9 -flags +mv4+aic       \
                                            -data_partitioning 1 -trellis 1 \
@@ -330,7 +331,7 @@ fate-vsynth%-mpeg4-qprd:         ENCOPTS = -b 450k -bf 2 -trellis 1          \
                                            -flags +mv4 -mpv_flags +qp_rd+mv0 \
                                            -cmp 2 -subcmp 2 -mbd rd
 
-fate-vsynth%-mpeg4-rc:           ENCOPTS = -b 400k -bf 2
+fate-vsynth%-mpeg4-rc:           ENCOPTS = -b 400k -bf 2 -mpeg_quant 1
 
 fate-vsynth%-mpeg4-thread:       ENCOPTS = -b 500k -flags +mv4+aic         \
                                            -data_partitioning 1 -trellis 1 \

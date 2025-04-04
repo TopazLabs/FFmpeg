@@ -38,7 +38,6 @@
 #include "libavutil/base64.h"
 #include "libavutil/bprint.h"
 #include "libavutil/dict.h"
-#include "libavutil/dict_internal.h"
 #include "libavutil/display.h"
 #include "libavutil/hdr_dynamic_metadata.h"
 #include "libavutil/intfloat.h"
@@ -2137,7 +2136,7 @@ static int matroska_aac_sri(int samplerate)
 static void matroska_metadata_creation_time(AVDictionary **metadata, int64_t date_utc)
 {
     /* Convert to seconds and adjust by number of seconds between 2001-01-01 and Epoch */
-    avpriv_dict_set_timestamp(metadata, "creation_time", date_utc / 1000 + 978307200000000LL);
+    ff_dict_set_timestamp(metadata, "creation_time", date_utc / 1000 + 978307200000000LL);
 }
 
 static int matroska_parse_flac(AVFormatContext *s,
@@ -4618,9 +4617,10 @@ static int64_t webm_dash_manifest_compute_bandwidth(AVFormatContext *s, int64_t 
             // The prebuffer ends in the last Cue. Estimate how much data was
             // prebuffered.
             pre_bytes = desc_end.end_offset - desc_end.start_offset;
-            pre_ns = desc_end.end_time_ns - desc_end.start_time_ns;
-            if (pre_ns <= 0)
+            if (desc_end.end_time_ns <= desc_end.start_time_ns ||
+                desc_end.end_time_ns - (uint64_t)desc_end.start_time_ns > INT64_MAX)
                 return -1;
+            pre_ns = desc_end.end_time_ns - desc_end.start_time_ns;
             pre_sec = pre_ns / nano_seconds_per_second;
             prebuffer_bytes +=
                 pre_bytes * ((temp_prebuffer_ns / nano_seconds_per_second) / pre_sec);
