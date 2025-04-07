@@ -206,14 +206,9 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     FilterLink *l = ff_filter_link(inlink);
     TPadContext *s = ctx->priv;
-    int ret;
 
     if (needs_drawing(s)) {
-        ret = ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
-        if (ret < 0) {
-            av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
-            return ret;
-        }
+        ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
         ff_draw_color(&s->draw, &s->color, s->rgba_color);
     }
 
@@ -240,11 +235,11 @@ static const AVFilterPad tpad_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_tpad = {
-    .p.name        = "tpad",
-    .p.description = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
-    .p.priv_class  = &tpad_class,
+const AVFilter ff_vf_tpad = {
+    .name          = "tpad",
+    .description   = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
     .priv_size     = sizeof(TPadContext),
+    .priv_class    = &tpad_class,
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(tpad_inputs),

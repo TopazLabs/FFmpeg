@@ -367,10 +367,9 @@ static const AVFilterPad dnn_processing_outputs[] = {
     },
 };
 
-const FFFilter ff_vf_dnn_processing = {
-    .p.name        = "dnn_processing",
-    .p.description = NULL_IF_CONFIG_SMALL("Apply DNN processing filter to the input."),
-    .p.priv_class  = &dnn_processing_class,
+const AVFilter ff_vf_dnn_processing = {
+    .name          = "dnn_processing",
+    .description   = NULL_IF_CONFIG_SMALL("Apply DNN processing filter to the input."),
     .priv_size     = sizeof(DnnProcessingContext),
     .preinit       = ff_dnn_filter_init_child_class,
     .init          = init,
@@ -378,5 +377,6 @@ const FFFilter ff_vf_dnn_processing = {
     FILTER_INPUTS(dnn_processing_inputs),
     FILTER_OUTPUTS(dnn_processing_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
+    .priv_class    = &dnn_processing_class,
     .activate      = activate,
 };

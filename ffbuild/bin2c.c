@@ -38,10 +38,8 @@ int main(int argc, char **argv)
         return -1;
 
     output = fopen(argv[2], "wb");
-    if (!output) {
-        fclose(input);
+    if (!output)
         return -1;
-    }
 
     if (argc == 4) {
         name = argv[3];
@@ -69,10 +67,8 @@ int main(int argc, char **argv)
 
     fclose(output);
 
-    if (ferror(input) || !feof(input)) {
-        fclose(input);
+    if (ferror(input) || !feof(input))
         return -1;
-    }
 
     fclose(input);
 

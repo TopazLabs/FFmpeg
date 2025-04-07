@@ -85,7 +85,9 @@ const FFCodec ff_mp1float_decoder = {
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .flush          = flush,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_FLT),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                      AV_SAMPLE_FMT_FLT,
+                                                      AV_SAMPLE_FMT_NONE },
 };
 #endif
 #if CONFIG_MP2FLOAT_DECODER
@@ -100,7 +102,9 @@ const FFCodec ff_mp2float_decoder = {
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .flush          = flush,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_FLT),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                      AV_SAMPLE_FMT_FLT,
+                                                      AV_SAMPLE_FMT_NONE },
 };
 #endif
 #if CONFIG_MP3FLOAT_DECODER
@@ -115,7 +119,9 @@ const FFCodec ff_mp3float_decoder = {
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .flush          = flush,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_FLT),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                      AV_SAMPLE_FMT_FLT,
+                                                      AV_SAMPLE_FMT_NONE },
 };
 #endif
 #if CONFIG_MP3ADUFLOAT_DECODER
@@ -130,7 +136,9 @@ const FFCodec ff_mp3adufloat_decoder = {
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .flush          = flush,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_FLT),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                      AV_SAMPLE_FMT_FLT,
+                                                      AV_SAMPLE_FMT_NONE },
 };
 #endif
 #if CONFIG_MP3ON4FLOAT_DECODER
@@ -146,7 +154,8 @@ const FFCodec ff_mp3on4float_decoder = {
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .flush          = flush_mp3on4,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                      AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

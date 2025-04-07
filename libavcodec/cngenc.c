@@ -108,7 +108,8 @@ const FFCodec ff_comfortnoise_encoder = {
     .init           = cng_encode_init,
     FF_CODEC_ENCODE_CB(cng_encode_frame),
     .close          = cng_encode_close,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
-    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO),
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+                                                     AV_SAMPLE_FMT_NONE },
+    .p.ch_layouts   = (const AVChannelLayout[]){ AV_CHANNEL_LAYOUT_MONO, { 0 } },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

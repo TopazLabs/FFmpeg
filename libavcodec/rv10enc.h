@@ -21,9 +21,9 @@
 #ifndef AVCODEC_RV10ENC_H
 #define AVCODEC_RV10ENC_H
 
-typedef struct MPVMainEncContext MPVMainEncContext;
+#include "mpegvideo.h"
 
-int ff_rv10_encode_picture_header(MPVMainEncContext *m);
-int ff_rv20_encode_picture_header(MPVMainEncContext *m);
+int ff_rv10_encode_picture_header(MpegEncContext *s);
+void ff_rv20_encode_picture_header(MpegEncContext *s);
 
 #endif /* AVCODEC_RV10ENC_H */

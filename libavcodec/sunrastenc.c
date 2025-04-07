@@ -218,8 +218,9 @@ const FFCodec ff_sunrast_encoder = {
     .init           = sunrast_encode_init,
     FF_CODEC_ENCODE_CB(sunrast_encode_frame),
     .p.priv_class   = &sunrast_class,
-    CODEC_PIXFMTS(AV_PIX_FMT_BGR24,
-                  AV_PIX_FMT_PAL8,
-                  AV_PIX_FMT_GRAY8,
-                  AV_PIX_FMT_MONOWHITE),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_BGR24,
+                                                  AV_PIX_FMT_PAL8,
+                                                  AV_PIX_FMT_GRAY8,
+                                                  AV_PIX_FMT_MONOWHITE,
+                                                  AV_PIX_FMT_NONE },
 };

@@ -343,17 +343,16 @@ static int filter_check_formats(AVFilterContext *ctx)
 
 static int filter_query_formats(AVFilterContext *ctx)
 {
-    const FFFilter *const filter = fffilter(ctx->filter);
     int ret;
 
-    if (filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC) {
-        if ((ret = filter->formats.query_func(ctx)) < 0) {
+    if (ctx->filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC) {
+        if ((ret = ctx->filter->formats.query_func(ctx)) < 0) {
             if (ret != AVERROR(EAGAIN))
                 av_log(ctx, AV_LOG_ERROR, "Query format failed for '%s': %s\n",
                        ctx->name, av_err2str(ret));
             return ret;
         }
-    } else if (filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC2) {
+    } else if (ctx->filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC2) {
         AVFilterFormatsConfig *cfg_in_stack[64], *cfg_out_stack[64];
         AVFilterFormatsConfig **cfg_in_dyn = NULL, **cfg_out_dyn = NULL;
         AVFilterFormatsConfig **cfg_in, **cfg_out;
@@ -386,7 +385,7 @@ static int filter_query_formats(AVFilterContext *ctx)
             cfg_out[i] = &l->incfg;
         }
 
-        ret = filter->formats.query_func2(ctx, cfg_in, cfg_out);
+        ret = ctx->filter->formats.query_func2(ctx, cfg_in, cfg_out);
         av_freep(&cfg_in_dyn);
         av_freep(&cfg_out_dyn);
         if (ret < 0) {
@@ -397,8 +396,8 @@ static int filter_query_formats(AVFilterContext *ctx)
         }
     }
 
-    if (filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC ||
-        filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC2) {
+    if (ctx->filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC ||
+        ctx->filter->formats_state == FF_FILTER_FORMATS_QUERY_FUNC2) {
         ret = filter_check_formats(ctx);
         if (ret < 0)
             return ret;
@@ -1434,7 +1433,7 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
     while (graphi->sink_links_count) {
         oldesti = graphi->sink_links[0];
         oldest  = &oldesti->l.pub;
-        if (fffilter(oldest->dst->filter)->activate) {
+        if (oldest->dst->filter->activate) {
             r = av_buffersink_get_frame_flags(oldest->dst, NULL,
                                               AV_BUFFERSINK_FLAG_PEEK);
             if (r != AVERROR_EOF)
@@ -1455,7 +1454,7 @@ int avfilter_graph_request_oldest(AVFilterGraph *graph)
     }
     if (!graphi->sink_links_count)
         return AVERROR_EOF;
-    av_assert1(!fffilter(oldest->dst->filter)->activate);
+    av_assert1(!oldest->dst->filter->activate);
     av_assert1(oldesti->age_index >= 0);
     frame_count = oldesti->l.frame_count_out;
     while (frame_count == oldesti->l.frame_count_out) {

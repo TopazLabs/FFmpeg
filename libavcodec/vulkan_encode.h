@@ -188,7 +188,7 @@ typedef struct FFVulkanEncodeContext {
     VkVideoEncodeCapabilitiesKHR enc_caps;
     VkVideoEncodeUsageInfoKHR usage_info;
 
-    AVVulkanDeviceQueueFamily *qf_enc;
+    FFVkQueueFamilyCtx qf_enc;
     FFVkExecPool enc_pool;
 
     FFHWBaseEncodePicture *slots[32];

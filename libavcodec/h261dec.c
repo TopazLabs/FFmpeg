@@ -155,7 +155,6 @@ static int h261_decode_gob_header(H261DecContext *h)
         av_log(s->avctx, AV_LOG_ERROR, "qscale has forbidden 0 value\n");
         if (s->avctx->err_recognition & (AV_EF_BITSTREAM | AV_EF_COMPLIANT))
             return -1;
-        s->qscale = 1;
     }
 
     /* For the first transmitted macroblock in a GOB, MBA is the absolute
@@ -263,7 +262,7 @@ static int h261_decode_block(H261DecContext *h, int16_t *block, int n, int coded
          * being coded as 1111 1111. */
         if (level == 255)
             level = 128;
-        block[0] = level * 8;
+        block[0] = level * s->y_dc_scale;
         i        = 1;
     } else if (coded) {
         // Run  Level   Code
@@ -381,11 +380,8 @@ static int h261_decode_mb(H261DecContext *h)
     }
 
     // Read mquant
-    if (IS_QUANT(com->mtype)) {
-        s->qscale = get_bits(&s->gb, 5);
-        if (!s->qscale)
-            s->qscale = 1;
-    }
+    if (IS_QUANT(com->mtype))
+        ff_set_qscale(s, get_bits(&s->gb, 5));
 
     s->mb_intra = IS_INTRA4x4(com->mtype);
 
@@ -515,6 +511,8 @@ static int h261_decode_gob(H261DecContext *h)
 {
     MpegEncContext *const s = &h->s;
 
+    ff_set_qscale(s, s->qscale);
+
     /* decode mb's */
     while (h->current_mba <= MBA_STUFFING) {
         int ret;
@@ -536,6 +534,20 @@ static int h261_decode_gob(H261DecContext *h)
     }
 
     return -1;
+}
+
+/**
+ * returns the number of bytes consumed for building the current frame
+ */
+static int get_consumed_bytes(MpegEncContext *s, int buf_size)
+{
+    int pos = get_bits_count(&s->gb) >> 3;
+    if (pos == 0)
+        pos = 1;      // avoid infinite loops (i doubt that is needed but ...)
+    if (pos + 10 > buf_size)
+        pos = buf_size;               // oops ;)
+
+    return pos;
 }
 
 static int h261_decode_frame(AVCodecContext *avctx, AVFrame *pict,
@@ -575,7 +587,8 @@ static int h261_decode_frame(AVCodecContext *avctx, AVFrame *pict,
             return ret;
     }
 
-    if ((avctx->skip_frame >= AVDISCARD_NONKEY && s->pict_type != AV_PICTURE_TYPE_I) ||
+    if ((avctx->skip_frame >= AVDISCARD_NONREF && s->pict_type == AV_PICTURE_TYPE_B) ||
+        (avctx->skip_frame >= AVDISCARD_NONKEY && s->pict_type != AV_PICTURE_TYPE_I) ||
          avctx->skip_frame >= AVDISCARD_ALL)
         return buf_size;
 
@@ -603,7 +616,7 @@ static int h261_decode_frame(AVCodecContext *avctx, AVFrame *pict,
 
     *got_frame = 1;
 
-    return buf_size;
+    return get_consumed_bytes(s, buf_size);
 }
 
 const FFCodec ff_h261_decoder = {
@@ -617,5 +630,4 @@ const FFCodec ff_h261_decoder = {
     .close          = ff_mpv_decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.max_lowres   = 3,
-    .caps_internal  = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
 };

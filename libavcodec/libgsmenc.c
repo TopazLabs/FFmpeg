@@ -127,8 +127,9 @@ const FFCodec ff_libgsm_encoder = {
     FF_CODEC_ENCODE_CB(libgsm_encode_frame),
     .close          = libgsm_encode_close,
     .defaults       = libgsm_defaults,
-    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO),
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
+    .p.ch_layouts   = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO, { 0 } },
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+                                                     AV_SAMPLE_FMT_NONE },
     .p.wrapper_name = "libgsm",
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
 };
@@ -144,8 +145,9 @@ const FFCodec ff_libgsm_ms_encoder = {
     FF_CODEC_ENCODE_CB(libgsm_encode_frame),
     .close          = libgsm_encode_close,
     .defaults       = libgsm_defaults,
-    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO),
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
+    .p.ch_layouts   = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO, { 0 } },
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+                                                     AV_SAMPLE_FMT_NONE },
     .p.wrapper_name = "libgsm",
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
 };

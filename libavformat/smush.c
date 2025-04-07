@@ -51,7 +51,7 @@ static int smush_read_header(AVFormatContext *ctx)
     AVStream *vst, *ast;
     uint32_t magic, nframes, size, subversion, i;
     uint32_t width = 0, height = 0, got_audio = 0, read = 0;
-    uint32_t sample_rate, channels, palette[256], frame_rate = 15;
+    uint32_t sample_rate, channels, palette[256];
     int ret;
 
     magic = avio_rb32(pb);
@@ -64,7 +64,6 @@ static int smush_read_header(AVFormatContext *ctx)
         size = avio_rb32(pb);
         if (size < 3 * 256 + 6)
             return AVERROR_INVALIDDATA;
-        size -= 3 * 256 + 6;
 
         smush->version = 0;
         subversion     = avio_rl16(pb);
@@ -77,17 +76,7 @@ static int smush_read_header(AVFormatContext *ctx)
         for (i = 0; i < 256; i++)
             palette[i] = avio_rb24(pb);
 
-        if (subversion > 1) {
-            if (size < 12)
-                return AVERROR_INVALIDDATA;
-            size -= 12;
-            frame_rate = avio_rl32(pb);
-            avio_skip(pb, 4);            // max size of FRME chunk in file
-            sample_rate = avio_rl32(pb);
-            if (frame_rate < 1 || frame_rate > 70)
-                frame_rate = 12;
-        }
-        avio_skip(pb, size);
+        avio_skip(pb, size - (3 * 256 + 6));
     } else if (magic == MKBETAG('S', 'A', 'N', 'M')) {
         if (avio_rb32(pb) != MKBETAG('S', 'H', 'D', 'R'))
             return AVERROR_INVALIDDATA;
@@ -157,7 +146,7 @@ static int smush_read_header(AVFormatContext *ctx)
 
     smush->video_stream_index = vst->index;
 
-    avpriv_set_pts_info(vst, 64, 1, frame_rate);
+    avpriv_set_pts_info(vst, 64, 1, 15);
 
     vst->start_time        = 0;
     vst->duration          =

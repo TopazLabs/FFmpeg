@@ -58,6 +58,8 @@ typedef struct MadContext {
     unsigned int bitstream_buf_size;
     DECLARE_ALIGNED(32, int16_t, block)[64];
     uint16_t quant_matrix[64];
+    int mb_x;
+    int mb_y;
 } MadContext;
 
 static av_cold int decode_init(AVCodecContext *avctx)
@@ -146,8 +148,11 @@ static inline int decode_block_intra(MadContext *s, int16_t * block)
                 break;
             } else if (level != 0) {
                 i += run;
-                if (i > 63)
+                if (i > 63) {
+                    av_log(s->avctx, AV_LOG_ERROR,
+                           "ac-tex damaged at %d %d\n", s->mb_x, s->mb_y);
                     return -1;
+                }
                 j = scantable[i];
                 level = (level*quant_matrix[j]) >> 4;
                 level = (level-1)|1;
@@ -155,13 +160,18 @@ static inline int decode_block_intra(MadContext *s, int16_t * block)
                 LAST_SKIP_BITS(re, &s->gb, 1);
             } else {
                 /* escape */
+                UPDATE_CACHE(re, &s->gb);
                 level = SHOW_SBITS(re, &s->gb, 10); SKIP_BITS(re, &s->gb, 10);
 
+                UPDATE_CACHE(re, &s->gb);
                 run = SHOW_UBITS(re, &s->gb, 6)+1; LAST_SKIP_BITS(re, &s->gb, 6);
 
                 i += run;
-                if (i > 63)
+                if (i > 63) {
+                    av_log(s->avctx, AV_LOG_ERROR,
+                           "ac-tex damaged at %d %d\n", s->mb_x, s->mb_y);
                     return -1;
+                }
                 j = scantable[i];
                 if (level < 0) {
                     level = -level;
@@ -192,7 +202,7 @@ static int decode_motion(GetBitContext *gb)
     return value;
 }
 
-static int decode_mb(MadContext *s, AVFrame *frame, int inter, int mb_x, int mb_y)
+static int decode_mb(MadContext *s, AVFrame *frame, int inter)
 {
     int mv_map = 0;
     int av_uninit(mv_x), av_uninit(mv_y);
@@ -211,15 +221,12 @@ static int decode_mb(MadContext *s, AVFrame *frame, int inter, int mb_x, int mb_
         if (mv_map & (1<<j)) {  // mv_x and mv_y are guarded by mv_map
             int add = 2*decode_motion(&s->gb);
             if (s->last_frame->data[0])
-                comp_block(s, frame, mb_x, mb_y, j, mv_x, mv_y, add);
+                comp_block(s, frame, s->mb_x, s->mb_y, j, mv_x, mv_y, add);
         } else {
             s->bdsp.clear_block(s->block);
-            if (decode_block_intra(s, s->block) < 0) {
-                av_log(s->avctx, AV_LOG_ERROR,
-                        "ac-tex damaged at %d %d\n", mb_x, mb_y);
+            if(decode_block_intra(s, s->block) < 0)
                 return -1;
-            }
-            idct_put(s, frame, s->block, mb_x, mb_y, j);
+            idct_put(s, frame, s->block, s->mb_x, s->mb_y, j);
         }
     }
     return 0;
@@ -303,9 +310,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     memset((uint8_t*)s->bitstream_buf + bytestream2_get_bytes_left(&gb), 0, AV_INPUT_BUFFER_PADDING_SIZE);
     init_get_bits(&s->gb, s->bitstream_buf, 8*(bytestream2_get_bytes_left(&gb)));
 
-    for (int mb_y = 0; mb_y < (avctx->height + 15) / 16; mb_y++)
-        for (int mb_x = 0; mb_x < (avctx->width + 15) / 16; mb_x++)
-            if (decode_mb(s, frame, inter, mb_x, mb_y) < 0)
+    for (s->mb_y=0; s->mb_y < (avctx->height+15)/16; s->mb_y++)
+        for (s->mb_x=0; s->mb_x < (avctx->width +15)/16; s->mb_x++)
+            if(decode_mb(s, frame, inter) < 0)
                 return AVERROR_INVALIDDATA;
 
     *got_frame = 1;

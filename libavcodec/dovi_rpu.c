@@ -24,14 +24,14 @@
 #include "libavutil/mem.h"
 
 #include "dovi_rpu.h"
-#include "libavutil/refstruct.h"
+#include "refstruct.h"
 
 void ff_dovi_ctx_unref(DOVIContext *s)
 {
-    av_refstruct_unref(&s->dm);
+    ff_refstruct_unref(&s->dm);
     for (int i = 0; i < FF_ARRAY_ELEMS(s->vdr); i++)
-        av_refstruct_unref(&s->vdr[i]);
-    av_refstruct_unref(&s->ext_blocks);
+        ff_refstruct_unref(&s->vdr[i]);
+    ff_refstruct_unref(&s->ext_blocks);
     av_free(s->rpu_buf);
 
     *s = (DOVIContext) {
@@ -41,10 +41,10 @@ void ff_dovi_ctx_unref(DOVIContext *s)
 
 void ff_dovi_ctx_flush(DOVIContext *s)
 {
-    av_refstruct_unref(&s->dm);
+    ff_refstruct_unref(&s->dm);
     for (int i = 0; i < FF_ARRAY_ELEMS(s->vdr); i++)
-        av_refstruct_unref(&s->vdr[i]);
-    av_refstruct_unref(&s->ext_blocks);
+        ff_refstruct_unref(&s->vdr[i]);
+    ff_refstruct_unref(&s->ext_blocks);
 
     *s = (DOVIContext) {
         .logctx = s->logctx,
@@ -62,10 +62,10 @@ void ff_dovi_ctx_replace(DOVIContext *s, const DOVIContext *s0)
     s->header = s0->header;
     s->mapping = s0->mapping;
     s->color = s0->color;
-    av_refstruct_replace(&s->dm, s0->dm);
+    ff_refstruct_replace(&s->dm, s0->dm);
     for (int i = 0; i <= DOVI_MAX_DM_ID; i++)
-        av_refstruct_replace(&s->vdr[i], s0->vdr[i]);
-    av_refstruct_replace(&s->ext_blocks, s0->ext_blocks);
+        ff_refstruct_replace(&s->vdr[i], s0->vdr[i]);
+    ff_refstruct_replace(&s->ext_blocks, s0->ext_blocks);
 }
 
 int ff_dovi_guess_profile_hevc(const AVDOVIRpuDataHeader *hdr)

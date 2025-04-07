@@ -660,6 +660,11 @@ static int mf_encv_output_adjust(AVCodecContext *avctx, IMFMediaType *type)
         framerate = avctx->framerate;
     } else {
         framerate = av_inv_q(avctx->time_base);
+#if FF_API_TICKS_PER_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        framerate.den *= avctx->ticks_per_frame;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
 
     ff_MFSetAttributeRatio((IMFAttributes *)type, &MF_MT_FRAME_RATE, framerate.num, framerate.den);
@@ -1221,7 +1226,7 @@ static int mf_close(AVCodecContext *avctx)
     return 0;
 }
 
-static av_cold int mf_init(AVCodecContext *avctx)
+static int mf_init(AVCodecContext *avctx)
 {
     int ret;
     if ((ret = mf_load_library(avctx)) == 0) {
@@ -1258,7 +1263,8 @@ static av_cold int mf_init(AVCodecContext *avctx)
     };
 
 #define AFMTS \
-        CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
+        .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,    \
+                                                         AV_SAMPLE_FMT_NONE },
 #define ACAPS \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID |           \
                           AV_CODEC_CAP_DR1 | AV_CODEC_CAP_VARIABLE_FRAME_SIZE,
@@ -1300,7 +1306,9 @@ static const FFCodecDefault defaults[] = {
 };
 
 #define VFMTS \
-        CODEC_PIXFMTS(AV_PIX_FMT_NV12, AV_PIX_FMT_YUV420P),
+        .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12,       \
+                                                        AV_PIX_FMT_YUV420P,    \
+                                                        AV_PIX_FMT_NONE },
 #define VCAPS \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HYBRID |           \
                           AV_CODEC_CAP_DR1,

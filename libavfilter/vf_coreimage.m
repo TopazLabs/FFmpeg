@@ -299,6 +299,16 @@ static int request_frame(AVFilterLink *link)
     frame->duration            = 1;
     frame->flags              |= AV_FRAME_FLAG_KEY;
     frame->flags              &= ~AV_FRAME_FLAG_INTERLACED;
+
+FF_DISABLE_DEPRECATION_WARNINGS
+#if FF_API_FRAME_KEY
+    frame->key_frame           = 1;
+#endif
+#if FF_API_INTERLACED_FRAME
+    frame->interlaced_frame    = 0;
+#endif
+FF_ENABLE_DEPRECATION_WARNINGS
+
     frame->pict_type           = AV_PICTURE_TYPE_I;
     frame->sample_aspect_ratio = ctx->sar;
 
@@ -607,13 +617,13 @@ static const AVOption coreimage_options[] = {
 
 AVFILTER_DEFINE_CLASS(coreimage);
 
-const FFFilter ff_vf_coreimage = {
-    .p.name        = "coreimage",
-    .p.description = NULL_IF_CONFIG_SMALL("Video filtering using CoreImage API."),
-    .p.priv_class  = &coreimage_class,
+const AVFilter ff_vf_coreimage = {
+    .name          = "coreimage",
+    .description   = NULL_IF_CONFIG_SMALL("Video filtering using CoreImage API."),
     .init          = init,
     .uninit        = uninit,
     .priv_size     = sizeof(CoreImageContext),
+    .priv_class    = &coreimage_class,
     FILTER_INPUTS(vf_coreimage_inputs),
     FILTER_OUTPUTS(vf_coreimage_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_ARGB),
@@ -628,14 +638,14 @@ static const AVOption coreimagesrc_options[] = {
 
 AVFILTER_DEFINE_CLASS(coreimagesrc);
 
-const FFFilter ff_vsrc_coreimagesrc = {
-    .p.name        = "coreimagesrc",
-    .p.description = NULL_IF_CONFIG_SMALL("Video source using image generators of CoreImage API."),
-    .p.priv_class  = &coreimagesrc_class,
-    .p.inputs      = NULL,
+const AVFilter ff_vsrc_coreimagesrc = {
+    .name          = "coreimagesrc",
+    .description   = NULL_IF_CONFIG_SMALL("Video source using image generators of CoreImage API."),
     .init          = init_src,
     .uninit        = uninit,
     .priv_size     = sizeof(CoreImageContext),
+    .priv_class    = &coreimagesrc_class,
+    .inputs        = NULL,
     FILTER_OUTPUTS(vsrc_coreimagesrc_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_ARGB),
 };

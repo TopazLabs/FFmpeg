@@ -29,8 +29,8 @@ gbrap14be           e4aedeb3aadedbe93cc415db0a65c1a2
 gbrap14le           d6183b778f950a1255e27efe658127e4
 gbrap16be           3117e84b258433a7efb9288bbb8815d4
 gbrap16le           3ad08cf8b49d8eb31a1b356ec4b7b88b
-gbrapf32be          aa3a3883f58904ef544e37ecd0b3bbd7
-gbrapf32le          7312701852fbceaeb53efce523bc75c0
+gbrapf32be          d82e48eb62c1e2d2ce5d614aeda38a99
+gbrapf32le          323259d76d5c5350091704813f22bf57
 gbrp                0ecfeca171ba3a1a2ff4e92f572b71cf
 gbrp10be            774398c2f81757a536c094f16cfc541a
 gbrp10le            e9a6434d691be541f789f850963da181
@@ -42,8 +42,8 @@ gbrp16be            46cf9473646a4b9dbcb05661ade658ec
 gbrp16le            6ce6093b24d09c0edcd55b2d6fec89a0
 gbrp9be             174de037c2a9f2b6fb4d9444ae0ff82f
 gbrp9le             ba7c2631fb2967aa909c66509bd243fe
-gbrpf32be           b1b4a0fca025f4eb48e63b6c777e8761
-gbrpf32le           cbb650b78c412b10a1070840fefd6d59
+gbrpf32be           a53fc24a298bf419051fb57c63cc4cef
+gbrpf32le           b44dae0881043398bfd704a944094737
 gray                8bd4ece1dbf89b20ee785e0515356e07
 gray10be            1daf5c1face37d8724a65e905941dcb8
 gray10le            07c5139f97db9d49729f2ea6e77dcedf
@@ -59,8 +59,6 @@ grayf32be           a69add7bbf892a71fe81b3b75982dbe2
 grayf32le           4563e176a35dc8a8a07e0829fad5eb88
 nv12                801e58f1be5fd0b5bc4bf007c604b0b4
 nv16                06ba714cb8b220c203f5898ef39abf93
-nv20be              979181e11f7bb74ad2d891daeebb7649
-nv20le              eaac839121362f12270af3deff4d32e7
 nv21                9f10dfff8963dc327d3395af21f0554f
 nv24                f0c5b2f42970f8d4003621d8857a872f
 nv42                4dcf9aec82b110712b396a8b365dcb13
@@ -110,8 +108,8 @@ xv36be              98f578df965eed369f46cb135e2d1345
 xv36le              e478b4b54698beb3ce1b9a2dd691d544
 xv48be              e030a2c7b1b600cfacb691b6e90c2e3d
 xv48le              fbd7f8c65cd6fc9f9108dc9a1f977dc3
-xyz12be             3c50a51a3c486a0c6853e4bbbcf3f244
-xyz12le             e020897d826ea20ded16f30ea1eb018d
+xyz12be             25f90259ff8a226befdaec3dfe82996e
+xyz12le             926c0791d59aaff61b2778e8ada3316d
 ya16be              70fa41c32ecaf3370edc38add6096db2
 ya16le              3b2c20f9e80717628ced6c6468507f63
 ya8                 4ad5920716de3d2fbbc49f95adb60345

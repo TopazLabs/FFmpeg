@@ -34,10 +34,10 @@ static const AVFilterPad avfilter_vsink_nullsink_inputs[] = {
     },
 };
 
-const FFFilter ff_vsink_nullsink = {
-    .p.name      = "nullsink",
-    .p.description= NULL_IF_CONFIG_SMALL("Do absolutely nothing with the input video."),
-    .p.outputs   = NULL,
+const AVFilter ff_vsink_nullsink = {
+    .name        = "nullsink",
+    .description = NULL_IF_CONFIG_SMALL("Do absolutely nothing with the input video."),
     .priv_size   = 0,
     FILTER_INPUTS(avfilter_vsink_nullsink_inputs),
+    .outputs     = NULL,
 };

@@ -20,6 +20,7 @@
  */
 
 #include "libavutil/dict.h"
+#include "libavutil/dict_internal.h"
 #include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
@@ -156,6 +157,6 @@ int ff_standardize_creation_time(AVFormatContext *s)
     int64_t timestamp;
     int ret = ff_parse_creation_time_metadata(s, &timestamp, 0);
     if (ret == 1)
-        return ff_dict_set_timestamp(&s->metadata, "creation_time", timestamp);
+        return avpriv_dict_set_timestamp(&s->metadata, "creation_time", timestamp);
     return ret;
 }

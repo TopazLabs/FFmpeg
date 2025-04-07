@@ -27,7 +27,6 @@
 #include <zlib.h>
 
 #include "libavutil/avassert.h"
-#include "libavutil/intfloat.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
@@ -552,5 +551,9 @@ const FFCodec ff_exr_encoder = {
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
     .close          = encode_close,
-    CODEC_PIXFMTS(AV_PIX_FMT_GRAYF32, AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32),
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
+                                                 AV_PIX_FMT_GRAYF32,
+                                                 AV_PIX_FMT_GBRPF32,
+                                                 AV_PIX_FMT_GBRAPF32,
+                                                 AV_PIX_FMT_NONE },
 };

@@ -454,11 +454,11 @@ static const AVOption axcorrelate_options[] = {
 
 AVFILTER_DEFINE_CLASS(axcorrelate);
 
-const FFFilter ff_af_axcorrelate = {
-    .p.name         = "axcorrelate",
-    .p.description  = NULL_IF_CONFIG_SMALL("Cross-correlate two audio streams."),
-    .p.priv_class   = &axcorrelate_class,
+const AVFilter ff_af_axcorrelate = {
+    .name           = "axcorrelate",
+    .description    = NULL_IF_CONFIG_SMALL("Cross-correlate two audio streams."),
     .priv_size      = sizeof(AudioXCorrelateContext),
+    .priv_class     = &axcorrelate_class,
     .activate       = activate,
     .uninit         = uninit,
     FILTER_INPUTS(inputs),

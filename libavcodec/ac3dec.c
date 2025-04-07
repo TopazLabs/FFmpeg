@@ -252,16 +252,6 @@ static av_cold int ac3_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static av_cold void ac3_decode_flush(AVCodecContext *avctx)
-{
-    AC3DecodeContext *s = avctx->priv_data;
-
-    memset(&s->frame_type, 0, sizeof(*s) - offsetof(AC3DecodeContext, frame_type));
-
-    AC3_RENAME(ff_kbd_window_init)(s->window, 5.0, 256);
-    av_lfg_init(&s->dith_state, 0);
-}
-
 /**
  * Parse the 'sync info' and 'bit stream info' from the AC-3 bitstream.
  * GetBitContext within AC3DecodeContext must point to
@@ -355,11 +345,9 @@ static int parse_frame_header(AC3DecodeContext *s)
     s->frame_size                   = hdr.frame_size;
     s->superframe_size             += hdr.frame_size;
     s->preferred_downmix            = AC3_DMIXMOD_NOTINDICATED;
-    if (hdr.bitstream_id <= 10) {
-        s->center_mix_level         = hdr.center_mix_level;
-        s->surround_mix_level       = hdr.surround_mix_level;
-    }
+    s->center_mix_level             = hdr.center_mix_level;
     s->center_mix_level_ltrt        = 4; // -3.0dB
+    s->surround_mix_level           = hdr.surround_mix_level;
     s->surround_mix_level_ltrt      = 4; // -3.0dB
     s->lfe_mix_level_exists         = 0;
     s->num_blocks                   = hdr.num_blocks;
@@ -854,18 +842,16 @@ static void decode_band_structure(GetBitContext *gbc, int blk, int eac3,
 static inline int spx_strategy(AC3DecodeContext *s, int blk)
 {
     GetBitContext *bc = &s->gbc;
+    int fbw_channels = s->fbw_channels;
     int dst_start_freq, dst_end_freq, src_start_freq,
-        start_subband, end_subband;
+        start_subband, end_subband, ch;
 
     /* determine which channels use spx */
     if (s->channel_mode == AC3_CHMODE_MONO) {
         s->channel_uses_spx[1] = 1;
     } else {
-        unsigned channel_uses_spx = get_bits(bc, s->fbw_channels);
-        for (int ch = s->fbw_channels; ch >= 1; --ch) {
-            s->channel_uses_spx[ch] = channel_uses_spx & 1;
-            channel_uses_spx      >>= 1;
-        }
+        for (ch = 1; ch <= fbw_channels; ch++)
+            s->channel_uses_spx[ch] = get_bits1(bc);
     }
 
     /* get the frequency bins of the spx copy region and the spx start
@@ -1512,6 +1498,7 @@ static int ac3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     uint8_t extended_channel_map[EAC3_MAX_CHANNELS];
     const SHORTFLOAT *output[AC3_MAX_CHANNELS];
     enum AVMatrixEncoding matrix_encoding;
+    AVDownmixInfo *downmix_info;
     uint64_t mask;
 
     s->superframe_size = 0;
@@ -1622,22 +1609,8 @@ dependent_frame:
 
         s->loro_center_mix_level   = gain_levels[s->  center_mix_level];
         s->loro_surround_mix_level = gain_levels[s->surround_mix_level];
-        s->ltrt_center_mix_level   = gain_levels[s->  center_mix_level_ltrt];
-        s->ltrt_surround_mix_level = gain_levels[s->surround_mix_level_ltrt];
-        switch (s->preferred_downmix) {
-        case AC3_DMIXMOD_LTRT:
-            s->preferred_stereo_downmix = AV_DOWNMIX_TYPE_LTRT;
-            break;
-        case AC3_DMIXMOD_LORO:
-            s->preferred_stereo_downmix = AV_DOWNMIX_TYPE_LORO;
-            break;
-        case AC3_DMIXMOD_DPLII:
-            s->preferred_stereo_downmix = AV_DOWNMIX_TYPE_DPLII;
-            break;
-        default:
-            s->preferred_stereo_downmix = AV_DOWNMIX_TYPE_UNKNOWN;
-            break;
-        }
+        s->ltrt_center_mix_level   = LEVEL_MINUS_3DB;
+        s->ltrt_surround_mix_level = LEVEL_MINUS_3DB;
         /* set downmixing coefficients if needed */
         if (s->channels != s->out_channels && !((s->output_mode & AC3_OUTPUT_LFEON) &&
                 s->fbw_channels == s->out_channels)) {
@@ -1838,16 +1811,11 @@ skip:
             break;
         }
     }
-    if (matrix_encoding != AV_MATRIX_ENCODING_NONE &&
-        (ret = ff_side_data_update_matrix_encoding(frame, matrix_encoding)) < 0)
+    if ((ret = ff_side_data_update_matrix_encoding(frame, matrix_encoding)) < 0)
         return ret;
 
     /* AVDownmixInfo */
-    if ( (s->channel_mode                     > AC3_CHMODE_STEREO) &&
-        ((s->output_mode & ~AC3_OUTPUT_LFEON) > AC3_CHMODE_STEREO)) {
-        AVDownmixInfo *downmix_info = av_downmix_info_update_side_data(frame);
-        if (!downmix_info)
-            return AVERROR(ENOMEM);
+    if ((downmix_info = av_downmix_info_update_side_data(frame))) {
         switch (s->preferred_downmix) {
         case AC3_DMIXMOD_LTRT:
             downmix_info->preferred_downmix_type = AV_DOWNMIX_TYPE_LTRT;
@@ -1870,7 +1838,8 @@ skip:
             downmix_info->lfe_mix_level       = gain_levels_lfe[s->lfe_mix_level];
         else
             downmix_info->lfe_mix_level       = 0.0; // -inf dB
-    }
+    } else
+        return AVERROR(ENOMEM);
 
     *got_frame_ptr = 1;
 

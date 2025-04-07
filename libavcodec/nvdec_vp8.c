@@ -32,9 +32,7 @@ static unsigned char safe_get_ref_idx(VP8Frame *frame)
     return frame ? ff_nvdec_get_ref_idx(frame->tf.f) : 255;
 }
 
-static int nvdec_vp8_start_frame(AVCodecContext *avctx,
-                                 const AVBufferRef *buffer_ref,
-                                 const uint8_t *buffer, uint32_t size)
+static int nvdec_vp8_start_frame(AVCodecContext *avctx, const uint8_t *buffer, uint32_t size)
 {
     VP8Context *h = avctx->priv_data;
 
@@ -50,7 +48,7 @@ static int nvdec_vp8_start_frame(AVCodecContext *avctx,
     if (ret < 0)
         return ret;
 
-    fdd = cur_frame->private_ref;
+    fdd = (FrameDecodeData*)cur_frame->private_ref->data;
     cf  = (NVDECFrame*)fdd->hwaccel_priv;
 
     *pp = (CUVIDPICPARAMS) {

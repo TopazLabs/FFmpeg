@@ -484,7 +484,10 @@ const FFCodec ff_jpegls_encoder = {
     .init           = encode_jpegls_init,
     FF_CODEC_ENCODE_CB(encode_picture_ls),
     .close          = encode_jpegls_close,
-    CODEC_PIXFMTS(AV_PIX_FMT_BGR24, AV_PIX_FMT_RGB24,
-                  AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY16),
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
+        AV_PIX_FMT_BGR24, AV_PIX_FMT_RGB24,
+        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY16,
+        AV_PIX_FMT_NONE
+    },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

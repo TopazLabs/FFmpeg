@@ -1318,15 +1318,15 @@ static const AVFilterPad showcwt_outputs[] = {
     },
 };
 
-const FFFilter ff_avf_showcwt = {
-    .p.name        = "showcwt",
-    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to a CWT (Continuous Wavelet Transform) spectrum video output."),
-    .p.priv_class  = &showcwt_class,
-    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
+const AVFilter ff_avf_showcwt = {
+    .name          = "showcwt",
+    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a CWT (Continuous Wavelet Transform) spectrum video output."),
     .uninit        = uninit,
     .priv_size     = sizeof(ShowCWTContext),
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showcwt_outputs),
     FILTER_QUERY_FUNC2(query_formats),
     .activate      = activate,
+    .priv_class    = &showcwt_class,
+    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

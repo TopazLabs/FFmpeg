@@ -478,12 +478,11 @@ static const AVFilterPad silenceremove_outputs[] = {
     },
 };
 
-const FFFilter ff_af_silenceremove = {
-    .p.name        = "silenceremove",
-    .p.description = NULL_IF_CONFIG_SMALL("Remove silence."),
-    .p.priv_class  = &silenceremove_class,
-    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+const AVFilter ff_af_silenceremove = {
+    .name          = "silenceremove",
+    .description   = NULL_IF_CONFIG_SMALL("Remove silence."),
     .priv_size     = sizeof(SilenceRemoveContext),
+    .priv_class    = &silenceremove_class,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,
@@ -492,4 +491,5 @@ const FFFilter ff_af_silenceremove = {
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLT,
                       AV_SAMPLE_FMT_DBL),
     .process_command = ff_filter_process_command,
+    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

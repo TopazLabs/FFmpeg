@@ -29,7 +29,7 @@
 
 #include "libavcodec/svq1encdsp.h"
 
-#if HAVE_ALTIVEC && HAVE_BIGENDIAN
+#if HAVE_ALTIVEC
 static int ssd_int8_vs_int16_altivec(const int8_t *pix1, const int16_t *pix2,
                                      intptr_t size)
 {
@@ -69,14 +69,14 @@ static int ssd_int8_vs_int16_altivec(const int8_t *pix1, const int16_t *pix2,
 
     return u.score[3];
 }
-#endif /* HAVE_ALTIVEC && HAVE_BIGENDIAN */
+#endif /* HAVE_ALTIVEC */
 
 av_cold void ff_svq1enc_init_ppc(SVQ1EncDSPContext *c)
 {
-#if HAVE_ALTIVEC && HAVE_BIGENDIAN
+#if HAVE_ALTIVEC
     if (!PPC_ALTIVEC(av_get_cpu_flags()))
         return;
 
     c->ssd_int8_vs_int16 = ssd_int8_vs_int16_altivec;
-#endif /* HAVE_ALTIVEC && HAVE_BIGENDIAN */
+#endif /* HAVE_ALTIVEC */
 }

@@ -155,12 +155,12 @@ typedef struct JXLParseContext {
 
     /* using ISOBMFF-based container */
     int container;
-    int64_t skip;
+    int skip;
     int copied;
-    int64_t collected_size;
-    int64_t codestream_length;
+    int collected_size;
+    int codestream_length;
     int skipped_icc;
-    int64_t next;
+    int next;
 
     uint8_t cs_buffer[4096 + AV_INPUT_BUFFER_PADDING_SIZE];
 } JXLParseContext;
@@ -1396,7 +1396,7 @@ static int skip_boxes(JXLParseContext *ctx, const uint8_t *buf, int buf_size)
     return 0;
 }
 
-static int64_t try_parse(AVCodecParserContext *s, AVCodecContext *avctx, JXLParseContext *ctx,
+static int try_parse(AVCodecParserContext *s, AVCodecContext *avctx, JXLParseContext *ctx,
                      const uint8_t *buf, int buf_size)
 {
     int ret, cs_buflen, header_skip;
@@ -1489,10 +1489,10 @@ static int jpegxl_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     }
 
     if ((!ctx->container || !ctx->codestream_length) && !ctx->next) {
-        int64_t ret64 = try_parse(s, avctx, ctx, pbuf, pindex);
-        if (ret64 < 0)
+        ret = try_parse(s, avctx, ctx, pbuf, pindex);
+        if (ret < 0)
             goto flush;
-        ctx->next = ret64;
+        ctx->next = ret;
         if (ctx->container)
             ctx->skip += ctx->next;
     }
@@ -1534,7 +1534,7 @@ flush:
 }
 
 const AVCodecParser ff_jpegxl_parser = {
-    .codec_ids      = { AV_CODEC_ID_JPEGXL, AV_CODEC_ID_JPEGXL_ANIM },
+    .codec_ids      = { AV_CODEC_ID_JPEGXL },
     .priv_data_size = sizeof(JXLParseContext),
     .parser_parse   = jpegxl_parse,
     .parser_close   = ff_parse_close,

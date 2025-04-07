@@ -1759,10 +1759,17 @@ const FFCodec ff_ape_decoder = {
     .init           = ape_decode_init,
     .close          = ape_decode_close,
     FF_CODEC_DECODE_CB(ape_decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DELAY |
+    .p.capabilities =
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DELAY |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .flush          = ape_flush,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_U8P, AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
+                                                      AV_SAMPLE_FMT_S16P,
+                                                      AV_SAMPLE_FMT_S32P,
+                                                      AV_SAMPLE_FMT_NONE },
     .p.priv_class   = &ape_decoder_class,
 };

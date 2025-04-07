@@ -1033,7 +1033,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
         // slices
         if (!ctx->force_quant) {
-            ret = avctx->execute2(avctx, find_quant_thread, NULL, NULL,
+            ret = avctx->execute2(avctx, find_quant_thread, (void*)pic, NULL,
                                   ctx->mb_height);
             if (ret)
                 return ret;
@@ -1381,7 +1381,10 @@ const FFCodec ff_prores_ks_encoder = {
     FF_CODEC_ENCODE_CB(encode_frame),
     .p.capabilities = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS |
                       AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
-    CODEC_PIXFMTS(AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10, AV_PIX_FMT_YUVA444P10),
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
+                          AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
+                          AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE
+                      },
     .color_ranges   = AVCOL_RANGE_MPEG,
     .p.priv_class   = &proresenc_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),

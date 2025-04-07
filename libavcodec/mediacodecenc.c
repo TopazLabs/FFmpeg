@@ -56,11 +56,6 @@ enum BitrateMode {
     BITRATE_MODE_CBR_FD = 3,
 };
 
-typedef struct MediaCodecAsyncOutput {
-    int32_t index;
-    FFAMediaCodecBufferInfo buf_info;
-} MediaCodecAsyncOutput;
-
 typedef struct MediaCodecEncContext {
     AVClass *avclass;
     FFAMediaCodec *codec;
@@ -94,14 +89,8 @@ typedef struct MediaCodecEncContext {
     AVMutex output_mutex;
     AVCond output_cond;
     int encode_status;
-    AVFifo *async_output;
-
-    int qp_i_min;
-    int qp_p_min;
-    int qp_b_min;
-    int qp_i_max;
-    int qp_p_max;
-    int qp_b_max;
+    AVFifo *output_index;
+    AVFifo *output_buf_info;
 } MediaCodecEncContext;
 
 enum {
@@ -246,6 +235,41 @@ static void copy_frame_to_buffer(AVCodecContext *avctx, const AVFrame *frame,
                    avctx->pix_fmt, avctx->width, avctx->height);
 }
 
+static void on_input_available(FFAMediaCodec *codec, void *userdata,
+                               int32_t index)
+{
+    AVCodecContext *avctx = userdata;
+    MediaCodecEncContext *s = avctx->priv_data;
+
+    ff_mutex_lock(&s->input_mutex);
+
+    av_fifo_write(s->input_index, &index, 1);
+
+    ff_mutex_unlock(&s->input_mutex);
+    ff_cond_signal(&s->input_cond);
+}
+
+static void on_output_available(FFAMediaCodec *codec, void *userdata,
+                               int32_t index,
+                               FFAMediaCodecBufferInfo *out_info)
+{
+    AVCodecContext *avctx = userdata;
+    MediaCodecEncContext *s = avctx->priv_data;
+
+    ff_mutex_lock(&s->output_mutex);
+
+    av_fifo_write(s->output_index, &index, 1);
+    av_fifo_write(s->output_buf_info, out_info, 1);
+
+    ff_mutex_unlock(&s->output_mutex);
+    ff_cond_signal(&s->output_cond);
+}
+
+static void on_format_changed(FFAMediaCodec *codec, void *userdata,
+                              FFAMediaFormat *format)
+{
+    mediacodec_dump_format(userdata, format);
+}
 
 static void on_error(FFAMediaCodec *codec, void *userdata, int error,
                      const char *detail)
@@ -268,51 +292,6 @@ static void on_error(FFAMediaCodec *codec, void *userdata, int error,
     ff_cond_signal(&s->input_cond);
 }
 
-static void on_input_available(FFAMediaCodec *codec, void *userdata,
-                               int32_t index)
-{
-    AVCodecContext *avctx = userdata;
-    MediaCodecEncContext *s = avctx->priv_data;
-    int ret;
-
-    ff_mutex_lock(&s->input_mutex);
-    ret = av_fifo_write(s->input_index, &index, 1);
-    if (ret >= 0)
-        ff_cond_signal(&s->input_cond);
-    ff_mutex_unlock(&s->input_mutex);
-
-    if (ret < 0)
-        on_error(codec, userdata, ret, "av_fifo_write failed");
-}
-
-static void on_output_available(FFAMediaCodec *codec, void *userdata,
-                               int32_t index,
-                               FFAMediaCodecBufferInfo *out_info)
-{
-    AVCodecContext *avctx = userdata;
-    MediaCodecEncContext *s = avctx->priv_data;
-    MediaCodecAsyncOutput output = {
-        .index = index,
-        .buf_info = *out_info,
-    };
-    int ret;
-
-    ff_mutex_lock(&s->output_mutex);
-    ret = av_fifo_write(s->async_output, &output, 1);
-    if (ret >= 0)
-        ff_cond_signal(&s->output_cond);
-    ff_mutex_unlock(&s->output_mutex);
-
-    if (ret < 0)
-        on_error(codec, userdata, ret, "av_fifo_write failed");
-}
-
-static void on_format_changed(FFAMediaCodec *codec, void *userdata,
-                              FFAMediaFormat *format)
-{
-    mediacodec_dump_format(userdata, format);
-}
-
 static int mediacodec_init_async_state(AVCodecContext *avctx)
 {
     MediaCodecEncContext *s = avctx->priv_data;
@@ -328,10 +307,10 @@ static int mediacodec_init_async_state(AVCodecContext *avctx)
     ff_cond_init(&s->output_cond, NULL);
 
     s->input_index = av_fifo_alloc2(fifo_size, sizeof(int32_t), AV_FIFO_FLAG_AUTO_GROW);
-    s->async_output = av_fifo_alloc2(fifo_size, sizeof(MediaCodecAsyncOutput),
-                                     AV_FIFO_FLAG_AUTO_GROW);
+    s->output_index = av_fifo_alloc2(fifo_size, sizeof(int32_t), AV_FIFO_FLAG_AUTO_GROW);
+    s->output_buf_info = av_fifo_alloc2(fifo_size, sizeof(FFAMediaCodecBufferInfo), AV_FIFO_FLAG_AUTO_GROW);
 
-    if (!s->input_index || !s->async_output)
+    if (!s->input_index || !s->output_index || !s->output_buf_info)
         return AVERROR(ENOMEM);
 
     return 0;
@@ -351,45 +330,13 @@ static void mediacodec_uninit_async_state(AVCodecContext *avctx)
     ff_cond_destroy(&s->output_cond);
 
     av_fifo_freep2(&s->input_index);
-    av_fifo_freep2(&s->async_output);
+    av_fifo_freep2(&s->output_index);
+    av_fifo_freep2(&s->output_buf_info);
 
     s->async_mode = 0;
 }
 
 static int mediacodec_generate_extradata(AVCodecContext *avctx);
-
-static void mediacodec_set_qp_range(AVCodecContext *avctx,
-                                    FFAMediaFormat *format)
-{
-    MediaCodecEncContext *s = avctx->priv_data;
-
-    // Handle common options in AVCodecContext first.
-    if (avctx->qmin >= 0) {
-        ff_AMediaFormat_setInt32(format, "video-qp-i-min", avctx->qmin);
-        ff_AMediaFormat_setInt32(format, "video-qp-p-min", avctx->qmin);
-        ff_AMediaFormat_setInt32(format, "video-qp-b-min", avctx->qmin);
-    }
-
-    if (avctx->qmax >= 0) {
-        ff_AMediaFormat_setInt32(format, "video-qp-i-max", avctx->qmax);
-        ff_AMediaFormat_setInt32(format, "video-qp-p-max", avctx->qmax);
-        ff_AMediaFormat_setInt32(format, "video-qp-b-max", avctx->qmax);
-    }
-
-    if (s->qp_i_min >= 0)
-        ff_AMediaFormat_setInt32(format, "video-qp-i-min", s->qp_i_min);
-    if (s->qp_p_min >= 0)
-        ff_AMediaFormat_setInt32(format, "video-qp-p-min", s->qp_p_min);
-    if (s->qp_b_min >= 0)
-        ff_AMediaFormat_setInt32(format, "video-qp-b-min", s->qp_b_min);
-
-    if (s->qp_i_max >= 0)
-        ff_AMediaFormat_setInt32(format, "video-qp-i-max", s->qp_i_max);
-    if (s->qp_p_max >= 0)
-        ff_AMediaFormat_setInt32(format, "video-qp-p-max", s->qp_p_max);
-    if (s->qp_b_max >= 0)
-        ff_AMediaFormat_setInt32(format, "video-qp-b-max", s->qp_b_max);
-}
 
 static av_cold int mediacodec_init(AVCodecContext *avctx)
 {
@@ -524,8 +471,6 @@ static av_cold int mediacodec_init(AVCodecContext *avctx)
         if (s->bitrate_mode == BITRATE_MODE_CQ && avctx->global_quality > 0)
             ff_AMediaFormat_setInt32(format, "quality", avctx->global_quality);
     }
-    mediacodec_set_qp_range(avctx, format);
-
     // frame-rate and i-frame-interval are required to configure codec
     if (avctx->framerate.num >= avctx->framerate.den && avctx->framerate.den > 0) {
         s->fps = avctx->framerate.num / avctx->framerate.den;
@@ -630,7 +575,7 @@ static int mediacodec_get_output_index(AVCodecContext *avctx, ssize_t *index,
     MediaCodecEncContext *s = avctx->priv_data;
     FFAMediaCodec *codec = s->codec;
     int64_t timeout_us = s->eof_sent ? OUTPUT_DEQUEUE_TIMEOUT_US : 0;
-    MediaCodecAsyncOutput output = { .index = -1 };
+    int n;
     int ret;
 
     if (!s->async_mode) {
@@ -640,26 +585,28 @@ static int mediacodec_get_output_index(AVCodecContext *avctx, ssize_t *index,
 
     ff_mutex_lock(&s->output_mutex);
 
-    while (!s->encode_status) {
-        if (av_fifo_read(s->async_output, &output, 1) >= 0)
+    n = -1;
+    while (n < 0 && !s->encode_status) {
+        if (av_fifo_can_read(s->output_index)) {
+            av_fifo_read(s->output_index, &n, 1);
+            av_fifo_read(s->output_buf_info, out_info, 1);
             break;
+        }
 
         // Only wait after signalEndOfInputStream
-        if (s->eof_sent && !s->encode_status)
+        if (n < 0 && s->eof_sent && !s->encode_status)
             ff_cond_wait(&s->output_cond, &s->output_mutex);
         else
             break;
     }
 
     ret = s->encode_status;
+    *index = n;
     ff_mutex_unlock(&s->output_mutex);
 
     // Get output index success
-    if (output.index >= 0) {
-        *index = output.index;
-        *out_info = output.buf_info;
+    if (*index >= 0)
         return 0;
-    }
 
     return ret ? ret : AVERROR(EAGAIN);
 }
@@ -1031,12 +978,6 @@ static const AVCodecHWConfigInternal *const mediacodec_hw_configs[] = {
     NULL
 };
 
-static const FFCodecDefault mediacodec_defaults[] = {
-    {"qmin", "-1"},
-    {"qmax", "-1"},
-    {NULL},
-};
-
 #define OFFSET(x) offsetof(MediaCodecEncContext, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 #define COMMON_OPTION                                                                                       \
@@ -1060,20 +1001,7 @@ static const FFCodecDefault mediacodec_defaults[] = {
                     "since most of Android devices don't output B frames by default.",                      \
                     OFFSET(pts_as_dts), AV_OPT_TYPE_BOOL, {.i64 = -1}, -1, 1, VE },                         \
     { "operating_rate", "The desired operating rate that the codec will need to operate at, zero for unspecified",    \
-                    OFFSET(operating_rate), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE },                  \
-    { "qp_i_min", "minimum quantization parameter for I frame",                                             \
-                    OFFSET(qp_i_min), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE },                      \
-    { "qp_p_min", "minimum quantization parameter for P frame",                                             \
-                    OFFSET(qp_p_min), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE },                      \
-    { "qp_b_min", "minimum quantization parameter for B frame",                                             \
-                    OFFSET(qp_b_min), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE },                      \
-    { "qp_i_max", "maximum quantization parameter for I frame",                                             \
-                    OFFSET(qp_i_max), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE },                      \
-    { "qp_p_max", "maximum quantization parameter for P frame",                                             \
-                    OFFSET(qp_p_max), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE },                      \
-    { "qp_b_max", "maximum quantization parameter for B frame",                                             \
-                    OFFSET(qp_b_max), AV_OPT_TYPE_INT, {.i64 = -1}, -1, INT_MAX, VE },                      \
-
+            OFFSET(operating_rate), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, VE },                                          \
 
 #define MEDIACODEC_ENCODER_CLASS(name)              \
 static const AVClass name ## _mediacodec_class = {  \
@@ -1094,9 +1022,8 @@ const FFCodec ff_ ## short_name ## _mediacodec_encoder = {              \
                         AV_CODEC_CAP_HARDWARE |                         \
                         AV_CODEC_CAP_ENCODER_FLUSH,                     \
     .priv_data_size   = sizeof(MediaCodecEncContext),                   \
-    CODEC_PIXFMTS_ARRAY(avc_pix_fmts),                                  \
+    .p.pix_fmts       = avc_pix_fmts,                                   \
     .color_ranges   = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,              \
-    .defaults         = mediacodec_defaults,                            \
     .init             = mediacodec_init,                                \
     FF_CODEC_RECEIVE_PACKET_CB(mediacodec_encode),                      \
     .close            = mediacodec_close,                               \

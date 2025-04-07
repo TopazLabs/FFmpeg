@@ -32,7 +32,7 @@
 
 #include "avcodec.h"
 #include "internal.h"
-#include "libavutil/refstruct.h"
+#include "refstruct.h"
 
 typedef struct FramePool {
     /**
@@ -53,7 +53,7 @@ typedef struct FramePool {
     int samples;
 } FramePool;
 
-static void frame_pool_free(AVRefStructOpaque unused, void *obj)
+static void frame_pool_free(FFRefStructOpaque unused, void *obj)
 {
     FramePool *pool = obj;
     int i;
@@ -77,7 +77,7 @@ static int update_frame_pool(AVCodecContext *avctx, AVFrame *frame)
             return 0;
     }
 
-    pool = av_refstruct_alloc_ext(sizeof(*pool), 0, NULL, frame_pool_free);
+    pool = ff_refstruct_alloc_ext(sizeof(*pool), 0, NULL, frame_pool_free);
     if (!pool)
         return AVERROR(ENOMEM);
 
@@ -142,10 +142,7 @@ static int update_frame_pool(AVCodecContext *avctx, AVFrame *frame)
         if (ret < 0)
             goto fail;
 
-        pool->pools[0] = av_buffer_pool_init(pool->linesize[0],
-                                             CONFIG_MEMORY_POISONING ?
-                                                NULL :
-                                                av_buffer_allocz);
+        pool->pools[0] = av_buffer_pool_init(pool->linesize[0], NULL);
         if (!pool->pools[0]) {
             ret = AVERROR(ENOMEM);
             goto fail;
@@ -160,12 +157,12 @@ static int update_frame_pool(AVCodecContext *avctx, AVFrame *frame)
     default: av_assert0(0);
     }
 
-    av_refstruct_unref(&avctx->internal->pool);
+    ff_refstruct_unref(&avctx->internal->pool);
     avctx->internal->pool = pool;
 
     return 0;
 fail:
-    av_refstruct_unref(&pool);
+    ff_refstruct_unref(&pool);
     return ret;
 }
 

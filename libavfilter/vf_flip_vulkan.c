@@ -38,8 +38,9 @@ typedef struct FlipVulkanContext {
 
     int initialized;
     FFVkExecPool e;
-    AVVulkanDeviceQueueFamily *qf;
+    FFVkQueueFamilyCtx qf;
     FFVulkanShader shd;
+    VkSampler sampler;
 } FlipVulkanContext;
 
 static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in, enum FlipType type)
@@ -61,14 +62,9 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in, enum FlipType 
         return AVERROR_EXTERNAL;
     }
 
-    s->qf = ff_vk_qf_find(vkctx, VK_QUEUE_COMPUTE_BIT, 0);
-    if (!s->qf) {
-        av_log(ctx, AV_LOG_ERROR, "Device has no compute queues\n");
-        err = AVERROR(ENOTSUP);
-        goto fail;
-    }
-
-    RET(ff_vk_exec_pool_init(vkctx, s->qf, &s->e, s->qf->num*4, 0, 0, 0, NULL));
+    ff_vk_qf_init(vkctx, &s->qf, VK_QUEUE_COMPUTE_BIT);
+    RET(ff_vk_exec_pool_init(vkctx, &s->qf, &s->e, s->qf.nb_queues*4, 0, 0, 0, NULL));
+    RET(ff_vk_init_sampler(vkctx, &s->sampler, 1, VK_FILTER_LINEAR));
     RET(ff_vk_shader_init(vkctx, &s->shd, "flip",
                           VK_SHADER_STAGE_COMPUTE_BIT,
                           NULL, 0,
@@ -78,12 +74,11 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in, enum FlipType 
     desc = (FFVulkanDescriptorSetBinding []) {
         {
             .name       = "input_image",
-            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            .mem_layout = ff_vk_shader_rep_fmt(s->vkctx.input_format, FF_VK_REP_FLOAT),
-            .mem_quali  = "readonly",
+            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
+            .samplers   = DUP_SAMPLER(s->sampler),
         },
         {
             .name       = "output_image",
@@ -109,16 +104,16 @@ static av_cold int init_filter(AVFilterContext *ctx, AVFrame *in, enum FlipType 
         switch (type)
         {
         case FLIP_HORIZONTAL:
-            GLSLF(2, vec4 res = imageLoad(input_image[%i], ivec2(size.x - pos.x, pos.y)); ,i);
+            GLSLF(2, vec4 res = texture(input_image[%i], ivec2(size.x - pos.x, pos.y));   ,i);
             break;
         case FLIP_VERTICAL:
-            GLSLF(2, vec4 res = imageLoad(input_image[%i], ivec2(pos.x, size.y - pos.y)); ,i);
+            GLSLF(2, vec4 res = texture(input_image[%i], ivec2(pos.x, size.y - pos.y));   ,i);
             break;
         case FLIP_BOTH:
-            GLSLF(2, vec4 res = imageLoad(input_image[%i], ivec2(size.xy - pos.xy));,      i);
+            GLSLF(2, vec4 res = texture(input_image[%i], ivec2(size.xy - pos.xy));,         i);
             break;
         default:
-            GLSLF(2, vec4 res = imageLoad(input_image[%i], pos);                          ,i);
+            GLSLF(2, vec4 res = texture(input_image[%i], pos);                            ,i);
             break;
         }
         GLSLF(2,     imageStore(output_image[%i], pos, res);                              ,i);
@@ -146,10 +141,16 @@ fail:
 static av_cold void flip_vulkan_uninit(AVFilterContext *avctx)
 {
     FlipVulkanContext *s = avctx->priv;
+
     FFVulkanContext *vkctx = &s->vkctx;
+    FFVulkanFunctions *vk = &vkctx->vkfn;
 
     ff_vk_exec_pool_free(vkctx, &s->e);
     ff_vk_shader_free(vkctx, &s->shd);
+
+    if (s->sampler)
+        vk->DestroySampler(vkctx->hwctx->act_dev, s->sampler,
+                           vkctx->hwctx->alloc);
 
     ff_vk_uninit(&s->vkctx);
 
@@ -174,7 +175,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in, enum FlipType type)
         RET(init_filter(ctx, in, type));
 
     RET(ff_vk_filter_process_simple(&s->vkctx, &s->e, &s->shd, out, in,
-                                    VK_NULL_HANDLE, NULL, 0));
+                                    s->sampler, NULL, 0));
 
     RET(av_frame_copy_props(out, in));
 
@@ -226,16 +227,16 @@ static const AVFilterPad hflip_vulkan_inputs[] = {
     }
 };
 
-const FFFilter ff_vf_hflip_vulkan = {
-    .p.name         = "hflip_vulkan",
-    .p.description  = NULL_IF_CONFIG_SMALL("Horizontally flip the input video in Vulkan"),
-    .p.priv_class   = &hflip_vulkan_class,
+const AVFilter ff_vf_hflip_vulkan = {
+    .name           = "hflip_vulkan",
+    .description    = NULL_IF_CONFIG_SMALL("Horizontally flip the input video in Vulkan"),
     .priv_size      = sizeof(FlipVulkanContext),
     .init           = &ff_vk_filter_init,
     .uninit         = &flip_vulkan_uninit,
     FILTER_INPUTS(hflip_vulkan_inputs),
     FILTER_OUTPUTS(flip_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
+    .priv_class     = &hflip_vulkan_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };
 
@@ -254,16 +255,16 @@ static const AVFilterPad vflip_vulkan_inputs[] = {
     }
 };
 
-const FFFilter ff_vf_vflip_vulkan = {
-    .p.name         = "vflip_vulkan",
-    .p.description  = NULL_IF_CONFIG_SMALL("Vertically flip the input video in Vulkan"),
-    .p.priv_class   = &vflip_vulkan_class,
+const AVFilter ff_vf_vflip_vulkan = {
+    .name           = "vflip_vulkan",
+    .description    = NULL_IF_CONFIG_SMALL("Vertically flip the input video in Vulkan"),
     .priv_size      = sizeof(FlipVulkanContext),
     .init           = &ff_vk_filter_init,
     .uninit         = &flip_vulkan_uninit,
     FILTER_INPUTS(vflip_vulkan_inputs),
     FILTER_OUTPUTS(flip_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
+    .priv_class     = &vflip_vulkan_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };
 
@@ -282,16 +283,16 @@ static const AVFilterPad flip_vulkan_inputs[] = {
     }
 };
 
-const FFFilter ff_vf_flip_vulkan = {
-    .p.name         = "flip_vulkan",
-    .p.description  = NULL_IF_CONFIG_SMALL("Flip both horizontally and vertically"),
-    .p.priv_class   = &flip_vulkan_class,
-    .p.flags        = AVFILTER_FLAG_HWDEVICE,
+const AVFilter ff_vf_flip_vulkan = {
+    .name           = "flip_vulkan",
+    .description    = NULL_IF_CONFIG_SMALL("Flip both horizontally and vertically"),
     .priv_size      = sizeof(FlipVulkanContext),
     .init           = &ff_vk_filter_init,
     .uninit         = &flip_vulkan_uninit,
     FILTER_INPUTS(flip_vulkan_inputs),
     FILTER_OUTPUTS(flip_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
+    .priv_class     = &flip_vulkan_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

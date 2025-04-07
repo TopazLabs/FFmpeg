@@ -382,18 +382,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
 static int config_input(AVFilterLink *inlink)
 {
-    AVFilterContext *ctx = inlink->dst;
-    DatascopeContext *s = ctx->priv;
-
+    DatascopeContext *s = inlink->dst->priv;
     uint8_t alpha = s->opacity * 255;
-    int ret;
 
     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
-    ret = ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
-    if (ret < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
-        return ret;
-    }
+    ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
     ff_draw_color(&s->draw, &s->white,  (uint8_t[]){ 255, 255, 255, 255} );
     ff_draw_color(&s->draw, &s->black,  (uint8_t[]){ 0, 0, 0, alpha} );
     ff_draw_color(&s->draw, &s->yellow, (uint8_t[]){ 255, 255, 0, 255} );
@@ -458,15 +451,15 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const FFFilter ff_vf_datascope = {
-    .p.name        = "datascope",
-    .p.description = NULL_IF_CONFIG_SMALL("Video data analysis."),
-    .p.priv_class  = &datascope_class,
-    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
+const AVFilter ff_vf_datascope = {
+    .name          = "datascope",
+    .description   = NULL_IF_CONFIG_SMALL("Video data analysis."),
     .priv_size     = sizeof(DatascopeContext),
+    .priv_class    = &datascope_class,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_QUERY_FUNC2(query_formats),
+    .flags         = AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
 
@@ -516,16 +509,10 @@ AVFILTER_DEFINE_CLASS(pixscope);
 
 static int pixscope_config_input(AVFilterLink *inlink)
 {
-    AVFilterContext *ctx = inlink->dst;
-    PixscopeContext *s = ctx->priv;
-    int ret;
+    PixscopeContext *s = inlink->dst->priv;
 
     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
-    ret = ff_draw_init(&s->draw, inlink->format, 0);
-    if (ret < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
-        return ret;
-    }
+    ff_draw_init(&s->draw, inlink->format, 0);
     ff_draw_color(&s->draw, &s->dark,  (uint8_t[]){ 0, 0, 0, s->o * 255} );
     ff_draw_color(&s->draw, &s->black, (uint8_t[]){ 0, 0, 0, 255} );
     ff_draw_color(&s->draw, &s->white, (uint8_t[]){ 255, 255, 255, 255} );
@@ -744,15 +731,15 @@ static const AVFilterPad pixscope_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_pixscope = {
-    .p.name        = "pixscope",
-    .p.description = NULL_IF_CONFIG_SMALL("Pixel data analysis."),
-    .p.priv_class  = &pixscope_class,
-    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+const AVFilter ff_vf_pixscope = {
+    .name          = "pixscope",
+    .description   = NULL_IF_CONFIG_SMALL("Pixel data analysis."),
     .priv_size     = sizeof(PixscopeContext),
+    .priv_class    = &pixscope_class,
     FILTER_INPUTS(pixscope_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = pixscope_process_command,
 };
 
@@ -940,17 +927,11 @@ static void update_oscilloscope(AVFilterContext *ctx)
 
 static int oscilloscope_config_input(AVFilterLink *inlink)
 {
-    AVFilterContext *ctx = inlink->dst;
-    OscilloscopeContext *s = ctx->priv;
+    OscilloscopeContext *s = inlink->dst->priv;
     int size;
-    int ret;
 
     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
-    ret = ff_draw_init(&s->draw, inlink->format, 0);
-    if (ret < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
-        return ret;
-    }
+    ff_draw_init(&s->draw, inlink->format, 0);
     ff_draw_color(&s->draw, &s->black,   (uint8_t[]){   0,   0,   0, 255} );
     ff_draw_color(&s->draw, &s->white,   (uint8_t[]){ 255, 255, 255, 255} );
     ff_draw_color(&s->draw, &s->green,   (uint8_t[]){   0, 255,   0, 255} );
@@ -1148,15 +1129,15 @@ static const AVFilterPad oscilloscope_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_oscilloscope = {
-    .p.name        = "oscilloscope",
-    .p.description = NULL_IF_CONFIG_SMALL("2D Video Oscilloscope."),
-    .p.priv_class  = &oscilloscope_class,
-    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+const AVFilter ff_vf_oscilloscope = {
+    .name          = "oscilloscope",
+    .description   = NULL_IF_CONFIG_SMALL("2D Video Oscilloscope."),
     .priv_size     = sizeof(OscilloscopeContext),
+    .priv_class    = &oscilloscope_class,
     .uninit        = oscilloscope_uninit,
     FILTER_INPUTS(oscilloscope_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = oscilloscope_process_command,
 };

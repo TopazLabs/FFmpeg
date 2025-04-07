@@ -161,6 +161,8 @@ const FFCodec ff_vbn_encoder = {
     .init           = vbn_init,
     FF_CODEC_ENCODE_CB(vbn_encode),
     .priv_data_size = sizeof(VBNContext),
-    CODEC_PIXFMTS(AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB24),
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
+        AV_PIX_FMT_RGBA, AV_PIX_FMT_RGB24, AV_PIX_FMT_NONE,
+    },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

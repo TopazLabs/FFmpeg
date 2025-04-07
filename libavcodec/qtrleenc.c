@@ -409,7 +409,8 @@ const FFCodec ff_qtrle_encoder = {
     .init           = qtrle_encode_init,
     FF_CODEC_ENCODE_CB(qtrle_encode_frame),
     .close          = qtrle_encode_end,
-    CODEC_PIXFMTS(AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB555BE, AV_PIX_FMT_ARGB,
-                  AV_PIX_FMT_GRAY8),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){
+        AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB555BE, AV_PIX_FMT_ARGB, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE
+    },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

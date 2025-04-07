@@ -36,7 +36,8 @@ typedef struct NLMeansVulkanContext {
 
     int initialized;
     FFVkExecPool e;
-    AVVulkanDeviceQueueFamily *qf;
+    FFVkQueueFamilyCtx qf;
+    VkSampler sampler;
 
     AVBufferPool *integral_buf_pool;
     AVBufferPool *ws_buf_pool;
@@ -65,16 +66,16 @@ typedef struct NLMeansVulkanContext {
 
 static void insert_first(FFVulkanShader *shd, int r, const char *off, int horiz, int plane, int comp)
 {
-    GLSLF(4, s1    = imageLoad(input_img[%i], pos + ivec2(%i + %s, %i + %s))[%i];
+    GLSLF(4, s1    = texture(input_img[%i], pos + ivec2(%i + %s, %i + %s))[%i];
           ,plane, horiz ? r : 0, horiz ? off : "0", !horiz ? r : 0, !horiz ? off : "0", comp);
 
-    GLSLF(4, s2[0] = imageLoad(input_img[%i], pos + offs[0] + ivec2(%i + %s, %i + %s))[%i];
+    GLSLF(4, s2[0] = texture(input_img[%i], pos + offs[0] + ivec2(%i + %s, %i + %s))[%i];
           ,plane, horiz ? r : 0, horiz ? off : "0", !horiz ? r : 0, !horiz ? off : "0", comp);
-    GLSLF(4, s2[1] = imageLoad(input_img[%i], pos + offs[1] + ivec2(%i + %s, %i + %s))[%i];
+    GLSLF(4, s2[1] = texture(input_img[%i], pos + offs[1] + ivec2(%i + %s, %i + %s))[%i];
           ,plane, horiz ? r : 0, horiz ? off : "0", !horiz ? r : 0, !horiz ? off : "0", comp);
-    GLSLF(4, s2[2] = imageLoad(input_img[%i], pos + offs[2] + ivec2(%i + %s, %i + %s))[%i];
+    GLSLF(4, s2[2] = texture(input_img[%i], pos + offs[2] + ivec2(%i + %s, %i + %s))[%i];
           ,plane, horiz ? r : 0, horiz ? off : "0", !horiz ? r : 0, !horiz ? off : "0", comp);
-    GLSLF(4, s2[3] = imageLoad(input_img[%i], pos + offs[3] + ivec2(%i + %s, %i + %s))[%i];
+    GLSLF(4, s2[3] = texture(input_img[%i], pos + offs[3] + ivec2(%i + %s, %i + %s))[%i];
           ,plane, horiz ? r : 0, horiz ? off : "0", !horiz ? r : 0, !horiz ? off : "0", comp);
 
     GLSLC(4, s2 = (s1 - s2) * (s1 - s2);                                                    );
@@ -163,10 +164,10 @@ static void insert_weights_pass(FFVulkanShader *shd, int nb_rows, int vert,
     GLSLC(0,                                                                  );
     GLSLC(3,         lt = ((pos.x - p) < 0) || ((pos.y - p) < 0);             );
     GLSLC(0,                                                                  );
-    GLSLF(3,         src[0] = imageLoad(input_img[%i], pos + offs[0])[%i];    ,plane, comp);
-    GLSLF(3,         src[1] = imageLoad(input_img[%i], pos + offs[1])[%i];    ,plane, comp);
-    GLSLF(3,         src[2] = imageLoad(input_img[%i], pos + offs[2])[%i];    ,plane, comp);
-    GLSLF(3,         src[3] = imageLoad(input_img[%i], pos + offs[3])[%i];    ,plane, comp);
+    GLSLF(3,         src[0] = texture(input_img[%i], pos + offs[0])[%i];      ,plane, comp);
+    GLSLF(3,         src[1] = texture(input_img[%i], pos + offs[1])[%i];      ,plane, comp);
+    GLSLF(3,         src[2] = texture(input_img[%i], pos + offs[2])[%i];      ,plane, comp);
+    GLSLF(3,         src[3] = texture(input_img[%i], pos + offs[3])[%i];      ,plane, comp);
     GLSLC(0,                                                                  );
     GLSLC(3,         if (lt == false) {                                       );
     GLSLC(3,             offset = int_stride * uint64_t(pos.y - p);           );
@@ -209,7 +210,7 @@ typedef struct HorizontalPushData {
 
 static av_cold int init_weights_pipeline(FFVulkanContext *vkctx, FFVkExecPool *exec,
                                          FFVulkanShader *shd,
-                                         FFVkSPIRVCompiler *spv,
+                                         VkSampler sampler, FFVkSPIRVCompiler *spv,
                                          int width, int height, int t,
                                          const AVPixFmtDescriptor *desc,
                                          int planes, int *nb_rows)
@@ -274,12 +275,11 @@ static av_cold int init_weights_pipeline(FFVulkanContext *vkctx, FFVkExecPool *e
     desc_set = (FFVulkanDescriptorSetBinding []) {
         {
             .name       = "input_img",
-            .type       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            .mem_layout = ff_vk_shader_rep_fmt(vkctx->input_format, FF_VK_REP_FLOAT),
-            .mem_quali  = "readonly",
+            .type       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .dimensions = 2,
             .elems      = planes,
             .stages     = VK_SHADER_STAGE_COMPUTE_BIT,
+            .samplers   = DUP_SAMPLER(sampler),
         },
         {
             .name        = "weights_buffer_0",
@@ -418,7 +418,8 @@ typedef struct DenoisePushData {
 } DenoisePushData;
 
 static av_cold int init_denoise_pipeline(FFVulkanContext *vkctx, FFVkExecPool *exec,
-                                         FFVulkanShader *shd, FFVkSPIRVCompiler *spv,
+                                         FFVulkanShader *shd,
+                                         VkSampler sampler, FFVkSPIRVCompiler *spv,
                                          const AVPixFmtDescriptor *desc, int planes)
 {
     int err;
@@ -444,12 +445,11 @@ static av_cold int init_denoise_pipeline(FFVulkanContext *vkctx, FFVkExecPool *e
     desc_set = (FFVulkanDescriptorSetBinding []) {
         {
             .name        = "input_img",
-            .type        = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            .mem_layout  = ff_vk_shader_rep_fmt(vkctx->input_format, FF_VK_REP_FLOAT),
-            .mem_quali   = "readonly",
+            .type        = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .dimensions  = 2,
             .elems       = planes,
             .stages      = VK_SHADER_STAGE_COMPUTE_BIT,
+            .samplers    = DUP_SAMPLER(sampler),
         },
         {
             .name        = "output_img",
@@ -539,7 +539,7 @@ static av_cold int init_denoise_pipeline(FFVulkanContext *vkctx, FFVkExecPool *e
     GLSLC(1,     if (!IS_WITHIN(pos, size))                                   );
     GLSLC(2,         return;                                                  );
     GLSLC(0,                                                                  );
-    GLSLC(1,     src = imageLoad(input_img[plane], pos);                      );
+    GLSLC(1,     src = texture(input_img[plane], pos);                        );
     GLSLC(0,                                                                  );
     for (int c = 0; c < desc->nb_components; c++) {
         int off = desc->comp[c].offset / (FFALIGN(desc->comp[c].depth, 8)/8);
@@ -652,20 +652,15 @@ static av_cold int init_filter(AVFilterContext *ctx)
         return AVERROR_EXTERNAL;
     }
 
-    s->qf = ff_vk_qf_find(vkctx, VK_QUEUE_COMPUTE_BIT, 0);
-    if (!s->qf) {
-        av_log(ctx, AV_LOG_ERROR, "Device has no compute queues\n");
-        err = AVERROR(ENOTSUP);
-        goto fail;
-    }
+    ff_vk_qf_init(vkctx, &s->qf, VK_QUEUE_COMPUTE_BIT);
+    RET(ff_vk_exec_pool_init(vkctx, &s->qf, &s->e, 1, 0, 0, 0, NULL));
+    RET(ff_vk_init_sampler(vkctx, &s->sampler, 1, VK_FILTER_NEAREST));
 
-    RET(ff_vk_exec_pool_init(vkctx, s->qf, &s->e, 1, 0, 0, 0, NULL));
-
-    RET(init_weights_pipeline(vkctx, &s->e, &s->shd_weights,
+    RET(init_weights_pipeline(vkctx, &s->e, &s->shd_weights, s->sampler,
                               spv, s->vkctx.output_width, s->vkctx.output_height,
                               s->opts.t, desc, planes, &s->pl_weights_rows));
 
-    RET(init_denoise_pipeline(vkctx, &s->e, &s->shd_denoise,
+    RET(init_denoise_pipeline(vkctx, &s->e, &s->shd_denoise, s->sampler,
                               spv, desc, planes));
 
     RET(ff_vk_shader_update_desc_buffer(vkctx, &s->e.contexts[0], &s->shd_weights,
@@ -864,7 +859,7 @@ static int nlmeans_vulkan_filter_frame(AVFilterLink *link, AVFrame *in)
                         VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
                         VK_ACCESS_SHADER_READ_BIT,
-                        VK_IMAGE_LAYOUT_GENERAL,
+                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                         VK_QUEUE_FAMILY_IGNORED);
 
     /* Output frame prep */
@@ -943,7 +938,8 @@ static int nlmeans_vulkan_filter_frame(AVFilterLink *link, AVFrame *in)
 
     /* Update weights descriptors */
     ff_vk_shader_update_img_array(vkctx, exec, &s->shd_weights, in, in_views, 0, 0,
-                                  VK_IMAGE_LAYOUT_GENERAL, VK_NULL_HANDLE);
+                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  s->sampler);
     for (int i = 0; i < desc->nb_components; i++) {
         RET(ff_vk_shader_update_desc_buffer(&s->vkctx, exec, &s->shd_weights, 0, 1 + i*2 + 0, 0,
                                             ws_vk, weights_offs[i], ws_size[i],
@@ -955,9 +951,10 @@ static int nlmeans_vulkan_filter_frame(AVFilterLink *link, AVFrame *in)
 
     /* Update denoise descriptors */
     ff_vk_shader_update_img_array(vkctx, exec, &s->shd_denoise, in, in_views, 0, 0,
-                                  VK_IMAGE_LAYOUT_GENERAL, VK_NULL_HANDLE);
+                                  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                  s->sampler);
     ff_vk_shader_update_img_array(vkctx, exec, &s->shd_denoise, out, out_views, 0, 1,
-                                  VK_IMAGE_LAYOUT_GENERAL, VK_NULL_HANDLE);
+                                  VK_IMAGE_LAYOUT_GENERAL, s->sampler);
     for (int i = 0; i < desc->nb_components; i++) {
         RET(ff_vk_shader_update_desc_buffer(&s->vkctx, exec, &s->shd_denoise, 1, i*2 + 0, 0,
                                             ws_vk, weights_offs[i], ws_size[i],
@@ -1049,6 +1046,7 @@ static void nlmeans_vulkan_uninit(AVFilterContext *avctx)
 {
     NLMeansVulkanContext *s = avctx->priv;
     FFVulkanContext *vkctx = &s->vkctx;
+    FFVulkanFunctions *vk = &vkctx->vkfn;
 
     ff_vk_exec_pool_free(vkctx, &s->e);
     ff_vk_shader_free(vkctx, &s->shd_weights);
@@ -1056,6 +1054,10 @@ static void nlmeans_vulkan_uninit(AVFilterContext *avctx)
 
     av_buffer_pool_uninit(&s->integral_buf_pool);
     av_buffer_pool_uninit(&s->ws_buf_pool);
+
+    if (s->sampler)
+        vk->DestroySampler(vkctx->hwctx->act_dev, s->sampler,
+                           vkctx->hwctx->alloc);
 
     ff_vk_uninit(&s->vkctx);
 
@@ -1105,16 +1107,16 @@ static const AVFilterPad nlmeans_vulkan_outputs[] = {
     },
 };
 
-const FFFilter ff_vf_nlmeans_vulkan = {
-    .p.name         = "nlmeans_vulkan",
-    .p.description  = NULL_IF_CONFIG_SMALL("Non-local means denoiser (Vulkan)"),
-    .p.priv_class   = &nlmeans_vulkan_class,
-    .p.flags        = AVFILTER_FLAG_HWDEVICE,
+const AVFilter ff_vf_nlmeans_vulkan = {
+    .name           = "nlmeans_vulkan",
+    .description    = NULL_IF_CONFIG_SMALL("Non-local means denoiser (Vulkan)"),
     .priv_size      = sizeof(NLMeansVulkanContext),
     .init           = &ff_vk_filter_init,
     .uninit         = &nlmeans_vulkan_uninit,
     FILTER_INPUTS(nlmeans_vulkan_inputs),
     FILTER_OUTPUTS(nlmeans_vulkan_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VULKAN),
+    .priv_class     = &nlmeans_vulkan_class,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

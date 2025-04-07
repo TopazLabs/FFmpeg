@@ -211,5 +211,8 @@ const FFCodec ff_tta_encoder = {
     .init           = tta_encode_init,
     .close          = tta_encode_close,
     FF_CODEC_ENCODE_CB(tta_encode_frame),
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_U8, AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32),
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_U8,
+                                                     AV_SAMPLE_FMT_S16,
+                                                     AV_SAMPLE_FMT_S32,
+                                                     AV_SAMPLE_FMT_NONE },
 };

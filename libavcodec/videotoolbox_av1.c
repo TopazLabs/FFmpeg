@@ -63,7 +63,6 @@ CFDataRef ff_videotoolbox_av1c_extradata_create(AVCodecContext *avctx)
 
 
 static int videotoolbox_av1_start_frame(AVCodecContext *avctx,
-                                        const AVBufferRef *buffer_ref,
                                         const uint8_t *buffer,
                                         uint32_t size)
 {

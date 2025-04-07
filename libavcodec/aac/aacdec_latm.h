@@ -339,10 +339,12 @@ const FFCodec ff_aac_latm_decoder = {
     .init            = latm_decode_init,
     .close           = decode_close,
     FF_CODEC_DECODE_CB(latm_decode_frame),
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
+    .p.sample_fmts   = (const enum AVSampleFormat[]) {
+        AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE
+    },
     .p.capabilities  = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_CH_LAYOUTS_ARRAY(ff_aac_ch_layout),
+    .p.ch_layouts    = ff_aac_ch_layout,
     .flush = flush,
     .p.profiles      = NULL_IF_CONFIG_SMALL(ff_aac_profiles),
 };

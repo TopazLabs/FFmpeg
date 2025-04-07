@@ -28,6 +28,7 @@
 #include "decode.h"
 #include "hwaccel_internal.h"
 #include "internal.h"
+#include "mpegvideodec.h"
 #include "vdpau.h"
 #include "vdpau_internal.h"
 
@@ -60,6 +61,20 @@ static int vdpau_error(VdpStatus status)
         return AVERROR(EINVAL);
     }
 }
+
+#if FF_API_VDPAU_ALLOC_GET_SET
+AVVDPAUContext *av_alloc_vdpaucontext(void)
+{
+FF_DISABLE_DEPRECATION_WARNINGS
+    return av_vdpau_alloc_context();
+FF_ENABLE_DEPRECATION_WARNINGS
+}
+
+#define MAKE_ACCESSORS(str, name, type, field) \
+    type av_##name##_get_##field(const str *s) { return s->field; } \
+    void av_##name##_set_##field(str *s, type v) { s->field = v; }
+MAKE_ACCESSORS(AVVDPAUContext, vdpau_hwaccel, AVVDPAU_Render2, render2)
+#endif
 
 int av_vdpau_get_surface_parameters(AVCodecContext *avctx,
                                     VdpChromaType *type,
@@ -124,8 +139,8 @@ int ff_vdpau_common_frame_params(AVCodecContext *avctx,
     return 0;
 }
 
-av_cold int ff_vdpau_common_init(AVCodecContext *avctx,
-                                 VdpDecoderProfile profile, int level)
+int ff_vdpau_common_init(AVCodecContext *avctx, VdpDecoderProfile profile,
+                         int level)
 {
     VDPAUHWContext *hwctx = avctx->hwaccel_context;
     VDPAUContext *vdctx = avctx->internal->hwaccel_priv_data;
@@ -275,7 +290,7 @@ av_cold int ff_vdpau_common_init(AVCodecContext *avctx,
     return vdpau_error(status);
 }
 
-av_cold int ff_vdpau_common_uninit(AVCodecContext *avctx)
+int ff_vdpau_common_uninit(AVCodecContext *avctx)
 {
     VDPAUContext *vdctx = avctx->internal->hwaccel_priv_data;
     VdpDecoderDestroy *destroy;
@@ -352,8 +367,6 @@ int ff_vdpau_common_end_frame(AVCodecContext *avctx, AVFrame *frame,
 #if CONFIG_MPEG1_VDPAU_HWACCEL || \
     CONFIG_MPEG2_VDPAU_HWACCEL || CONFIG_MPEG4_VDPAU_HWACCEL || \
     CONFIG_VC1_VDPAU_HWACCEL   || CONFIG_WMV3_VDPAU_HWACCEL
-#include "mpegvideodec.h"
-
 int ff_vdpau_mpeg_end_frame(AVCodecContext *avctx)
 {
     MpegEncContext *s = avctx->priv_data;
@@ -388,6 +401,13 @@ int ff_vdpau_add_buffer(struct vdpau_picture_context *pic_ctx,
     buffers->bitstream_bytes = size;
     return 0;
 }
+
+#if FF_API_VDPAU_ALLOC_GET_SET
+AVVDPAUContext *av_vdpau_alloc_context(void)
+{
+    return av_mallocz(sizeof(VDPAUHWContext));
+}
+#endif
 
 int av_vdpau_bind_context(AVCodecContext *avctx, VdpDevice device,
                           VdpGetProcAddress *get_proc, unsigned flags)

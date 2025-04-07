@@ -89,7 +89,6 @@ static int unix_open(URLContext *h, const char *filename, int flags)
     }
 
     s->fd = fd;
-    h->is_streamed = 1;
 
     return 0;
 

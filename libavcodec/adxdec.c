@@ -264,5 +264,6 @@ const FFCodec ff_adpcm_adx_decoder = {
     .flush          = adx_decode_flush,
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16P),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
+                                                      AV_SAMPLE_FMT_NONE },
 };

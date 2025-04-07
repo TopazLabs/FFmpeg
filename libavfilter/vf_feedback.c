@@ -325,11 +325,10 @@ static const AVOption feedback_options[] = {
 
 AVFILTER_DEFINE_CLASS(feedback);
 
-const FFFilter ff_vf_feedback = {
-    .p.name        = "feedback",
-    .p.description = NULL_IF_CONFIG_SMALL("Apply feedback video filter."),
-    .p.priv_class  = &feedback_class,
-    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+const AVFilter ff_vf_feedback = {
+    .name        = "feedback",
+    .description = NULL_IF_CONFIG_SMALL("Apply feedback video filter."),
+    .priv_class  = &feedback_class,
     .priv_size   = sizeof(FeedbackContext),
     .activate    = activate,
     .init        = init,
@@ -337,5 +336,6 @@ const FFFilter ff_vf_feedback = {
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_QUERY_FUNC2(query_formats),
+    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,
 };

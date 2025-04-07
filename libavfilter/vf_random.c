@@ -141,11 +141,11 @@ static const AVFilterPad random_outputs[] = {
     },
 };
 
-const FFFilter ff_vf_random = {
-    .p.name        = "random",
-    .p.description = NULL_IF_CONFIG_SMALL("Return random frames."),
-    .p.priv_class  = &random_class,
+const AVFilter ff_vf_random = {
+    .name        = "random",
+    .description = NULL_IF_CONFIG_SMALL("Return random frames."),
     .priv_size   = sizeof(RandomContext),
+    .priv_class  = &random_class,
     .init        = init,
     .uninit      = uninit,
     FILTER_INPUTS(random_inputs),

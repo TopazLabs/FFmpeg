@@ -30,7 +30,6 @@
 #include "vdpau_internal.h"
 
 static int vdpau_mpeg4_start_frame(AVCodecContext *avctx,
-                                   const AVBufferRef *buffer_ref,
                                    const uint8_t *buffer, uint32_t size)
 {
     Mpeg4DecContext *ctx = avctx->priv_data;
@@ -91,7 +90,7 @@ static int vdpau_mpeg4_decode_slice(av_unused AVCodecContext *avctx,
      return 0;
 }
 
-static av_cold int vdpau_mpeg4_init(AVCodecContext *avctx)
+static int vdpau_mpeg4_init(AVCodecContext *avctx)
 {
     VdpDecoderProfile profile;
 

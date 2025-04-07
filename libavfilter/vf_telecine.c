@@ -209,6 +209,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
                                 s->stride[i],
                                 (s->planeheight[i] - !s->first_field + 1) / 2);
         }
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        s->frame[nout]->interlaced_frame = 1;
+        s->frame[nout]->top_field_first  = !s->first_field;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         s->frame[nout]->flags |= AV_FRAME_FLAG_INTERLACED;
         if (s->first_field)
             s->frame[nout]->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
@@ -231,6 +237,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
                                 inpicref->data[i], inpicref->linesize[i],
                                 s->stride[i],
                                 s->planeheight[i]);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        s->frame[nout]->interlaced_frame = inpicref->interlaced_frame;
+        s->frame[nout]->top_field_first  = inpicref->top_field_first;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         s->frame[nout]->flags |= (inpicref->flags & (AV_FRAME_FLAG_INTERLACED | AV_FRAME_FLAG_TOP_FIELD_FIRST));
         nout++;
         len -= 2;
@@ -257,6 +269,12 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
         }
 
         av_frame_copy_props(frame, inpicref);
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        frame->interlaced_frame = interlaced;
+        frame->top_field_first  = tff;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         if (interlaced)
             frame->flags |= AV_FRAME_FLAG_INTERLACED;
         else
@@ -302,11 +320,11 @@ static const AVFilterPad telecine_outputs[] = {
     },
 };
 
-const FFFilter ff_vf_telecine = {
-    .p.name        = "telecine",
-    .p.description = NULL_IF_CONFIG_SMALL("Apply a telecine pattern."),
-    .p.priv_class  = &telecine_class,
+const AVFilter ff_vf_telecine = {
+    .name          = "telecine",
+    .description   = NULL_IF_CONFIG_SMALL("Apply a telecine pattern."),
     .priv_size     = sizeof(TelecineContext),
+    .priv_class    = &telecine_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(telecine_inputs),

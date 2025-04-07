@@ -582,7 +582,10 @@ const FFCodec ff_mjpeg_vaapi_encoder = {
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_mjpeg_defaults,
-    CODEC_PIXFMTS(AV_PIX_FMT_VAAPI),
+    .p.pix_fmts = (const enum AVPixelFormat[]) {
+        AV_PIX_FMT_VAAPI,
+        AV_PIX_FMT_NONE,
+    },
     .color_ranges   = AVCOL_RANGE_MPEG, /* FIXME: implement tagging */
     .hw_configs     = ff_vaapi_encode_hw_configs,
     .p.wrapper_name = "vaapi",

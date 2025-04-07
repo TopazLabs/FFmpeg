@@ -197,6 +197,7 @@ const FFCodec ff_adpcm_adx_encoder = {
     .priv_data_size = sizeof(ADXContext),
     .init           = adx_encode_init,
     FF_CODEC_ENCODE_CB(adx_encode_frame),
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16,
+                                                      AV_SAMPLE_FMT_NONE },
     .caps_internal  = FF_CODEC_CAP_EOF_FLUSH,
 };

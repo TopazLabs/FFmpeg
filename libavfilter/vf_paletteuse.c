@@ -997,10 +997,9 @@ static const AVFilterPad paletteuse_outputs[] = {
     },
 };
 
-const FFFilter ff_vf_paletteuse = {
-    .p.name        = "paletteuse",
-    .p.description = NULL_IF_CONFIG_SMALL("Use a palette to downsample an input video stream."),
-    .p.priv_class  = &paletteuse_class,
+const AVFilter ff_vf_paletteuse = {
+    .name          = "paletteuse",
+    .description   = NULL_IF_CONFIG_SMALL("Use a palette to downsample an input video stream."),
     .priv_size     = sizeof(PaletteUseContext),
     .init          = init,
     .uninit        = uninit,
@@ -1008,4 +1007,5 @@ const FFFilter ff_vf_paletteuse = {
     FILTER_INPUTS(paletteuse_inputs),
     FILTER_OUTPUTS(paletteuse_outputs),
     FILTER_QUERY_FUNC2(query_formats),
+    .priv_class    = &paletteuse_class,
 };

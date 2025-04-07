@@ -414,6 +414,7 @@ static inline void FUNCC(pred16x16_plane_compat)(uint8_t *_src,
 {
   int i, j, k;
   int a;
+  INIT_CLIP
   pixel *src = (pixel*)_src;
   int stride = _stride>>(sizeof(pixel)-1);
   const pixel * const src0 = src +7-stride;
@@ -747,6 +748,7 @@ static void FUNCC(pred8x8_plane)(uint8_t *_src, ptrdiff_t _stride)
 {
   int j, k;
   int a;
+  INIT_CLIP
   pixel *src = (pixel*)_src;
   int stride = _stride>>(sizeof(pixel)-1);
   const pixel * const src0 = src +3-stride;
@@ -782,6 +784,7 @@ static void FUNCC(pred8x16_plane)(uint8_t *_src, ptrdiff_t _stride)
 {
   int j, k;
   int a;
+  INIT_CLIP
   pixel *src = (pixel*)_src;
   int stride = _stride>>(sizeof(pixel)-1);
   const pixel * const src0 = src +3-stride;

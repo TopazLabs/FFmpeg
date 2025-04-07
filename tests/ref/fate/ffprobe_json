@@ -73,7 +73,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -116,7 +115,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -192,7 +190,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -235,7 +232,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -344,7 +340,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -387,7 +382,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -496,7 +490,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         },
         {
@@ -539,7 +532,6 @@
             "pict_type": "I",
             "interlaced_frame": 0,
             "top_field_first": 0,
-            "lossless": 0,
             "repeat_pict": 0
         }
     ],
@@ -599,6 +591,8 @@
             "height": 240,
             "coded_width": 320,
             "coded_height": 240,
+            "closed_captions": 0,
+            "film_grain": 0,
             "has_b_frames": 0,
             "sample_aspect_ratio": "1:1",
             "display_aspect_ratio": "4:3",
@@ -649,6 +643,8 @@
             "height": 100,
             "coded_width": 100,
             "coded_height": 100,
+            "closed_captions": 0,
+            "film_grain": 0,
             "has_b_frames": 0,
             "sample_aspect_ratio": "1:1",
             "display_aspect_ratio": "1:1",

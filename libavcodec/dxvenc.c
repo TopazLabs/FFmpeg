@@ -351,6 +351,8 @@ const FFCodec ff_dxv_encoder = {
                       AV_CODEC_CAP_SLICE_THREADS |
                       AV_CODEC_CAP_FRAME_THREADS,
     .p.priv_class   = &dxvenc_class,
-    CODEC_PIXFMTS(AV_PIX_FMT_RGBA),
+    .p.pix_fmts     = (const enum AVPixelFormat[]) {
+        AV_PIX_FMT_RGBA, AV_PIX_FMT_NONE,
+    },
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

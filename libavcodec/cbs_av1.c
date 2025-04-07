@@ -24,10 +24,9 @@
 #include "cbs_internal.h"
 #include "cbs_av1.h"
 #include "defs.h"
-#include "libavutil/refstruct.h"
+#include "refstruct.h"
 
 
-#if CBS_READ
 static int cbs_av1_read_uvlc(CodedBitstreamContext *ctx, GetBitContext *gbc,
                              const char *name, uint32_t *write_to,
                              uint32_t range_min, uint32_t range_max)
@@ -85,9 +84,7 @@ static int cbs_av1_read_uvlc(CodedBitstreamContext *ctx, GetBitContext *gbc,
     *write_to = value;
     return 0;
 }
-#endif
 
-#if CBS_WRITE
 static int cbs_av1_write_uvlc(CodedBitstreamContext *ctx, PutBitContext *pbc,
                               const char *name, uint32_t value,
                               uint32_t range_min, uint32_t range_max)
@@ -118,9 +115,7 @@ static int cbs_av1_write_uvlc(CodedBitstreamContext *ctx, PutBitContext *pbc,
 
     return 0;
 }
-#endif
 
-#if CBS_READ
 static int cbs_av1_read_leb128(CodedBitstreamContext *ctx, GetBitContext *gbc,
                                const char *name, uint64_t *write_to)
 {
@@ -151,9 +146,7 @@ static int cbs_av1_read_leb128(CodedBitstreamContext *ctx, GetBitContext *gbc,
     *write_to = value;
     return 0;
 }
-#endif
 
-#if CBS_WRITE
 static int cbs_av1_write_leb128(CodedBitstreamContext *ctx, PutBitContext *pbc,
                                 const char *name, uint64_t value, int fixed_length)
 {
@@ -189,9 +182,7 @@ static int cbs_av1_write_leb128(CodedBitstreamContext *ctx, PutBitContext *pbc,
 
     return 0;
 }
-#endif
 
-#if CBS_READ
 static int cbs_av1_read_ns(CodedBitstreamContext *ctx, GetBitContext *gbc,
                            uint32_t n, const char *name,
                            const int *subscripts, uint32_t *write_to)
@@ -229,9 +220,7 @@ static int cbs_av1_read_ns(CodedBitstreamContext *ctx, GetBitContext *gbc,
     *write_to = value;
     return 0;
 }
-#endif
 
-#if CBS_WRITE
 static int cbs_av1_write_ns(CodedBitstreamContext *ctx, PutBitContext *pbc,
                             uint32_t n, const char *name,
                             const int *subscripts, uint32_t value)
@@ -267,9 +256,7 @@ static int cbs_av1_write_ns(CodedBitstreamContext *ctx, PutBitContext *pbc,
 
     return 0;
 }
-#endif
 
-#if CBS_READ
 static int cbs_av1_read_increment(CodedBitstreamContext *ctx, GetBitContext *gbc,
                                   uint32_t range_min, uint32_t range_max,
                                   const char *name, uint32_t *write_to)
@@ -297,9 +284,7 @@ static int cbs_av1_read_increment(CodedBitstreamContext *ctx, GetBitContext *gbc
     *write_to = value;
     return 0;
 }
-#endif
 
-#if CBS_WRITE
 static int cbs_av1_write_increment(CodedBitstreamContext *ctx, PutBitContext *pbc,
                                    uint32_t range_min, uint32_t range_max,
                                    const char *name, uint32_t value)
@@ -330,9 +315,7 @@ static int cbs_av1_write_increment(CodedBitstreamContext *ctx, PutBitContext *pb
 
     return 0;
 }
-#endif
 
-#if CBS_READ
 static int cbs_av1_read_subexp(CodedBitstreamContext *ctx, GetBitContext *gbc,
                                uint32_t range_max, const char *name,
                                const int *subscripts, uint32_t *write_to)
@@ -359,7 +342,7 @@ static int cbs_av1_read_subexp(CodedBitstreamContext *ctx, GetBitContext *gbc,
     }
 
     if (len < max_len) {
-        err = CBS_FUNC(read_simple_unsigned)(ctx, gbc, range_bits,
+        err = ff_cbs_read_simple_unsigned(ctx, gbc, range_bits,
                                           "subexp_bits", &value);
         if (err < 0)
             return err;
@@ -377,9 +360,7 @@ static int cbs_av1_read_subexp(CodedBitstreamContext *ctx, GetBitContext *gbc,
     *write_to = value;
     return err;
 }
-#endif
 
-#if CBS_WRITE
 static int cbs_av1_write_subexp(CodedBitstreamContext *ctx, PutBitContext *pbc,
                                 uint32_t range_max, const char *name,
                                 const int *subscripts, uint32_t value)
@@ -421,7 +402,7 @@ static int cbs_av1_write_subexp(CodedBitstreamContext *ctx, PutBitContext *pbc,
         return err;
 
     if (len < max_len) {
-        err = CBS_FUNC(write_simple_unsigned)(ctx, pbc, range_bits,
+        err = ff_cbs_write_simple_unsigned(ctx, pbc, range_bits,
                                            "subexp_bits",
                                            value - range_offset);
         if (err < 0)
@@ -439,7 +420,6 @@ static int cbs_av1_write_subexp(CodedBitstreamContext *ctx, PutBitContext *pbc,
 
     return err;
 }
-#endif
 
 
 static int cbs_av1_tile_log2(int blksize, int target)
@@ -461,7 +441,7 @@ static int cbs_av1_get_relative_dist(const AV1RawSequenceHeader *seq,
     return diff;
 }
 
-static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
+static size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 {
     GetBitContext tmp = *gbc;
     size_t size = 0;
@@ -474,7 +454,7 @@ static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 
 
 #define HEADER(name) do { \
-        CBS_FUNC(trace_header)(ctx, name); \
+        ff_cbs_trace_header(ctx, name); \
     } while (0)
 
 #define CHECK(call) do { \
@@ -489,7 +469,6 @@ static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 
 #define SUBSCRIPTS(subs, ...) (subs > 0 ? ((int[subs + 1]){ subs, __VA_ARGS__ }) : NULL)
 
-#if CBS_READ
 #define fc(width, name, range_min, range_max) \
         xf(width, name, current->name, range_min, range_max, 0, )
 #define flag(name) fb(1, name)
@@ -517,14 +496,14 @@ static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 
 #define fb(width, name) do { \
         uint32_t value; \
-        CHECK(CBS_FUNC(read_simple_unsigned)(ctx, rw, width, \
+        CHECK(ff_cbs_read_simple_unsigned(ctx, rw, width, \
                                           #name, &value)); \
         current->name = value; \
     } while (0)
 
 #define xf(width, name, var, range_min, range_max, subs, ...) do { \
         uint32_t value; \
-        CHECK(CBS_FUNC(read_unsigned)(ctx, rw, width, #name, \
+        CHECK(ff_cbs_read_unsigned(ctx, rw, width, #name, \
                                    SUBSCRIPTS(subs, __VA_ARGS__), \
                                    &value, range_min, range_max)); \
         var = value; \
@@ -532,7 +511,7 @@ static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 
 #define xsu(width, name, var, subs, ...) do { \
         int32_t value; \
-        CHECK(CBS_FUNC(read_signed)(ctx, rw, width, #name, \
+        CHECK(ff_cbs_read_signed(ctx, rw, width, #name, \
                                  SUBSCRIPTS(subs, __VA_ARGS__), &value, \
                                  MIN_INT_BITS(width), \
                                  MAX_INT_BITS(width))); \
@@ -605,27 +584,25 @@ static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 #undef leb128
 #undef infer
 #undef byte_alignment
-#endif // CBS_READ
 
 
-#if CBS_WRITE
 #define WRITE
 #define READWRITE write
 #define RWContext PutBitContext
 
 #define fb(width, name) do { \
-        CHECK(CBS_FUNC(write_simple_unsigned)(ctx, rw, width, #name, \
+        CHECK(ff_cbs_write_simple_unsigned(ctx, rw, width, #name, \
                                            current->name)); \
     } while (0)
 
 #define xf(width, name, var, range_min, range_max, subs, ...) do { \
-        CHECK(CBS_FUNC(write_unsigned)(ctx, rw, width, #name, \
+        CHECK(ff_cbs_write_unsigned(ctx, rw, width, #name, \
                                     SUBSCRIPTS(subs, __VA_ARGS__), \
                                     var, range_min, range_max)); \
     } while (0)
 
 #define xsu(width, name, var, subs, ...) do { \
-        CHECK(CBS_FUNC(write_signed)(ctx, rw, width, #name, \
+        CHECK(ff_cbs_write_signed(ctx, rw, width, #name, \
                                   SUBSCRIPTS(subs, __VA_ARGS__), var, \
                                   MIN_INT_BITS(width), \
                                   MAX_INT_BITS(width))); \
@@ -691,13 +668,12 @@ static av_unused size_t cbs_av1_get_payload_bytes_left(GetBitContext *gbc)
 #undef leb128
 #undef infer
 #undef byte_alignment
-#endif // CBS_WRITE
+
 
 static int cbs_av1_split_fragment(CodedBitstreamContext *ctx,
                                   CodedBitstreamFragment *frag,
                                   int header)
 {
-#if CBS_READ
     GetBitContext gbc;
     uint8_t *data;
     size_t size;
@@ -752,16 +728,16 @@ static int cbs_av1_split_fragment(CodedBitstreamContext *ctx,
     }
 
     while (size > 0) {
-        AV1RawOBUHeader obu_header;
+        AV1RawOBUHeader header;
         uint64_t obu_size;
 
         init_get_bits(&gbc, data, 8 * size);
 
-        err = cbs_av1_read_obu_header(ctx, &gbc, &obu_header);
+        err = cbs_av1_read_obu_header(ctx, &gbc, &header);
         if (err < 0)
             goto fail;
 
-        if (obu_header.obu_has_size_field) {
+        if (header.obu_has_size_field) {
             if (get_bits_left(&gbc) < 8) {
                 av_log(ctx->log_ctx, AV_LOG_ERROR, "Invalid OBU: fragment "
                        "too short (%"SIZE_SPECIFIER" bytes).\n", size);
@@ -772,7 +748,7 @@ static int cbs_av1_split_fragment(CodedBitstreamContext *ctx,
             if (err < 0)
                 goto fail;
         } else
-            obu_size = size - 1 - obu_header.obu_extension_flag;
+            obu_size = size - 1 - header.obu_extension_flag;
 
         pos = get_bits_count(&gbc);
         av_assert0(pos % 8 == 0 && pos / 8 <= size);
@@ -787,7 +763,7 @@ static int cbs_av1_split_fragment(CodedBitstreamContext *ctx,
             goto fail;
         }
 
-        err = CBS_FUNC(append_unit_data)(frag, obu_header.obu_type,
+        err = ff_cbs_append_unit_data(frag, header.obu_type,
                                       data, obu_length, frag->data_ref);
         if (err < 0)
             goto fail;
@@ -801,17 +777,12 @@ success:
 fail:
     ctx->trace_enable = trace;
     return err;
-#else
-    return AVERROR(ENOSYS);
-#endif
 }
 
-#if CBS_READ
 static int cbs_av1_ref_tile_data(CodedBitstreamContext *ctx,
                                  CodedBitstreamUnit *unit,
                                  GetBitContext *gbc,
-                                 AVBufferRef **data_ref,
-                                 uint8_t **data, size_t *data_size)
+                                 AV1RawTileData *td)
 {
     int pos;
 
@@ -824,27 +795,25 @@ static int cbs_av1_ref_tile_data(CodedBitstreamContext *ctx,
     // Must be byte-aligned at this point.
     av_assert0(pos % 8 == 0);
 
-    *data_ref = av_buffer_ref(unit->data_ref);
-    if (!*data_ref)
+    td->data_ref = av_buffer_ref(unit->data_ref);
+    if (!td->data_ref)
         return AVERROR(ENOMEM);
 
-    *data      = unit->data      + pos / 8;
-    *data_size = unit->data_size - pos / 8;
+    td->data      = unit->data      + pos / 8;
+    td->data_size = unit->data_size - pos / 8;
 
     return 0;
 }
-#endif
 
 static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
                              CodedBitstreamUnit *unit)
 {
-#if CBS_READ
     CodedBitstreamAV1Context *priv = ctx->priv_data;
     AV1RawOBU *obu;
     GetBitContext gbc;
     int err, start_pos, end_pos;
 
-    err = CBS_FUNC(alloc_unit_content)(ctx, unit);
+    err = ff_cbs_alloc_unit_content(ctx, unit);
     if (err < 0)
         return err;
     obu = unit->content;
@@ -909,7 +878,7 @@ static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
                 priv->operating_point_idc = sequence_header->operating_point_idc[priv->operating_point];
             }
 
-            av_refstruct_replace(&priv->sequence_header_ref, unit->content_ref);
+            ff_refstruct_replace(&priv->sequence_header_ref, unit->content_ref);
             priv->sequence_header = &obu->obu.sequence_header;
         }
         break;
@@ -932,36 +901,32 @@ static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
                 return err;
         }
         break;
-    case AV1_OBU_FRAME:
-            err = cbs_av1_read_frame_obu(ctx, &gbc, &obu->obu.frame,
-                                         unit->data_ref);
-            if (err < 0)
-                return err;
-    // fall-through
     case AV1_OBU_TILE_GROUP:
         {
-            AV1RawTileGroup *tile_group = obu->header.obu_type == AV1_OBU_FRAME ? &obu->obu.frame.tile_group
-                                                                                : &obu->obu.tile_group;
-            err = cbs_av1_ref_tile_data(ctx, unit, &gbc,
-                                        &tile_group->data_ref,
-                                        &tile_group->data,
-                                        &tile_group->data_size);
-            if (err < 0)
-                return err;
-
-            err = cbs_av1_read_tile_group_obu(ctx, &gbc, tile_group);
+            err = cbs_av1_read_tile_group_obu(ctx, &gbc,
+                                              &obu->obu.tile_group);
             if (err < 0)
                 return err;
 
             err = cbs_av1_ref_tile_data(ctx, unit, &gbc,
-                                        &tile_group->tile_data.data_ref,
-                                        &tile_group->tile_data.data,
-                                        &tile_group->tile_data.data_size);
+                                        &obu->obu.tile_group.tile_data);
             if (err < 0)
                 return err;
         }
         break;
-#if CBS_AV1_OBU_TILE_LIST
+    case AV1_OBU_FRAME:
+        {
+            err = cbs_av1_read_frame_obu(ctx, &gbc, &obu->obu.frame,
+                                         unit->data_ref);
+            if (err < 0)
+                return err;
+
+            err = cbs_av1_ref_tile_data(ctx, unit, &gbc,
+                                        &obu->obu.frame.tile_group.tile_data);
+            if (err < 0)
+                return err;
+        }
+        break;
     case AV1_OBU_TILE_LIST:
         {
             err = cbs_av1_read_tile_list_obu(ctx, &gbc,
@@ -970,15 +935,11 @@ static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
                 return err;
 
             err = cbs_av1_ref_tile_data(ctx, unit, &gbc,
-                                        &obu->obu.tile_list.tile_data.data_ref,
-                                        &obu->obu.tile_list.tile_data.data,
-                                        &obu->obu.tile_list.tile_data.data_size);
+                                        &obu->obu.tile_list.tile_data);
             if (err < 0)
                 return err;
         }
         break;
-#endif
-#if CBS_AV1_OBU_METADATA
     case AV1_OBU_METADATA:
         {
             err = cbs_av1_read_metadata_obu(ctx, &gbc, &obu->obu.metadata);
@@ -986,8 +947,6 @@ static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
                 return err;
         }
         break;
-#endif
-#if CBS_AV1_OBU_PADDING
     case AV1_OBU_PADDING:
         {
             err = cbs_av1_read_padding_obu(ctx, &gbc, &obu->obu.padding);
@@ -995,7 +954,6 @@ static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
                 return err;
         }
         break;
-#endif
     default:
         return AVERROR(ENOSYS);
     }
@@ -1018,16 +976,12 @@ static int cbs_av1_read_unit(CodedBitstreamContext *ctx,
     }
 
     return 0;
-#else
-    return AVERROR(ENOSYS);
-#endif
 }
 
 static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
                              CodedBitstreamUnit *unit,
                              PutBitContext *pbc)
 {
-#if CBS_WRITE
     CodedBitstreamAV1Context *priv = ctx->priv_data;
     AV1RawOBU *obu = unit->content;
     PutBitContext pbc_tmp;
@@ -1043,7 +997,7 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
     av1ctx = *priv;
 
     if (priv->sequence_header_ref) {
-        av1ctx.sequence_header_ref = av_refstruct_ref(priv->sequence_header_ref);
+        av1ctx.sequence_header_ref = ff_refstruct_ref(priv->sequence_header_ref);
     }
 
     if (priv->frame_header_ref) {
@@ -1081,14 +1035,14 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
             if (err < 0)
                 goto error;
 
-            av_refstruct_unref(&priv->sequence_header_ref);
+            ff_refstruct_unref(&priv->sequence_header_ref);
             priv->sequence_header = NULL;
 
-            err = CBS_FUNC(make_unit_refcounted)(ctx, unit);
+            err = ff_cbs_make_unit_refcounted(ctx, unit);
             if (err < 0)
                 goto error;
 
-            priv->sequence_header_ref = av_refstruct_ref(unit->content_ref);
+            priv->sequence_header_ref = ff_refstruct_ref(unit->content_ref);
             priv->sequence_header = &obu->obu.sequence_header;
         }
         break;
@@ -1111,23 +1065,25 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
                 goto error;
         }
         break;
-    case AV1_OBU_FRAME:
-            err = cbs_av1_write_frame_obu(ctx, pbc, &obu->obu.frame, NULL);
-            if (err < 0)
-                goto error;
-    // fall-through
     case AV1_OBU_TILE_GROUP:
         {
-            AV1RawTileGroup *tile_group = obu->header.obu_type == AV1_OBU_FRAME ? &obu->obu.frame.tile_group
-                                                                                : &obu->obu.tile_group;
-            err = cbs_av1_write_tile_group_obu(ctx, pbc, tile_group);
+            err = cbs_av1_write_tile_group_obu(ctx, pbc,
+                                               &obu->obu.tile_group);
             if (err < 0)
                 goto error;
 
-            td = &tile_group->tile_data;
+            td = &obu->obu.tile_group.tile_data;
         }
         break;
-#if CBS_AV1_OBU_TILE_LIST
+    case AV1_OBU_FRAME:
+        {
+            err = cbs_av1_write_frame_obu(ctx, pbc, &obu->obu.frame, NULL);
+            if (err < 0)
+                goto error;
+
+            td = &obu->obu.frame.tile_group.tile_data;
+        }
+        break;
     case AV1_OBU_TILE_LIST:
         {
             err = cbs_av1_write_tile_list_obu(ctx, pbc, &obu->obu.tile_list);
@@ -1137,8 +1093,6 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
             td = &obu->obu.tile_list.tile_data;
         }
         break;
-#endif
-#if CBS_AV1_OBU_METADATA
     case AV1_OBU_METADATA:
         {
             err = cbs_av1_write_metadata_obu(ctx, pbc, &obu->obu.metadata);
@@ -1146,8 +1100,6 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
                 goto error;
         }
         break;
-#endif
-#if CBS_AV1_OBU_PADDING
     case AV1_OBU_PADDING:
         {
             err = cbs_av1_write_padding_obu(ctx, pbc, &obu->obu.padding);
@@ -1155,7 +1107,6 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
                 goto error;
         }
         break;
-#endif
     default:
         err = AVERROR(ENOSYS);
         goto error;
@@ -1195,7 +1146,7 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
     av_assert0(data_pos <= start_pos);
 
     if (8 * obu->obu_size > put_bits_left(pbc)) {
-        av_refstruct_unref(&priv->sequence_header_ref);
+        ff_refstruct_unref(&priv->sequence_header_ref);
         av_buffer_unref(&priv->frame_header_ref);
         *priv = av1ctx;
 
@@ -1224,19 +1175,15 @@ static int cbs_av1_write_obu(CodedBitstreamContext *ctx,
     err = 0;
 
 error:
-    av_refstruct_unref(&av1ctx.sequence_header_ref);
+    ff_refstruct_unref(&av1ctx.sequence_header_ref);
     av_buffer_unref(&av1ctx.frame_header_ref);
 
     return err;
-#else
-    return AVERROR(ENOSYS);
-#endif
 }
 
 static int cbs_av1_assemble_fragment(CodedBitstreamContext *ctx,
                                      CodedBitstreamFragment *frag)
 {
-#if CBS_WRITE
     size_t size, pos;
     int i;
 
@@ -1260,9 +1207,6 @@ static int cbs_av1_assemble_fragment(CodedBitstreamContext *ctx,
     frag->data_size = size;
 
     return 0;
-#else
-    return AVERROR(ENOSYS);
-#endif
 }
 
 static void cbs_av1_flush(CodedBitstreamContext *ctx)
@@ -1283,12 +1227,11 @@ static void cbs_av1_close(CodedBitstreamContext *ctx)
 {
     CodedBitstreamAV1Context *priv = ctx->priv_data;
 
-    av_refstruct_unref(&priv->sequence_header_ref);
+    ff_refstruct_unref(&priv->sequence_header_ref);
     av_buffer_unref(&priv->frame_header_ref);
 }
 
-#if CBS_AV1_OBU_METADATA
-static void cbs_av1_free_metadata(AVRefStructOpaque unused, void *content)
+static void cbs_av1_free_metadata(FFRefStructOpaque unused, void *content)
 {
     AV1RawOBU *obu = content;
     AV1RawMetadata *md;
@@ -1309,49 +1252,24 @@ static void cbs_av1_free_metadata(AVRefStructOpaque unused, void *content)
         av_buffer_unref(&md->metadata.unknown.payload_ref);
     }
 }
-#endif
 
 static const CodedBitstreamUnitTypeDescriptor cbs_av1_unit_types[] = {
     CBS_UNIT_TYPE_POD(AV1_OBU_SEQUENCE_HEADER,        AV1RawOBU),
     CBS_UNIT_TYPE_POD(AV1_OBU_TEMPORAL_DELIMITER,     AV1RawOBU),
     CBS_UNIT_TYPE_POD(AV1_OBU_FRAME_HEADER,           AV1RawOBU),
     CBS_UNIT_TYPE_POD(AV1_OBU_REDUNDANT_FRAME_HEADER, AV1RawOBU),
-    {
-        .nb_unit_types     = 1,
-        .unit_type.list[0] = AV1_OBU_TILE_GROUP,
-        .content_type      = CBS_CONTENT_TYPE_INTERNAL_REFS,
-        .content_size      = sizeof(AV1RawOBU),
-        .type.ref          = {
-            .nb_offsets = 2,
-            .offsets    = { offsetof(AV1RawOBU, obu.tile_group.data),
-                            offsetof(AV1RawOBU, obu.tile_group.tile_data.data) }
-        },
-    },
 
-    {
-        .nb_unit_types     = 1,
-        .unit_type.list[0] = AV1_OBU_FRAME,
-        .content_type      = CBS_CONTENT_TYPE_INTERNAL_REFS,
-        .content_size      = sizeof(AV1RawOBU),
-        .type.ref          = {
-            .nb_offsets = 2,
-            .offsets    = { offsetof(AV1RawOBU, obu.frame.tile_group.data),
-                            offsetof(AV1RawOBU, obu.frame.tile_group.tile_data.data) }
-        },
-    },
-#if CBS_AV1_OBU_TILE_LIST
+    CBS_UNIT_TYPE_INTERNAL_REF(AV1_OBU_TILE_GROUP, AV1RawOBU,
+                               obu.tile_group.tile_data.data),
+    CBS_UNIT_TYPE_INTERNAL_REF(AV1_OBU_FRAME,      AV1RawOBU,
+                               obu.frame.tile_group.tile_data.data),
     CBS_UNIT_TYPE_INTERNAL_REF(AV1_OBU_TILE_LIST,  AV1RawOBU,
                                obu.tile_list.tile_data.data),
-#endif
-#if CBS_AV1_OBU_PADDING
     CBS_UNIT_TYPE_INTERNAL_REF(AV1_OBU_PADDING,    AV1RawOBU,
                                obu.padding.payload),
-#endif
 
-#if CBS_AV1_OBU_METADATA
     CBS_UNIT_TYPE_COMPLEX(AV1_OBU_METADATA, AV1RawOBU,
                           &cbs_av1_free_metadata),
-#endif
 
     CBS_UNIT_TYPE_END_OF_LIST
 };
@@ -1372,7 +1290,7 @@ static const AVClass cbs_av1_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const CodedBitstreamType CBS_FUNC(type_av1) = {
+const CodedBitstreamType ff_cbs_type_av1 = {
     .codec_id          = AV_CODEC_ID_AV1,
 
     .priv_class        = &cbs_av1_class,

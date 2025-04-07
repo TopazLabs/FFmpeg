@@ -167,7 +167,7 @@ int ff_videotoolbox_alloc_frame(AVCodecContext *avctx, AVFrame *frame)
     }
     frame->buf[0] = buf;
 
-    fdd = frame->private_ref;
+    fdd = (FrameDecodeData*)frame->private_ref->data;
     fdd->post_process = videotoolbox_postproc_frame;
 
     frame->width  = avctx->width;
@@ -415,7 +415,6 @@ CFDataRef ff_videotoolbox_hvcc_extradata_create(AVCodecContext *avctx)
 }
 
 int ff_videotoolbox_h264_start_frame(AVCodecContext *avctx,
-                                     const AVBufferRef *buffer_ref,
                                      const uint8_t *buffer,
                                      uint32_t size)
 {
@@ -728,13 +727,8 @@ static void videotoolbox_decoder_callback(void *opaque,
     }
 
     if (!image_buffer) {
-        // kVTVideoDecoderReferenceMissingErr, defined since the macOS 12 SDKs
-        if (status != -17694)
-            vtctx->reconfig_needed = true;
-
         av_log(vtctx->logctx, status ? AV_LOG_WARNING : AV_LOG_DEBUG,
-               "vt decoder cb: output image buffer is null: %i, reconfig %d\n",
-               status, vtctx->reconfig_needed);
+               "vt decoder cb: output image buffer is null: %i\n", status);
         return;
     }
 
@@ -1071,8 +1065,10 @@ int ff_videotoolbox_common_end_frame(AVCodecContext *avctx, AVFrame *frame)
         return AVERROR_UNKNOWN;
     }
 
-    if (!vtctx->frame)
+    if (!vtctx->frame) {
+        vtctx->reconfig_needed = true;
         return AVERROR_UNKNOWN;
+    }
 
     return videotoolbox_buffer_create(avctx, frame);
 }
@@ -1088,7 +1084,6 @@ static int videotoolbox_h264_end_frame(AVCodecContext *avctx)
 }
 
 static int videotoolbox_hevc_start_frame(AVCodecContext *avctx,
-                                         const AVBufferRef *buffer_ref,
                                          const uint8_t *buffer,
                                          uint32_t size)
 {
@@ -1132,7 +1127,6 @@ static int videotoolbox_hevc_end_frame(AVCodecContext *avctx)
 }
 
 static int videotoolbox_mpeg_start_frame(AVCodecContext *avctx,
-                                         const AVBufferRef *buffer_ref,
                                          const uint8_t *buffer,
                                          uint32_t size)
 {
@@ -1157,9 +1151,8 @@ static int videotoolbox_mpeg_end_frame(AVCodecContext *avctx)
 }
 
 static int videotoolbox_prores_start_frame(AVCodecContext *avctx,
-                                           const AVBufferRef *buffer_ref,
-                                           const uint8_t *buffer,
-                                           uint32_t size)
+                                         const uint8_t *buffer,
+                                         uint32_t size)
 {
     return 0;
 }

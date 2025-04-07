@@ -1,3 +1,2 @@
-OBJS-$(CONFIG_VVC_DECODER)     += riscv/vvc/dsp_init.o
-RVV-OBJS-$(CONFIG_VVC_DECODER) += riscv/vvc/mc_rvv.o    \
-                                  riscv/vvc/sad_rvv.o
+OBJS-$(CONFIG_VVC_DECODER) += riscv/vvc/vvcdsp_init.o
+RVV-OBJS-$(CONFIG_VVC_DECODER) += riscv/vvc/vvc_mc_rvv.o

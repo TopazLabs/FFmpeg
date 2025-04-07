@@ -428,15 +428,16 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const FFFilter ff_avf_aphasemeter = {
-    .p.name        = "aphasemeter",
-    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to phase meter video output."),
-    .p.priv_class  = &aphasemeter_class,
-    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
+const AVFilter ff_avf_aphasemeter = {
+    .name          = "aphasemeter",
+    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to phase meter video output."),
     .init          = init,
     .uninit        = uninit,
     .priv_size     = sizeof(AudioPhaseMeterContext),
     FILTER_INPUTS(inputs),
     .activate      = activate,
+    .outputs       = NULL,
     FILTER_QUERY_FUNC2(query_formats),
+    .priv_class    = &aphasemeter_class,
+    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
 };

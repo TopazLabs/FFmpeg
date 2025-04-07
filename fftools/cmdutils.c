@@ -352,11 +352,9 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
 
         ret = po->u.func_arg(optctx, opt, arg);
         if (ret < 0) {
-            if ((strcmp(opt, "init_hw_device") != 0) || (strcmp(arg, "list") != 0)) {
-                av_log(NULL, AV_LOG_ERROR,
-                       "Failed to set value '%s' for option '%s': %s\n",
-                       arg, opt, av_err2str(ret));
-            }
+            av_log(NULL, AV_LOG_ERROR,
+                   "Failed to set value '%s' for option '%s': %s\n",
+                   arg, opt, av_err2str(ret));
             goto finish;
         }
     }

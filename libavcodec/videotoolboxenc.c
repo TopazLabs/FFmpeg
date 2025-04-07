@@ -54,11 +54,6 @@ enum { kCVPixelFormatType_420YpCbCr10BiPlanarFullRange = 'xf20' };
 enum { kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange = 'x420' };
 #endif
 
-#if !HAVE_KVTQPMODULATIONLEVEL_DEFAULT
-enum { kVTQPModulationLevel_Default = -1 };
-enum { kVTQPModulationLevel_Disable = 0 };
-#endif
-
 #ifndef TARGET_CPU_ARM64
 #   define TARGET_CPU_ARM64 0
 #endif
@@ -120,14 +115,12 @@ static struct{
 
     CFStringRef kVTProfileLevel_HEVC_Main_AutoLevel;
     CFStringRef kVTProfileLevel_HEVC_Main10_AutoLevel;
-    CFStringRef kVTProfileLevel_HEVC_Main42210_AutoLevel;
 
     CFStringRef kVTCompressionPropertyKey_RealTime;
     CFStringRef kVTCompressionPropertyKey_TargetQualityForAlpha;
     CFStringRef kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality;
     CFStringRef kVTCompressionPropertyKey_ConstantBitRate;
     CFStringRef kVTCompressionPropertyKey_EncoderID;
-    CFStringRef kVTCompressionPropertyKey_SpatialAdaptiveQPLevel;
 
     CFStringRef kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder;
     CFStringRef kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder;
@@ -193,7 +186,6 @@ static void loadVTEncSymbols(void){
 
     GET_SYM(kVTProfileLevel_HEVC_Main_AutoLevel,     "HEVC_Main_AutoLevel");
     GET_SYM(kVTProfileLevel_HEVC_Main10_AutoLevel,   "HEVC_Main10_AutoLevel");
-    GET_SYM(kVTProfileLevel_HEVC_Main42210_AutoLevel,   "HEVC_Main42210_AutoLevel");
 
     GET_SYM(kVTCompressionPropertyKey_RealTime, "RealTime");
     GET_SYM(kVTCompressionPropertyKey_TargetQualityForAlpha,
@@ -216,7 +208,6 @@ static void loadVTEncSymbols(void){
             "ReferenceBufferCount");
     GET_SYM(kVTCompressionPropertyKey_MaxAllowedFrameQP, "MaxAllowedFrameQP");
     GET_SYM(kVTCompressionPropertyKey_MinAllowedFrameQP, "MinAllowedFrameQP");
-    GET_SYM(kVTCompressionPropertyKey_SpatialAdaptiveQPLevel, "SpatialAdaptiveQPLevel");
 }
 
 #define H264_PROFILE_CONSTRAINED_HIGH (AV_PROFILE_H264_HIGH | AV_PROFILE_H264_CONSTRAINED)
@@ -288,7 +279,6 @@ typedef struct VTEncContext {
     int max_slice_bytes;
     int power_efficient;
     int max_ref_frames;
-    int spatialaq;
 } VTEncContext;
 
 static void vtenc_free_buf_node(BufNode *info)
@@ -981,11 +971,6 @@ static bool get_vt_hevc_profile_level(AVCodecContext *avctx,
             *profile_level_val =
                 compat_keys.kVTProfileLevel_HEVC_Main10_AutoLevel;
             break;
-        case AV_PROFILE_HEVC_REXT:
-            // only main42210 is supported, omit depth and chroma subsampling
-            *profile_level_val =
-                compat_keys.kVTProfileLevel_HEVC_Main42210_AutoLevel;
-            break;
     }
 
     if (!*profile_level_val) {
@@ -1219,7 +1204,7 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
     }
 
 #if defined (MAC_OS_X_VERSION_10_13) && (MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_13)
-    if (__builtin_available(macOS 10.13, iOS 11.0, *)) {
+    if (__builtin_available(macOS 10.13, *)) {
         if (vtctx->supported_props) {
             CFRelease(vtctx->supported_props);
             vtctx->supported_props = NULL;
@@ -1342,10 +1327,8 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
         }
     }
 
-    if (vtctx->codec_id == AV_CODEC_ID_HEVC && vtctx->alpha_quality > 0.0) {
-        const AVPixFmtDescriptor *descriptor = av_pix_fmt_desc_get(avctx->pix_fmt);
-
-        if (descriptor->flags & AV_PIX_FMT_FLAG_ALPHA) {
+    if (vtctx->codec_id == AV_CODEC_ID_HEVC) {
+        if (avctx->pix_fmt == AV_PIX_FMT_BGRA && vtctx->alpha_quality > 0.0) {
             CFNumberRef alpha_quality_num = CFNumberCreate(kCFAllocatorDefault,
                                                            kCFNumberDoubleType,
                                                            &vtctx->alpha_quality);
@@ -1614,13 +1597,6 @@ static int vtenc_create_encoder(AVCodecContext   *avctx,
         if (status != 0) {
             return status;
         }
-    }
-
-    if (vtctx->spatialaq >= 0) {
-        set_encoder_int_property_or_log(avctx,
-                                        compat_keys.kVTCompressionPropertyKey_SpatialAdaptiveQPLevel,
-                                        "spatialaq",
-                                        vtctx->spatialaq ? kVTQPModulationLevel_Default : kVTQPModulationLevel_Disable);
     }
 
     status = VTCompressionSessionPrepareToEncodeFrames(vtctx->session);
@@ -2862,9 +2838,7 @@ static const enum AVPixelFormat hevc_pix_fmts[] = {
     AV_PIX_FMT_NV12,
     AV_PIX_FMT_YUV420P,
     AV_PIX_FMT_BGRA,
-    AV_PIX_FMT_AYUV,
     AV_PIX_FMT_P010LE,
-    AV_PIX_FMT_P210,
     AV_PIX_FMT_NONE
 };
 
@@ -2917,8 +2891,6 @@ static const enum AVPixelFormat prores_pix_fmts[] = {
         { .i64 = -1 }, -1, 1, VE }, \
     { "power_efficient", "Set to 1 to enable more power-efficient encoding if supported.", \
         OFFSET(power_efficient), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE }, \
-    { "spatial_aq", "Set to 1 to enable spatial AQ if supported.", \
-        OFFSET(spatialaq), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1, VE }, \
     { "max_ref_frames", \
         "Sets the maximum number of reference frames. This only has an effect when the value is less than the maximum allowed by the profile/level.", \
         OFFSET(max_ref_frames), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, VE },
@@ -2985,7 +2957,7 @@ const FFCodec ff_h264_videotoolbox_encoder = {
     .p.id             = AV_CODEC_ID_H264,
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .priv_data_size   = sizeof(VTEncContext),
-    CODEC_PIXFMTS_ARRAY(avc_pix_fmts),
+    .p.pix_fmts       = avc_pix_fmts,
     .defaults         = vt_defaults,
     .init             = vtenc_init,
     FF_CODEC_ENCODE_CB(vtenc_frame),
@@ -2999,8 +2971,6 @@ static const AVOption hevc_options[] = {
     { "profile", "Profile", OFFSET(profile), AV_OPT_TYPE_INT, { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, INT_MAX, VE, .unit = "profile" },
     { "main",     "Main Profile",     0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_HEVC_MAIN    }, INT_MIN, INT_MAX, VE, .unit = "profile" },
     { "main10",   "Main10 Profile",   0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_HEVC_MAIN_10 }, INT_MIN, INT_MAX, VE, .unit = "profile" },
-    { "main42210","Main 4:2:2 10 Profile",0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_HEVC_REXT }, INT_MIN, INT_MAX, VE, .unit = "profile" },
-    { "rext",     "Main 4:2:2 10 Profile",0, AV_OPT_TYPE_CONST, { .i64 = AV_PROFILE_HEVC_REXT }, INT_MIN, INT_MAX, VE, .unit = "profile" },
 
     { "alpha_quality", "Compression quality for the alpha channel", OFFSET(alpha_quality), AV_OPT_TYPE_DOUBLE, { .dbl = 0.0 }, 0.0, 1.0, VE },
 
@@ -3025,7 +2995,7 @@ const FFCodec ff_hevc_videotoolbox_encoder = {
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                         AV_CODEC_CAP_HARDWARE,
     .priv_data_size   = sizeof(VTEncContext),
-    CODEC_PIXFMTS_ARRAY(hevc_pix_fmts),
+    .p.pix_fmts       = hevc_pix_fmts,
     .defaults         = vt_defaults,
     .color_ranges     = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
     .init             = vtenc_init,
@@ -3066,7 +3036,7 @@ const FFCodec ff_prores_videotoolbox_encoder = {
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                         AV_CODEC_CAP_HARDWARE,
     .priv_data_size   = sizeof(VTEncContext),
-    CODEC_PIXFMTS_ARRAY(prores_pix_fmts),
+    .p.pix_fmts       = prores_pix_fmts,
     .defaults         = vt_defaults,
     .color_ranges     = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
     .init             = vtenc_init,

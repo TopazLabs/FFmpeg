@@ -1270,7 +1270,13 @@ static int aom_encode(AVCodecContext *avctx, AVPacket *pkt,
         else if (avctx->framerate.num > 0 && avctx->framerate.den > 0)
             duration = av_rescale_q(1, av_inv_q(avctx->framerate), avctx->time_base);
         else {
-            duration = 1;
+FF_DISABLE_DEPRECATION_WARNINGS
+            duration =
+#if FF_API_TICKS_PER_FRAME
+                avctx->ticks_per_frame ? avctx->ticks_per_frame :
+#endif
+                1;
+FF_ENABLE_DEPRECATION_WARNINGS
         }
 
         switch (frame->color_range) {

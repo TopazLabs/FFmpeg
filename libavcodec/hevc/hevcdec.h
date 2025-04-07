@@ -78,10 +78,6 @@
                    (s)->nal_unit_type == HEVC_NAL_BLA_N_LP)
 #define IS_IRAP(s) ((s)->nal_unit_type >= HEVC_NAL_BLA_W_LP && (s)->nal_unit_type <= HEVC_NAL_RSV_IRAP_VCL23)
 
-#define HEVC_RECOVERY_UNSPECIFIED INT_MAX
-#define HEVC_RECOVERY_END INT_MIN
-#define HEVC_IS_RECOVERING(s) ((s)->recovery_poc != HEVC_RECOVERY_UNSPECIFIED && (s)->recovery_poc != HEVC_RECOVERY_END)
-
 enum RPSType {
     ST_CURR_BEF = 0,
     ST_CURR_AFT,
@@ -207,9 +203,9 @@ typedef struct RefPicListTab {
 typedef struct SliceHeader {
     unsigned int pps_id;
 
-    /// address (in raster order) of the first block in the current slice segment
+    ///< address (in raster order) of the first block in the current slice segment
     unsigned int   slice_segment_addr;
-    /// address (in raster order) of the first block in the current slice
+    ///< address (in raster order) of the first block in the current slice
     unsigned int   slice_addr;
 
     enum HEVCSliceType slice_type;
@@ -223,7 +219,7 @@ typedef struct SliceHeader {
     uint8_t colour_plane_id;
     uint8_t inter_layer_pred;
 
-    /// RPS coded in the slice header itself is stored here
+    ///< RPS coded in the slice header itself is stored here
     int short_term_ref_pic_set_sps_flag;
     int short_term_ref_pic_set_size;
     ShortTermRPS slice_rps;
@@ -357,7 +353,6 @@ typedef struct DBParams {
 #define HEVC_FRAME_FLAG_SHORT_REF (1 << 1)
 #define HEVC_FRAME_FLAG_LONG_REF  (1 << 2)
 #define HEVC_FRAME_FLAG_UNAVAILABLE (1 << 3)
-#define HEVC_FRAME_FLAG_CORRUPT (1 << 4)
 
 typedef struct HEVCFrame {
     union {
@@ -485,8 +480,8 @@ typedef struct HEVCLayerContext {
     uint8_t                *sao_pixel_buffer_h[3];
     uint8_t                *sao_pixel_buffer_v[3];
 
-    struct AVRefStructPool *tab_mvf_pool;
-    struct AVRefStructPool *rpl_tab_pool;
+    struct FFRefStructPool *tab_mvf_pool;
+    struct FFRefStructPool *rpl_tab_pool;
 } HEVCLayerContext;
 
 typedef struct HEVCContext {
@@ -507,13 +502,13 @@ typedef struct HEVCContext {
     /** 1 if the independent slice segment header was successfully parsed */
     uint8_t slice_initialized;
 
-    struct AVContainerFifo *output_fifo;
+    struct ContainerFifo *output_fifo;
 
     HEVCParamSets ps;
     HEVCSEI sei;
     struct AVMD5 *md5_ctx;
 
-    /// candidate references for the current frame
+    ///< candidate references for the current frame
     RefPicList rps[NB_RPS_TYPE];
 
     const HEVCVPS *vps; ///< RefStruct reference
@@ -528,7 +523,6 @@ typedef struct HEVCContext {
     int slice_idx; ///< number of the slice being currently decoded
     int eos;       ///< current packet contains an EOS/EOB NAL
     int last_eos;  ///< last packet contains an EOS/EOB NAL
-    int recovery_poc;
 
     // NoRaslOutputFlag associated with the last IRAP frame
     int no_rasl_output_flag;
@@ -719,8 +713,6 @@ void ff_hevc_hls_residual_coding(HEVCLocalContext *lc, const HEVCPPS *pps,
                                  int c_idx);
 
 void ff_hevc_hls_mvd_coding(HEVCLocalContext *lc, int x0, int y0, int log2_cb_size);
-
-int ff_hevc_is_alpha_video(const HEVCContext *s);
 
 extern const uint8_t ff_hevc_qpel_extra_before[4];
 extern const uint8_t ff_hevc_qpel_extra_after[4];

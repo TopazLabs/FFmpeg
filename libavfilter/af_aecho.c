@@ -336,11 +336,11 @@ static const AVFilterPad aecho_outputs[] = {
     },
 };
 
-const FFFilter ff_af_aecho = {
-    .p.name        = "aecho",
-    .p.description = NULL_IF_CONFIG_SMALL("Add echoing to the audio."),
-    .p.priv_class  = &aecho_class,
+const AVFilter ff_af_aecho = {
+    .name          = "aecho",
+    .description   = NULL_IF_CONFIG_SMALL("Add echoing to the audio."),
     .priv_size     = sizeof(AudioEchoContext),
+    .priv_class    = &aecho_class,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,

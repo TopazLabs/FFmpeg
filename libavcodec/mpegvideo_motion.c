@@ -29,7 +29,6 @@
 
 #include "avcodec.h"
 #include "h261.h"
-#include "h263.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "mpeg4videodec.h"

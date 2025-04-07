@@ -481,11 +481,9 @@ static const AVFilterPad colormatrix_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_colormatrix = {
-    .p.name        = "colormatrix",
-    .p.description = NULL_IF_CONFIG_SMALL("Convert color matrix."),
-    .p.priv_class  = &colormatrix_class,
-    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
+const AVFilter ff_vf_colormatrix = {
+    .name          = "colormatrix",
+    .description   = NULL_IF_CONFIG_SMALL("Convert color matrix."),
     .priv_size     = sizeof(ColorMatrixContext),
     .init          = init,
     FILTER_INPUTS(colormatrix_inputs),
@@ -494,4 +492,6 @@ const FFFilter ff_vf_colormatrix = {
                    AV_PIX_FMT_YUV422P,
                    AV_PIX_FMT_YUV420P,
                    AV_PIX_FMT_UYVY422),
+    .priv_class    = &colormatrix_class,
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

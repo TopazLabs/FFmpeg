@@ -827,7 +827,10 @@ const FFCodec ff_flac_decoder = {
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1 |
                       AV_CODEC_CAP_FRAME_THREADS,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S16P,
-                     AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_S32P),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16,
+                                                      AV_SAMPLE_FMT_S16P,
+                                                      AV_SAMPLE_FMT_S32,
+                                                      AV_SAMPLE_FMT_S32P,
+                                                      AV_SAMPLE_FMT_NONE },
     .p.priv_class   = &flac_decoder_class,
 };

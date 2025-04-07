@@ -167,8 +167,19 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     /* set field */
     if (s->field_mode == MODE_PROG) {
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        frame->interlaced_frame = 0;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         frame->flags &= ~AV_FRAME_FLAG_INTERLACED;
     } else if (s->field_mode != MODE_AUTO) {
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        frame->interlaced_frame = 1;
+        frame->top_field_first = s->field_mode;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         frame->flags |= AV_FRAME_FLAG_INTERLACED;
         if (s->field_mode)
             frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
@@ -199,12 +210,12 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const FFFilter ff_vf_setparams = {
-    .p.name        = "setparams",
-    .p.description = NULL_IF_CONFIG_SMALL("Force field, or color property for the output video frame."),
-    .p.priv_class  = &setparams_class,
-    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
+const AVFilter ff_vf_setparams = {
+    .name        = "setparams",
+    .description = NULL_IF_CONFIG_SMALL("Force field, or color property for the output video frame."),
     .priv_size   = sizeof(SetParamsContext),
+    .priv_class  = &setparams_class,
+    .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
@@ -239,13 +250,13 @@ static av_cold int init_setrange(AVFilterContext *ctx)
     return 0;
 }
 
-const FFFilter ff_vf_setrange = {
-    .p.name        = "setrange",
-    .p.description = NULL_IF_CONFIG_SMALL("Force color range for the output video frame."),
-    .p.priv_class  = &setrange_class,
-    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
+const AVFilter ff_vf_setrange = {
+    .name        = "setrange",
+    .description = NULL_IF_CONFIG_SMALL("Force color range for the output video frame."),
     .priv_size   = sizeof(SetParamsContext),
     .init        = init_setrange,
+    .priv_class  = &setrange_class,
+    .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
@@ -275,13 +286,13 @@ static av_cold int init_setfield(AVFilterContext *ctx)
     return 0;
 }
 
-const FFFilter ff_vf_setfield = {
-    .p.name        = "setfield",
-    .p.description = NULL_IF_CONFIG_SMALL("Force field for the output video frame."),
-    .p.priv_class  = &setfield_class,
-    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
+const AVFilter ff_vf_setfield = {
+    .name        = "setfield",
+    .description = NULL_IF_CONFIG_SMALL("Force field for the output video frame."),
     .priv_size   = sizeof(SetParamsContext),
     .init        = init_setfield,
+    .priv_class  = &setfield_class,
+    .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
 };

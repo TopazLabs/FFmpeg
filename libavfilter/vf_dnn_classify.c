@@ -293,10 +293,9 @@ static av_cold void dnn_classify_uninit(AVFilterContext *context)
     free_classify_labels(ctx);
 }
 
-const FFFilter ff_vf_dnn_classify = {
-    .p.name        = "dnn_classify",
-    .p.description = NULL_IF_CONFIG_SMALL("Apply DNN classify filter to the input."),
-    .p.priv_class  = &dnn_classify_class,
+const AVFilter ff_vf_dnn_classify = {
+    .name          = "dnn_classify",
+    .description   = NULL_IF_CONFIG_SMALL("Apply DNN classify filter to the input."),
     .priv_size     = sizeof(DnnClassifyContext),
     .preinit       = ff_dnn_filter_init_child_class,
     .init          = dnn_classify_init,
@@ -304,5 +303,6 @@ const FFFilter ff_vf_dnn_classify = {
     FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
+    .priv_class    = &dnn_classify_class,
     .activate      = dnn_classify_activate,
 };

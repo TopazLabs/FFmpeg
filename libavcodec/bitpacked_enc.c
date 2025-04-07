@@ -114,5 +114,6 @@ const FFCodec ff_bitpacked_encoder = {
                       AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init           = encode_init,
     FF_CODEC_ENCODE_CB(encode_frame),
-    CODEC_PIXFMTS(AV_PIX_FMT_YUV422P10),
+    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV422P10,
+                                                    AV_PIX_FMT_NONE },
 };

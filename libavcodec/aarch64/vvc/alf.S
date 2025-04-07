@@ -148,7 +148,7 @@
         sqxtun          v20.8b, v20.8h
         str             d20, [dst]
     .else
-        umin            v20.8h, v20.8h, v25.8h
+        smin            v20.8h, v20.8h, v25.8h
         str             q20, [dst]
     .endif
         ret
@@ -249,7 +249,7 @@
         sqxtun          v20.8b, v20.8h
         str             s20, [dst]
     .else
-        umin            v20.4h, v20.4h, v25.4h
+        smin            v20.4h, v20.4h, v25.4h
         str             d20, [dst]
     .endif
         ret

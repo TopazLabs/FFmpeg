@@ -256,10 +256,9 @@ static const AVFilterPad aphaser_outputs[] = {
     },
 };
 
-const FFFilter ff_af_aphaser = {
-    .p.name        = "aphaser",
-    .p.description = NULL_IF_CONFIG_SMALL("Add a phasing effect to the audio."),
-    .p.priv_class  = &aphaser_class,
+const AVFilter ff_af_aphaser = {
+    .name          = "aphaser",
+    .description   = NULL_IF_CONFIG_SMALL("Add a phasing effect to the audio."),
     .priv_size     = sizeof(AudioPhaserContext),
     .init          = init,
     .uninit        = uninit,
@@ -269,4 +268,5 @@ const FFFilter ff_af_aphaser = {
                       AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP,
                       AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_S32P,
                       AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S16P),
+    .priv_class    = &aphaser_class,
 };

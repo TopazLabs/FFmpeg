@@ -27,9 +27,7 @@
 #include "decode.h"
 #include "hwaccel_internal.h"
 
-static int nvdec_mjpeg_start_frame(AVCodecContext *avctx,
-                                   const AVBufferRef *buffer_ref,
-                                   const uint8_t *buffer, uint32_t size)
+static int nvdec_mjpeg_start_frame(AVCodecContext *avctx, const uint8_t *buffer, uint32_t size)
 {
     MJpegDecodeContext *s = avctx->priv_data;
 
@@ -45,7 +43,7 @@ static int nvdec_mjpeg_start_frame(AVCodecContext *avctx,
     if (ret < 0)
         return ret;
 
-    fdd = cur_frame->private_ref;
+    fdd = (FrameDecodeData*)cur_frame->private_ref->data;
     cf  = (NVDECFrame*)fdd->hwaccel_priv;
 
     *pp = (CUVIDPICPARAMS) {

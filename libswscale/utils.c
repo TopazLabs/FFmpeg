@@ -41,7 +41,6 @@
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/cpu.h"
-#include "libavutil/csp.h"
 #include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
@@ -61,7 +60,231 @@
 #include "rgb2rgb.h"
 #include "swscale.h"
 #include "swscale_internal.h"
+#include "utils.h"
 #include "graph.h"
+
+typedef struct FormatEntry {
+    uint8_t is_supported_in         :1;
+    uint8_t is_supported_out        :1;
+    uint8_t is_supported_endianness :1;
+} FormatEntry;
+
+static const FormatEntry format_entries[] = {
+    [AV_PIX_FMT_YUV420P]     = { 1, 1 },
+    [AV_PIX_FMT_YUYV422]     = { 1, 1 },
+    [AV_PIX_FMT_RGB24]       = { 1, 1 },
+    [AV_PIX_FMT_BGR24]       = { 1, 1 },
+    [AV_PIX_FMT_YUV422P]     = { 1, 1 },
+    [AV_PIX_FMT_YUV444P]     = { 1, 1 },
+    [AV_PIX_FMT_YUV410P]     = { 1, 1 },
+    [AV_PIX_FMT_YUV411P]     = { 1, 1 },
+    [AV_PIX_FMT_GRAY8]       = { 1, 1 },
+    [AV_PIX_FMT_MONOWHITE]   = { 1, 1 },
+    [AV_PIX_FMT_MONOBLACK]   = { 1, 1 },
+    [AV_PIX_FMT_PAL8]        = { 1, 0 },
+    [AV_PIX_FMT_YUVJ420P]    = { 1, 1 },
+    [AV_PIX_FMT_YUVJ411P]    = { 1, 1 },
+    [AV_PIX_FMT_YUVJ422P]    = { 1, 1 },
+    [AV_PIX_FMT_YUVJ444P]    = { 1, 1 },
+    [AV_PIX_FMT_YVYU422]     = { 1, 1 },
+    [AV_PIX_FMT_UYVY422]     = { 1, 1 },
+    [AV_PIX_FMT_UYYVYY411]   = { 0, 0 },
+    [AV_PIX_FMT_BGR8]        = { 1, 1 },
+    [AV_PIX_FMT_BGR4]        = { 0, 1 },
+    [AV_PIX_FMT_BGR4_BYTE]   = { 1, 1 },
+    [AV_PIX_FMT_RGB8]        = { 1, 1 },
+    [AV_PIX_FMT_RGB4]        = { 0, 1 },
+    [AV_PIX_FMT_RGB4_BYTE]   = { 1, 1 },
+    [AV_PIX_FMT_NV12]        = { 1, 1 },
+    [AV_PIX_FMT_NV21]        = { 1, 1 },
+    [AV_PIX_FMT_ARGB]        = { 1, 1 },
+    [AV_PIX_FMT_RGBA]        = { 1, 1 },
+    [AV_PIX_FMT_ABGR]        = { 1, 1 },
+    [AV_PIX_FMT_BGRA]        = { 1, 1 },
+    [AV_PIX_FMT_0RGB]        = { 1, 1 },
+    [AV_PIX_FMT_RGB0]        = { 1, 1 },
+    [AV_PIX_FMT_0BGR]        = { 1, 1 },
+    [AV_PIX_FMT_BGR0]        = { 1, 1 },
+    [AV_PIX_FMT_GRAY9BE]     = { 1, 1 },
+    [AV_PIX_FMT_GRAY9LE]     = { 1, 1 },
+    [AV_PIX_FMT_GRAY10BE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY10LE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY12BE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY12LE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY14BE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY14LE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY16BE]    = { 1, 1 },
+    [AV_PIX_FMT_GRAY16LE]    = { 1, 1 },
+    [AV_PIX_FMT_YUV440P]     = { 1, 1 },
+    [AV_PIX_FMT_YUVJ440P]    = { 1, 1 },
+    [AV_PIX_FMT_YUV440P10LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV440P10BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV440P12LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV440P12BE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA420P]    = { 1, 1 },
+    [AV_PIX_FMT_YUVA422P]    = { 1, 1 },
+    [AV_PIX_FMT_YUVA444P]    = { 1, 1 },
+    [AV_PIX_FMT_YUVA420P9BE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA420P9LE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA422P9BE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA422P9LE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA444P9BE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA444P9LE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA420P10BE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA420P10LE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA422P10BE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA422P10LE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA444P10BE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA444P10LE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA420P16BE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA420P16LE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA422P16BE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA422P16LE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA444P16BE]= { 1, 1 },
+    [AV_PIX_FMT_YUVA444P16LE]= { 1, 1 },
+    [AV_PIX_FMT_RGB48BE]     = { 1, 1 },
+    [AV_PIX_FMT_RGB48LE]     = { 1, 1 },
+    [AV_PIX_FMT_RGBA64BE]    = { 1, 1, 1 },
+    [AV_PIX_FMT_RGBA64LE]    = { 1, 1, 1 },
+    [AV_PIX_FMT_RGB565BE]    = { 1, 1 },
+    [AV_PIX_FMT_RGB565LE]    = { 1, 1 },
+    [AV_PIX_FMT_RGB555BE]    = { 1, 1 },
+    [AV_PIX_FMT_RGB555LE]    = { 1, 1 },
+    [AV_PIX_FMT_BGR565BE]    = { 1, 1 },
+    [AV_PIX_FMT_BGR565LE]    = { 1, 1 },
+    [AV_PIX_FMT_BGR555BE]    = { 1, 1 },
+    [AV_PIX_FMT_BGR555LE]    = { 1, 1 },
+    [AV_PIX_FMT_YUV420P16LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV420P16BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P16LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P16BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P16LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P16BE] = { 1, 1 },
+    [AV_PIX_FMT_RGB444LE]    = { 1, 1 },
+    [AV_PIX_FMT_RGB444BE]    = { 1, 1 },
+    [AV_PIX_FMT_BGR444LE]    = { 1, 1 },
+    [AV_PIX_FMT_BGR444BE]    = { 1, 1 },
+    [AV_PIX_FMT_YA8]         = { 1, 1 },
+    [AV_PIX_FMT_YA16BE]      = { 1, 1 },
+    [AV_PIX_FMT_YA16LE]      = { 1, 1 },
+    [AV_PIX_FMT_BGR48BE]     = { 1, 1 },
+    [AV_PIX_FMT_BGR48LE]     = { 1, 1 },
+    [AV_PIX_FMT_BGRA64BE]    = { 1, 1, 1 },
+    [AV_PIX_FMT_BGRA64LE]    = { 1, 1, 1 },
+    [AV_PIX_FMT_YUV420P9BE]  = { 1, 1 },
+    [AV_PIX_FMT_YUV420P9LE]  = { 1, 1 },
+    [AV_PIX_FMT_YUV420P10BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV420P10LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV420P12BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV420P12LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV420P14BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV420P14LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P9BE]  = { 1, 1 },
+    [AV_PIX_FMT_YUV422P9LE]  = { 1, 1 },
+    [AV_PIX_FMT_YUV422P10BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P10LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P12BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P12LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P14BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV422P14LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P9BE]  = { 1, 1 },
+    [AV_PIX_FMT_YUV444P9LE]  = { 1, 1 },
+    [AV_PIX_FMT_YUV444P10BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P10LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P12BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P12LE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P14BE] = { 1, 1 },
+    [AV_PIX_FMT_YUV444P14LE] = { 1, 1 },
+    [AV_PIX_FMT_GBRP]        = { 1, 1 },
+    [AV_PIX_FMT_GBRP9LE]     = { 1, 1 },
+    [AV_PIX_FMT_GBRP9BE]     = { 1, 1 },
+    [AV_PIX_FMT_GBRP10LE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRP10BE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRAP10LE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRAP10BE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRP12LE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRP12BE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRAP12LE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRAP12BE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRP14LE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRP14BE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRAP14LE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRAP14BE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRP16LE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRP16BE]    = { 1, 1 },
+    [AV_PIX_FMT_GBRPF32LE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRPF32BE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRAPF32LE]  = { 1, 1 },
+    [AV_PIX_FMT_GBRAPF32BE]  = { 1, 1 },
+    [AV_PIX_FMT_GBRAP]       = { 1, 1 },
+    [AV_PIX_FMT_GBRAP16LE]   = { 1, 1 },
+    [AV_PIX_FMT_GBRAP16BE]   = { 1, 1 },
+    [AV_PIX_FMT_BAYER_BGGR8] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_RGGB8] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_GBRG8] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_GRBG8] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_BGGR16LE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_BGGR16BE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_RGGB16LE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_RGGB16BE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_GBRG16LE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_GBRG16BE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_GRBG16LE] = { 1, 0 },
+    [AV_PIX_FMT_BAYER_GRBG16BE] = { 1, 0 },
+    [AV_PIX_FMT_XYZ12BE]     = { 1, 1, 1 },
+    [AV_PIX_FMT_XYZ12LE]     = { 1, 1, 1 },
+    [AV_PIX_FMT_AYUV64LE]    = { 1, 1},
+    [AV_PIX_FMT_AYUV64BE]    = { 1, 1 },
+    [AV_PIX_FMT_P010LE]      = { 1, 1 },
+    [AV_PIX_FMT_P010BE]      = { 1, 1 },
+    [AV_PIX_FMT_P012LE]      = { 1, 1 },
+    [AV_PIX_FMT_P012BE]      = { 1, 1 },
+    [AV_PIX_FMT_P016LE]      = { 1, 1 },
+    [AV_PIX_FMT_P016BE]      = { 1, 1 },
+    [AV_PIX_FMT_GRAYF32LE]   = { 1, 1 },
+    [AV_PIX_FMT_GRAYF32BE]   = { 1, 1 },
+    [AV_PIX_FMT_YUVA422P12BE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA422P12LE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA444P12BE] = { 1, 1 },
+    [AV_PIX_FMT_YUVA444P12LE] = { 1, 1 },
+    [AV_PIX_FMT_NV24]        = { 1, 1 },
+    [AV_PIX_FMT_NV42]        = { 1, 1 },
+    [AV_PIX_FMT_Y210LE]      = { 1, 1 },
+    [AV_PIX_FMT_Y212LE]      = { 1, 1 },
+    [AV_PIX_FMT_Y216LE]      = { 1, 1 },
+    [AV_PIX_FMT_X2RGB10LE]   = { 1, 1 },
+    [AV_PIX_FMT_X2BGR10LE]   = { 1, 1 },
+    [AV_PIX_FMT_P210BE]      = { 1, 1 },
+    [AV_PIX_FMT_P210LE]      = { 1, 1 },
+    [AV_PIX_FMT_P212BE]      = { 1, 1 },
+    [AV_PIX_FMT_P212LE]      = { 1, 1 },
+    [AV_PIX_FMT_P410BE]      = { 1, 1 },
+    [AV_PIX_FMT_P410LE]      = { 1, 1 },
+    [AV_PIX_FMT_P412BE]      = { 1, 1 },
+    [AV_PIX_FMT_P412LE]      = { 1, 1 },
+    [AV_PIX_FMT_P216BE]      = { 1, 1 },
+    [AV_PIX_FMT_P216LE]      = { 1, 1 },
+    [AV_PIX_FMT_P416BE]      = { 1, 1 },
+    [AV_PIX_FMT_P416LE]      = { 1, 1 },
+    [AV_PIX_FMT_NV16]        = { 1, 1 },
+    [AV_PIX_FMT_VUYA]        = { 1, 1 },
+    [AV_PIX_FMT_VUYX]        = { 1, 1 },
+    [AV_PIX_FMT_RGBAF16BE]   = { 1, 0 },
+    [AV_PIX_FMT_RGBAF16LE]   = { 1, 0 },
+    [AV_PIX_FMT_RGBF16BE]    = { 1, 0 },
+    [AV_PIX_FMT_RGBF16LE]    = { 1, 0 },
+    [AV_PIX_FMT_RGBF32BE]    = { 1, 0 },
+    [AV_PIX_FMT_RGBF32LE]    = { 1, 0 },
+    [AV_PIX_FMT_XV30LE]      = { 1, 1 },
+    [AV_PIX_FMT_XV36LE]      = { 1, 1 },
+    [AV_PIX_FMT_XV36BE]      = { 1, 1 },
+    [AV_PIX_FMT_XV48LE]      = { 1, 1 },
+    [AV_PIX_FMT_XV48BE]      = { 1, 1 },
+    [AV_PIX_FMT_AYUV]        = { 1, 1 },
+    [AV_PIX_FMT_UYVA]        = { 1, 1 },
+    [AV_PIX_FMT_VYU444]      = { 1, 1 },
+    [AV_PIX_FMT_V30XLE]      = { 1, 1 },
+};
 
 /**
  * Allocate and return an SwsContext without performing initialization.
@@ -145,6 +368,24 @@ int ff_shuffle_filter_coefficients(SwsInternal *c, int *filterPos,
     }
 #endif
     return 0;
+}
+
+int sws_isSupportedInput(enum AVPixelFormat pix_fmt)
+{
+    return (unsigned)pix_fmt < FF_ARRAY_ELEMS(format_entries) ?
+           format_entries[pix_fmt].is_supported_in : 0;
+}
+
+int sws_isSupportedOutput(enum AVPixelFormat pix_fmt)
+{
+    return (unsigned)pix_fmt < FF_ARRAY_ELEMS(format_entries) ?
+           format_entries[pix_fmt].is_supported_out : 0;
+}
+
+int sws_isSupportedEndiannessConversion(enum AVPixelFormat pix_fmt)
+{
+    return (unsigned)pix_fmt < FF_ARRAY_ELEMS(format_entries) ?
+           format_entries[pix_fmt].is_supported_endianness : 0;
 }
 
 static double getSplineCoeff(double a, double b, double c, double d,
@@ -692,7 +933,7 @@ static void fill_rgb2yuv_table(SwsInternal *c, const int table[4], int dstRange)
         AV_WL16(p + 16*4 + 2*i, map[i] >= 0 ? c->input_rgb2yuv_table[map[i]] : 0);
 }
 
-static int fill_xyztables(SwsInternal *c)
+static void fill_xyztables(SwsInternal *c)
 {
     int i;
     double xyzgamma = XYZ_GAMMA;
@@ -707,44 +948,25 @@ static int fill_xyztables(SwsInternal *c)
         {1689, 1464,  739},
         { 871, 2929,  296},
         {  79,  488, 3891} };
-#if !CONFIG_SMALL
-    static uint16_t xyzgamma_tab[4096],  rgbgammainv_tab[4096];
-    static uint16_t rgbgamma_tab[65536], xyzgammainv_tab[65536];
-#endif
-    if (c->xyzgamma)
-        return 0;
+    static int16_t xyzgamma_tab[4096], rgbgamma_tab[4096], xyzgammainv_tab[4096], rgbgammainv_tab[4096];
 
     memcpy(c->xyz2rgb_matrix, xyz2rgb_matrix, sizeof(c->xyz2rgb_matrix));
     memcpy(c->rgb2xyz_matrix, rgb2xyz_matrix, sizeof(c->rgb2xyz_matrix));
-
-#if CONFIG_SMALL
-    c->xyzgamma = av_malloc(sizeof(uint16_t) * 2 * (4096 + 65536));
-    if (!c->xyzgamma)
-        return AVERROR(ENOMEM);
-    c->rgbgammainv = c->xyzgamma + 4096;
-    c->rgbgamma = c->rgbgammainv + 4096;
-    c->xyzgammainv = c->rgbgamma + 65536;
-#else
     c->xyzgamma = xyzgamma_tab;
     c->rgbgamma = rgbgamma_tab;
     c->xyzgammainv = xyzgammainv_tab;
     c->rgbgammainv = rgbgammainv_tab;
-    if (xyzgamma_tab[4095])
-        return 0;
-#endif
 
-    /* set input gamma vectors */
+    if (rgbgamma_tab[4095])
+        return;
+
+    /* set gamma vectors */
     for (i = 0; i < 4096; i++) {
-        c->xyzgamma[i]    = lrint(pow(i / 4095.0, xyzgamma) * 65535.0);
-        c->rgbgammainv[i] = lrint(pow(i / 4095.0, rgbgammainv) * 65535.0);
+        xyzgamma_tab[i] = lrint(pow(i / 4095.0, xyzgamma) * 4095.0);
+        rgbgamma_tab[i] = lrint(pow(i / 4095.0, rgbgamma) * 4095.0);
+        xyzgammainv_tab[i] = lrint(pow(i / 4095.0, xyzgammainv) * 4095.0);
+        rgbgammainv_tab[i] = lrint(pow(i / 4095.0, rgbgammainv) * 4095.0);
     }
-
-    /* set output gamma vectors */
-    for (i = 0; i < 65536; i++) {
-        c->rgbgamma[i]    = lrint(pow(i / 65535.0, rgbgamma) * 4095.0);
-        c->xyzgammainv[i] = lrint(pow(i / 65535.0, xyzgammainv) * 4095.0);
-    }
-    return 0;
 }
 
 static int handle_jpeg(enum AVPixelFormat *format)
@@ -805,7 +1027,7 @@ static int handle_xyz(enum AVPixelFormat *format)
     }
 }
 
-static int handle_formats(SwsContext *sws)
+static void handle_formats(SwsContext *sws)
 {
     SwsInternal *c = sws_internal(sws);
     c->src0Alpha |= handle_0alpha(&sws->src_format);
@@ -813,9 +1035,7 @@ static int handle_formats(SwsContext *sws)
     c->srcXYZ    |= handle_xyz(&sws->src_format);
     c->dstXYZ    |= handle_xyz(&sws->dst_format);
     if (c->srcXYZ || c->dstXYZ)
-        return fill_xyztables(c);
-    else
-        return 0;
+        fill_xyztables(c);
 }
 
 static int range_override_needed(enum AVPixelFormat format)
@@ -830,7 +1050,7 @@ int sws_setColorspaceDetails(SwsContext *sws, const int inv_table[4],
     SwsInternal *c = sws_internal(sws);
     const AVPixFmtDescriptor *desc_dst;
     const AVPixFmtDescriptor *desc_src;
-    int ret, need_reinit = 0;
+    int need_reinit = 0;
 
     if (c->nb_slice_ctx) {
         int parent_ret = 0;
@@ -845,9 +1065,7 @@ int sws_setColorspaceDetails(SwsContext *sws, const int inv_table[4],
         return parent_ret;
     }
 
-    ret = handle_formats(sws);
-    if (ret < 0)
-        return ret;
+    handle_formats(sws);
     desc_dst = av_pix_fmt_desc_get(sws->dst_format);
     desc_src = av_pix_fmt_desc_get(sws->src_format);
 
@@ -1127,9 +1345,7 @@ av_cold int ff_sws_init_single_context(SwsContext *sws, SwsFilter *srcFilter,
                                  ff_yuv2rgb_coeffs[SWS_CS_DEFAULT],
                                  sws->dst_range, 0, 1 << 16, 1 << 16);
 
-    ret = handle_formats(sws);
-    if (ret < 0)
-        return ret;
+    handle_formats(sws);
     srcFormat = sws->src_format;
     dstFormat = sws->dst_format;
     desc_src = av_pix_fmt_desc_get(srcFormat);
@@ -1334,8 +1550,6 @@ av_cold int ff_sws_init_single_context(SwsContext *sws, SwsFilter *srcFilter,
         srcFormat != AV_PIX_FMT_GBRAP16BE  && srcFormat != AV_PIX_FMT_GBRAP16LE &&
         srcFormat != AV_PIX_FMT_GBRPF32BE  && srcFormat != AV_PIX_FMT_GBRPF32LE &&
         srcFormat != AV_PIX_FMT_GBRAPF32BE && srcFormat != AV_PIX_FMT_GBRAPF32LE &&
-        srcFormat != AV_PIX_FMT_GBRPF16BE  && srcFormat != AV_PIX_FMT_GBRPF16LE &&
-        srcFormat != AV_PIX_FMT_GBRAPF16BE && srcFormat != AV_PIX_FMT_GBRAPF16LE &&
         ((dstW >> c->chrDstHSubSample) <= (srcW >> 1) ||
          (flags & SWS_FAST_BILINEAR)))
         c->chrSrcHSubSample = 1;
@@ -2238,7 +2452,7 @@ void sws_freeContext(SwsContext *sws)
         return;
 
     for (i = 0; i < FF_ARRAY_ELEMS(c->graph); i++)
-        ff_sws_graph_free(&c->graph[i]);
+        sws_graph_free(&c->graph[i]);
 
     for (i = 0; i < c->nb_slice_ctx; i++)
         sws_freeContext(c->slice_ctx[i]);
@@ -2300,9 +2514,6 @@ void sws_freeContext(SwsContext *sws)
 
     av_freep(&c->gamma);
     av_freep(&c->inv_gamma);
-#if CONFIG_SMALL
-    av_freep(&c->xyzgamma);
-#endif
 
     av_freep(&c->rgb0_scratch);
     av_freep(&c->xyz_scratch);
@@ -2337,14 +2548,14 @@ SwsContext *sws_getCachedContext(SwsContext *prev, int srcW,
     if (!param)
         param = default_param;
 
-    if (prev && (prev->src_w            == srcW      &&
-                 prev->src_h            == srcH      &&
-                 prev->src_format       == srcFormat &&
-                 prev->dst_w            == dstW      &&
-                 prev->dst_h            == dstH      &&
-                 prev->dst_format       == dstFormat &&
-                 prev->flags            == flags     &&
-                 prev->scaler_params[0] == param[0]  &&
+    if (prev && (prev->src_w            == srcW      ||
+                 prev->src_h            == srcH      ||
+                 prev->src_format       == srcFormat ||
+                 prev->dst_w            == dstW      ||
+                 prev->dst_h            == dstH      ||
+                 prev->dst_format       == dstFormat ||
+                 prev->flags            == flags     ||
+                 prev->scaler_params[0] == param[0]  ||
                  prev->scaler_params[1] == param[1])) {
         return prev;
     }
@@ -2433,4 +2644,148 @@ int ff_range_add(RangeList *rl, unsigned int start, unsigned int len)
     }
 
     return 0;
+}
+
+/**
+ * This function also sanitizes and strips the input data, removing irrelevant
+ * fields for certain formats.
+ */
+SwsFormat ff_fmt_from_frame(const AVFrame *frame, int field)
+{
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
+    SwsFormat fmt = {
+        .width  = frame->width,
+        .height = frame->height,
+        .format = frame->format,
+        .range  = frame->color_range,
+        .prim   = frame->color_primaries,
+        .trc    = frame->color_trc,
+        .csp    = frame->colorspace,
+        .loc    = frame->chroma_location,
+        .desc   = desc,
+    };
+
+    av_assert1(fmt.width > 0);
+    av_assert1(fmt.height > 0);
+    av_assert1(fmt.format != AV_PIX_FMT_NONE);
+    av_assert0(desc);
+    if (desc->flags & (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_BAYER)) {
+        /* RGB-like family */
+        fmt.csp   = AVCOL_SPC_RGB;
+        fmt.range = AVCOL_RANGE_JPEG;
+    } else if (desc->flags & AV_PIX_FMT_FLAG_XYZ) {
+        fmt.csp   = AVCOL_SPC_UNSPECIFIED;
+        fmt.prim  = AVCOL_PRI_SMPTE428;
+        fmt.trc   = AVCOL_TRC_SMPTE428;
+    } else if (desc->nb_components < 3) {
+        /* Grayscale formats */
+        fmt.prim  = AVCOL_PRI_UNSPECIFIED;
+        fmt.csp   = AVCOL_SPC_UNSPECIFIED;
+        if (desc->flags & AV_PIX_FMT_FLAG_FLOAT)
+            fmt.range = AVCOL_RANGE_UNSPECIFIED;
+        else
+            fmt.range = AVCOL_RANGE_JPEG; // FIXME: this restriction should be lifted
+    }
+
+    switch (frame->format) {
+    case AV_PIX_FMT_YUVJ420P:
+    case AV_PIX_FMT_YUVJ411P:
+    case AV_PIX_FMT_YUVJ422P:
+    case AV_PIX_FMT_YUVJ444P:
+    case AV_PIX_FMT_YUVJ440P:
+        fmt.range = AVCOL_RANGE_JPEG;
+        break;
+    }
+
+    if (!desc->log2_chroma_w && !desc->log2_chroma_h)
+        fmt.loc = AVCHROMA_LOC_UNSPECIFIED;
+
+    if (frame->flags & AV_FRAME_FLAG_INTERLACED) {
+        fmt.height = (fmt.height + (field == FIELD_TOP)) >> 1;
+        fmt.interlaced = 1;
+    }
+
+    return fmt;
+}
+
+int sws_test_format(enum AVPixelFormat format, int output)
+{
+    return output ? sws_isSupportedOutput(format) : sws_isSupportedInput(format);
+}
+
+int sws_test_colorspace(enum AVColorSpace csp, int output)
+{
+    switch (csp) {
+    case AVCOL_SPC_UNSPECIFIED:
+    case AVCOL_SPC_RGB:
+    case AVCOL_SPC_BT709:
+    case AVCOL_SPC_BT470BG:
+    case AVCOL_SPC_SMPTE170M:
+    case AVCOL_SPC_FCC:
+    case AVCOL_SPC_SMPTE240M:
+    case AVCOL_SPC_BT2020_NCL:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+int sws_test_primaries(enum AVColorPrimaries prim, int output)
+{
+    return prim > AVCOL_PRI_RESERVED0 && prim < AVCOL_PRI_NB &&
+           prim != AVCOL_PRI_RESERVED;
+}
+
+int sws_test_transfer(enum AVColorTransferCharacteristic trc, int output)
+{
+    return trc > AVCOL_TRC_RESERVED0 && trc < AVCOL_TRC_NB &&
+           trc != AVCOL_TRC_RESERVED;
+}
+
+static int test_range(enum AVColorRange range)
+{
+    return range >= 0 && range < AVCOL_RANGE_NB;
+}
+
+static int test_loc(enum AVChromaLocation loc)
+{
+    return loc >= 0 && loc < AVCHROMA_LOC_NB;
+}
+
+int ff_test_fmt(const SwsFormat *fmt, int output)
+{
+    return fmt->width > 0 && fmt->height > 0        &&
+           sws_test_format    (fmt->format, output) &&
+           sws_test_colorspace(fmt->csp,    output) &&
+           sws_test_primaries (fmt->prim,   output) &&
+           sws_test_transfer  (fmt->trc,    output) &&
+           test_range         (fmt->range)          &&
+           test_loc           (fmt->loc);
+}
+
+int sws_test_frame(const AVFrame *frame, int output)
+{
+    for (int field = 0; field < 2; field++) {
+        const SwsFormat fmt = ff_fmt_from_frame(frame, field);
+        if (!ff_test_fmt(&fmt, output))
+            return 0;
+        if (!fmt.interlaced)
+            break;
+    }
+
+    return 1;
+}
+
+int sws_is_noop(const AVFrame *dst, const AVFrame *src)
+{
+    for (int field = 0; field < 2; field++) {
+        SwsFormat dst_fmt = ff_fmt_from_frame(dst, field);
+        SwsFormat src_fmt = ff_fmt_from_frame(src, field);
+        if (!ff_fmt_equal(&dst_fmt, &src_fmt))
+            return 0;
+        if (!dst_fmt.interlaced)
+            break;
+    }
+
+    return 1;
 }

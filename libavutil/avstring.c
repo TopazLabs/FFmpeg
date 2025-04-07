@@ -452,12 +452,10 @@ int av_match_list(const char *name, const char *list, char separator)
                 if (k && (!p[k] || p[k] == separator))
                     return 1;
             q = strchr(q, separator);
-            if(q)
-                q++;
+            q += !!q;
         }
         p = strchr(p, separator);
-        if (p)
-            p++;
+        p += !!p;
     }
 
     return 0;

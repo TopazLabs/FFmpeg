@@ -34,7 +34,7 @@
 static void dpb_add(const H264Context *h, CUVIDH264DPBENTRY *dst, const H264Picture *src,
                     int frame_idx)
 {
-    FrameDecodeData *fdd = src->f->private_ref;
+    FrameDecodeData *fdd = (FrameDecodeData*)src->f->private_ref->data;
     const NVDECFrame *cf = fdd->hwaccel_priv;
 
     dst->PicIdx             = cf ? cf->idx : -1;
@@ -47,7 +47,6 @@ static void dpb_add(const H264Context *h, CUVIDH264DPBENTRY *dst, const H264Pict
 }
 
 static int nvdec_h264_start_frame(AVCodecContext *avctx,
-                                  const AVBufferRef *buffer_ref,
                                   const uint8_t *buffer, uint32_t size)
 {
     const H264Context *h = avctx->priv_data;
@@ -66,7 +65,7 @@ static int nvdec_h264_start_frame(AVCodecContext *avctx,
     if (ret < 0)
         return ret;
 
-    fdd = h->cur_pic_ptr->f->private_ref;
+    fdd = (FrameDecodeData*)h->cur_pic_ptr->f->private_ref->data;
     cf  = (NVDECFrame*)fdd->hwaccel_priv;
 
     *pp = (CUVIDPICPARAMS) {
@@ -98,7 +97,7 @@ static int nvdec_h264_start_frame(AVCodecContext *avctx,
             .num_ref_idx_l1_active_minus1           = pps->ref_count[1] - 1,
             .weighted_pred_flag                     = pps->weighted_pred,
             .weighted_bipred_idc                    = pps->weighted_bipred_idc,
-            .pic_init_qp_minus26                    = pps->init_qp - 26 - 6 * (sps->bit_depth_luma - 8),
+            .pic_init_qp_minus26                    = pps->init_qp - 26,
             .deblocking_filter_control_present_flag = pps->deblocking_filter_parameters_present,
             .redundant_pic_cnt_present_flag         = pps->redundant_pic_cnt_present,
             .transform_8x8_mode_flag                = pps->transform_8x8_mode,

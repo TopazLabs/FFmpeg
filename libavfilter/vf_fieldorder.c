@@ -142,6 +142,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             }
         }
     }
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+    out->top_field_first = s->dst_tff;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     if (s->dst_tff)
         out->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
     else
@@ -173,13 +178,13 @@ static const AVFilterPad avfilter_vf_fieldorder_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_fieldorder = {
-    .p.name        = "fieldorder",
-    .p.description = NULL_IF_CONFIG_SMALL("Set the field order."),
-    .p.priv_class  = &fieldorder_class,
-    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+const AVFilter ff_vf_fieldorder = {
+    .name          = "fieldorder",
+    .description   = NULL_IF_CONFIG_SMALL("Set the field order."),
     .priv_size     = sizeof(FieldOrderContext),
+    .priv_class    = &fieldorder_class,
     FILTER_INPUTS(avfilter_vf_fieldorder_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
+    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

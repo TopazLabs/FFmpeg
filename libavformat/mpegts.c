@@ -21,7 +21,6 @@
 
 #include "config_components.h"
 
-#include "libavutil/attributes_internal.h"
 #include "libavutil/buffer.h"
 #include "libavutil/crc.h"
 #include "libavutil/internal.h"
@@ -275,7 +274,7 @@ typedef struct PESContext {
     int merged_st;
 } PESContext;
 
-EXTERN const FFInputFormat ff_mpegts_demuxer;
+extern const FFInputFormat ff_mpegts_demuxer;
 
 static struct Program * get_program(MpegTSContext *ts, unsigned int programid)
 {
@@ -2962,12 +2961,6 @@ static int read_packet(AVFormatContext *s, uint8_t *buf, int raw_packet_size,
     AVIOContext *pb = s->pb;
     int len;
 
-    // 192 bytes source packet that start with a 4 bytes TP_extra_header
-    // followed by 188 bytes of TS packet. The sync byte is at offset 4, so skip
-    // the first 4 bytes otherwise we'll end up syncing to the wrong packet.
-    if (raw_packet_size == TS_DVHS_PACKET_SIZE)
-        avio_skip(pb, 4);
-
     for (;;) {
         len = ffio_read_indirect(pb, buf, TS_PACKET_SIZE, data);
         if (len != TS_PACKET_SIZE)
@@ -2990,11 +2983,7 @@ static int read_packet(AVFormatContext *s, uint8_t *buf, int raw_packet_size,
 static void finished_reading_packet(AVFormatContext *s, int raw_packet_size)
 {
     AVIOContext *pb = s->pb;
-    int skip;
-    if (raw_packet_size == TS_DVHS_PACKET_SIZE)
-        skip = raw_packet_size - TS_DVHS_PACKET_SIZE;
-    else
-        skip = raw_packet_size - TS_PACKET_SIZE;
+    int skip = raw_packet_size - TS_PACKET_SIZE;
     if (skip > 0)
         avio_skip(pb, skip);
 }

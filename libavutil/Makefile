@@ -19,7 +19,6 @@ HEADERS = adler32.h                                                     \
           camellia.h                                                    \
           channel_layout.h                                              \
           common.h                                                      \
-          container_fifo.h                                              \
           cpu.h                                                         \
           crc.h                                                         \
           csp.h                                                         \
@@ -47,7 +46,6 @@ HEADERS = adler32.h                                                     \
           hwcontext_d3d12va.h                                           \
           hwcontext_drm.h                                               \
           hwcontext_dxva2.h                                             \
-          hwcontext_amf.h                                               \
           hwcontext_qsv.h                                               \
           hwcontext_mediacodec.h                                        \
           hwcontext_opencl.h                                            \
@@ -77,7 +75,6 @@ HEADERS = adler32.h                                                     \
           random_seed.h                                                 \
           rc4.h                                                         \
           rational.h                                                    \
-          refstruct.h                                                   \
           replaygain.h                                                  \
           ripemd.h                                                      \
           samplefmt.h                                                   \
@@ -121,7 +118,6 @@ OBJS = adler32.o                                                        \
        cast5.o                                                          \
        camellia.o                                                       \
        channel_layout.o                                                 \
-       container_fifo.o                                                 \
        cpu.o                                                            \
        crc.o                                                            \
        csp.o                                                            \
@@ -139,7 +135,6 @@ OBJS = adler32.o                                                        \
        file.o                                                           \
        file_open.o                                                      \
        float_dsp.o                                                      \
-       float_scalarproduct.o                                            \
        film_grain_params.o                                              \
        fixed_dsp.o                                                      \
        frame.o                                                          \
@@ -168,12 +163,10 @@ OBJS = adler32.o                                                        \
        pixelutils.o                                                     \
        random_seed.o                                                    \
        rational.o                                                       \
-       refstruct.o                                                      \
        reverse.o                                                        \
        rc4.o                                                            \
        ripemd.o                                                         \
        samplefmt.o                                                      \
-       side_data.o                                                      \
        sha.o                                                            \
        sha512.o                                                         \
        slicethread.o                                                    \
@@ -182,7 +175,6 @@ OBJS = adler32.o                                                        \
        threadmessage.o                                                  \
        time.o                                                           \
        timecode.o                                                       \
-       timecode_internal.o                                              \
        timestamp.o                                                      \
        tree.o                                                           \
        twofish.o                                                        \
@@ -204,7 +196,6 @@ OBJS-$(CONFIG_CUDA)                     += hwcontext_cuda.o
 OBJS-$(CONFIG_D3D11VA)                  += hwcontext_d3d11va.o
 OBJS-$(CONFIG_D3D12VA)                  += hwcontext_d3d12va.o
 OBJS-$(CONFIG_DXVA2)                    += hwcontext_dxva2.o
-OBJS-$(CONFIG_AMF)                      += hwcontext_amf.o
 OBJS-$(CONFIG_LIBDRM)                   += hwcontext_drm.o
 OBJS-$(CONFIG_MACOS_KPERF)              += macos_kperf.o
 OBJS-$(CONFIG_MEDIACODEC)               += hwcontext_mediacodec.o
@@ -219,13 +210,6 @@ OBJS-$(!CONFIG_VULKAN)                  += hwcontext_stub.o
 
 OBJS += $(COMPAT_OBJS:%=../compat/%)
 
-# Object files to satisfy dependencies of other libraries for static builds
-STLIBOBJS-$(CONFIG_EXR_DECODER)         += half2float.o float2half.o
-STLIBOBJS-$(CONFIG_EXR_ENCODER)         += float2half.o
-STLIBOBJS-$(CONFIG_PHM_DECODER)         += half2float.o
-STLIBOBJS-$(CONFIG_PHM_ENCODER)         += float2half.o
-STLIBOBJS-$(CONFIG_SWSCALE)             += half2float.o
-
 # Windows resource file
 SHLIBOBJS-$(HAVE_GNU_WINDRES)           += avutilres.o
 
@@ -236,8 +220,6 @@ SKIPHEADERS-$(CONFIG_CUDA)             += hwcontext_cuda_internal.h     \
 SKIPHEADERS-$(CONFIG_D3D11VA)          += hwcontext_d3d11va.h
 SKIPHEADERS-$(CONFIG_D3D12VA)          += hwcontext_d3d12va.h
 SKIPHEADERS-$(CONFIG_DXVA2)            += hwcontext_dxva2.h
-SKIPHEADERS-$(CONFIG_AMF)              += hwcontext_amf.h               \
-                                          hwcontext_amf_internal.h
 SKIPHEADERS-$(CONFIG_QSV)              += hwcontext_qsv.h
 SKIPHEADERS-$(CONFIG_OPENCL)           += hwcontext_opencl.h
 SKIPHEADERS-$(CONFIG_VAAPI)            += hwcontext_vaapi.h

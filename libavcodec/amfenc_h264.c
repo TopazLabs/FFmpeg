@@ -24,7 +24,7 @@
 #include "codec_internal.h"
 #include <AMF/components/PreAnalysis.h>
 
-#define OFFSET(x) offsetof(AMFEncoderContext, x)
+#define OFFSET(x) offsetof(AmfContext, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 
 static const AVOption options[] = {
@@ -110,9 +110,6 @@ static const AVOption options[] = {
     /// Header Insertion Spacing
     { "header_spacing", "Header Insertion Spacing",             OFFSET(header_spacing),     AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 1000, VE },
 
-    /// Maximum queued frames
-    { "async_depth",    "Set maximum encoding parallelism. Higher values increase output latency.", OFFSET(hwsurfaces_in_queue_max), AV_OPT_TYPE_INT, {.i64 = 16 }, 1, 16, VE },
-
     /// B-Frames
     // BPicturesPattern=bf
     { "bf_delta_qp",    "B-Picture Delta QP",                   OFFSET(b_frame_delta_qp),   AV_OPT_TYPE_INT,  { .i64 = 4 }, -10, 10, VE },
@@ -139,7 +136,8 @@ static const AVOption options[] = {
     { "forced_idr",     "Force I frames to be IDR frames",      OFFSET(forced_idr)   , AV_OPT_TYPE_BOOL,  { .i64 = 0  }, 0, 1, VE },
     { "aud",            "Inserts AU Delimiter NAL unit",        OFFSET(aud)          , AV_OPT_TYPE_BOOL,  { .i64 = -1 }, -1, 1, VE },
 
-    { "smart_access_video",     "Enable Smart Access Video to enhance  performance by utilizing both APU and dGPU memory access",    OFFSET(smart_access_video), AV_OPT_TYPE_BOOL, {.i64 = -1  }, -1, 1, VE},
+
+    { "log_to_dbg",     "Enable AMF logging to debug output",   OFFSET(log_to_dbg)    , AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
 
     //Pre Analysis options
     { "preanalysis",                            "Enable preanalysis",                                           OFFSET(preanalysis),                            AV_OPT_TYPE_BOOL,   {.i64 = -1 }, -1, 1, VE },
@@ -195,7 +193,7 @@ static av_cold int amf_encode_init_h264(AVCodecContext *avctx)
 {
     int                              ret = 0;
     AMF_RESULT                       res = AMF_OK;
-    AMFEncoderContext               *ctx = avctx->priv_data;
+    AmfContext                      *ctx = avctx->priv_data;
     AMFVariantStruct                 var = { 0 };
     amf_int64                        profile = 0;
     amf_int64                        profile_level = 0;
@@ -210,7 +208,13 @@ static av_cold int amf_encode_init_h264(AVCodecContext *avctx)
     if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
         framerate = AMFConstructRate(avctx->framerate.num, avctx->framerate.den);
     } else {
-        framerate = AMFConstructRate(avctx->time_base.den, avctx->time_base.num);
+FF_DISABLE_DEPRECATION_WARNINGS
+        framerate = AMFConstructRate(avctx->time_base.den, avctx->time_base.num
+#if FF_API_TICKS_PER_FRAME
+                                     * avctx->ticks_per_frame
+#endif
+                                     );
+FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     if ((ret = ff_amf_encode_init(avctx)) != 0)
@@ -388,27 +392,11 @@ static av_cold int amf_encode_init_h264(AVCodecContext *avctx)
     if (avctx->rc_max_rate) {
         AMF_ASSIGN_PROPERTY_INT64(res, ctx->encoder, AMF_VIDEO_ENCODER_PEAK_BITRATE, avctx->rc_max_rate);
     } else if (ctx->rate_control_mode == AMF_VIDEO_ENCODER_RATE_CONTROL_METHOD_PEAK_CONSTRAINED_VBR) {
-        av_log(ctx, AV_LOG_DEBUG, "rate control mode is vbr_peak but max_rate is not set, default max_rate will be applied.\n");
+        av_log(ctx, AV_LOG_WARNING, "rate control mode is PEAK_CONSTRAINED_VBR but rc_max_rate is not set\n");
     }
 
     if (ctx->latency != -1) {
         AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_LOWLATENCY_MODE, ((ctx->latency == 0) ? false : true));
-    }
-
-    if (ctx->smart_access_video != -1) {
-        AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_ENABLE_SMART_ACCESS_VIDEO, ctx->smart_access_video != 0);
-        if (res != AMF_OK) {
-            av_log(avctx, AV_LOG_ERROR, "The Smart Access Video is not supported by AMF.\n");
-            if (ctx->smart_access_video != 0)
-                return AVERROR(ENOSYS);
-        } else {
-            av_log(avctx, AV_LOG_INFO, "The Smart Access Video (%d) is set.\n", ctx->smart_access_video);
-            // Set low latency mode if Smart Access Video is enabled
-            if (ctx->smart_access_video != 0) {
-                AMF_ASSIGN_PROPERTY_BOOL(res, ctx->encoder, AMF_VIDEO_ENCODER_LOWLATENCY_MODE, true);
-                av_log(avctx, AV_LOG_INFO, "The Smart Access Video set low latency mode.\n");
-            }
-        }
     }
 
     if (ctx->preanalysis != -1) {
@@ -614,14 +602,14 @@ const FFCodec ff_h264_amf_encoder = {
     .init           = amf_encode_init_h264,
     FF_CODEC_RECEIVE_PACKET_CB(ff_amf_receive_packet),
     .close          = ff_amf_encode_close,
-    .priv_data_size = sizeof(AMFEncoderContext),
+    .priv_data_size = sizeof(AmfContext),
     .p.priv_class   = &h264_amf_class,
     .defaults       = defaults,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_PIXFMTS_ARRAY(ff_amf_pix_fmts),
+    .p.pix_fmts     = ff_amf_pix_fmts,
     .color_ranges   = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
     .p.wrapper_name = "amf",
     .hw_configs     = ff_amfenc_hw_configs,

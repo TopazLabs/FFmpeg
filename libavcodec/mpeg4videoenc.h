@@ -25,16 +25,19 @@
 
 #include <stdint.h>
 
+#include "mpegvideo.h"
 #include "put_bits.h"
 
-typedef struct MPVEncContext MPVEncContext;
+void ff_mpeg4_encode_mb(MpegEncContext *s,
+                        int16_t block[6][64],
+                        int motion_x, int motion_y);
+void ff_set_mpeg4_time(MpegEncContext *s);
+int ff_mpeg4_encode_picture_header(MpegEncContext *s);
 
-void ff_set_mpeg4_time(MPVEncContext *s);
-
-void ff_mpeg4_encode_video_packet_header(MPVEncContext *s);
+void ff_mpeg4_encode_video_packet_header(MpegEncContext *s);
 void ff_mpeg4_stuffing(PutBitContext *pbc);
-void ff_mpeg4_init_partitions(MPVEncContext *s);
-void ff_mpeg4_merge_partitions(MPVEncContext *s);
-void ff_clean_mpeg4_qscales(MPVEncContext *s);
+void ff_mpeg4_init_partitions(MpegEncContext *s);
+void ff_mpeg4_merge_partitions(MpegEncContext *s);
+void ff_clean_mpeg4_qscales(MpegEncContext *s);
 
 #endif

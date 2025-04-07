@@ -185,16 +185,15 @@ static const AVFilterPad cudaupload_outputs[] = {
     },
 };
 
-const FFFilter ff_vf_hwupload_cuda = {
-    .p.name        = "hwupload_cuda",
-    .p.description = NULL_IF_CONFIG_SMALL("Upload a system memory frame to a CUDA device."),
-
-    .p.priv_class  = &cudaupload_class,
+const AVFilter ff_vf_hwupload_cuda = {
+    .name        = "hwupload_cuda",
+    .description = NULL_IF_CONFIG_SMALL("Upload a system memory frame to a CUDA device."),
 
     .init      = cudaupload_init,
     .uninit    = cudaupload_uninit,
 
     .priv_size  = sizeof(CudaUploadContext),
+    .priv_class = &cudaupload_class,
 
     FILTER_INPUTS(cudaupload_inputs),
     FILTER_OUTPUTS(cudaupload_outputs),

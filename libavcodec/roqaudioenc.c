@@ -198,5 +198,6 @@ const FFCodec ff_roq_dpcm_encoder = {
     .init           = roq_dpcm_encode_init,
     FF_CODEC_ENCODE_CB(roq_dpcm_encode_frame),
     .close          = roq_dpcm_encode_close,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
+    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
+                                                     AV_SAMPLE_FMT_NONE },
 };

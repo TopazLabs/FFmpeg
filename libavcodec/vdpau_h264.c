@@ -118,7 +118,6 @@ static void vdpau_h264_set_reference_frames(AVCodecContext *avctx)
 }
 
 static int vdpau_h264_start_frame(AVCodecContext *avctx,
-                                  const AVBufferRef *buffer_ref,
                                   const uint8_t *buffer, uint32_t size)
 {
     H264Context * const h = avctx->priv_data;
@@ -215,7 +214,7 @@ static int vdpau_h264_end_frame(AVCodecContext *avctx)
     return 0;
 }
 
-static av_cold int vdpau_h264_init(AVCodecContext *avctx)
+static int vdpau_h264_init(AVCodecContext *avctx)
 {
     VdpDecoderProfile profile;
     uint32_t level = avctx->level;

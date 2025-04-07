@@ -221,9 +221,18 @@ const FFCodec ff_libtwolame_encoder = {
     .close          = twolame_encode_close,
     .defaults       = twolame_defaults,
     .p.priv_class   = &twolame_class,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_FLTP,
-                     AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S16P),
-    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO, AV_CHANNEL_LAYOUT_STEREO),
-    CODEC_SAMPLERATES_ARRAY(twolame_samplerates),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) {
+        AV_SAMPLE_FMT_FLT,
+        AV_SAMPLE_FMT_FLTP,
+        AV_SAMPLE_FMT_S16,
+        AV_SAMPLE_FMT_S16P,
+        AV_SAMPLE_FMT_NONE
+    },
+    .p.ch_layouts    = (const AVChannelLayout[]) {
+        AV_CHANNEL_LAYOUT_MONO,
+        AV_CHANNEL_LAYOUT_STEREO,
+        { 0 },
+    },
+    .p.supported_samplerates = twolame_samplerates,
     .p.wrapper_name = "libtwolame",
 };

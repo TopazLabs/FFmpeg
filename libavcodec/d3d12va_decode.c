@@ -280,7 +280,7 @@ int ff_d3d12va_common_frame_params(AVCodecContext *avctx, AVBufferRef *hw_frames
     return 0;
 }
 
-av_cold int ff_d3d12va_decode_init(AVCodecContext *avctx)
+int ff_d3d12va_decode_init(AVCodecContext *avctx)
 {
     int ret;
     AVHWFramesContext *frames_ctx;
@@ -370,7 +370,7 @@ fail:
     return AVERROR(EINVAL);
 }
 
-av_cold int ff_d3d12va_decode_uninit(AVCodecContext *avctx)
+int ff_d3d12va_decode_uninit(AVCodecContext *avctx)
 {
     int num_allocator = 0;
     D3D12VADecodeContext *ctx = D3D12VA_DECODE_CONTEXT(avctx);

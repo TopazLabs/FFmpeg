@@ -163,7 +163,11 @@ static inline unsigned int show_bits(GetBitContext *s, int n);
  * For examples see get_bits, show_bits, skip_bits, get_vlc.
  */
 
-#define MIN_CACHE_BITS 25
+#if defined LONG_BITSTREAM_READER
+#   define MIN_CACHE_BITS 32
+#else
+#   define MIN_CACHE_BITS 25
+#endif
 
 #define OPEN_READER_NOSIZE(name, gb)            \
     unsigned int name ## _index = (gb)->index;  \
@@ -191,10 +195,23 @@ static inline unsigned int show_bits(GetBitContext *s, int n);
 
 /* Using these two macros ensures that 32 bits are available. */
 # define UPDATE_CACHE_LE_32(name, gb) UPDATE_CACHE_LE_EXT(name, (gb), 64, 32)
+
 # define UPDATE_CACHE_BE_32(name, gb) UPDATE_CACHE_BE_EXT(name, (gb), 64, 32)
 
+# ifdef LONG_BITSTREAM_READER
+
+# define UPDATE_CACHE_LE(name, gb) UPDATE_CACHE_LE_32(name, (gb))
+
+# define UPDATE_CACHE_BE(name, gb) UPDATE_CACHE_BE_32(name, (gb))
+
+#else
+
 # define UPDATE_CACHE_LE(name, gb) UPDATE_CACHE_LE_EXT(name, (gb), 32, 32)
+
 # define UPDATE_CACHE_BE(name, gb) UPDATE_CACHE_BE_EXT(name, (gb), 32, 32)
+
+#endif
+
 
 #ifdef BITSTREAM_READER_LE
 
@@ -594,7 +611,7 @@ static inline const uint8_t *align_get_bits(GetBitContext *s)
                                                                 \
         index = SHOW_UBITS(name, gb, bits);                     \
         level = table[index].level;                             \
-        n     = table[index].len8;                              \
+        n     = table[index].len;                               \
                                                                 \
         if (max_depth > 1 && n < 0) {                           \
             SKIP_BITS(name, gb, bits);                          \
@@ -606,7 +623,7 @@ static inline const uint8_t *align_get_bits(GetBitContext *s)
                                                                 \
             index = SHOW_UBITS(name, gb, nb_bits) + level;      \
             level = table[index].level;                         \
-            n     = table[index].len8;                          \
+            n     = table[index].len;                           \
             if (max_depth > 2 && n < 0) {                       \
                 LAST_SKIP_BITS(name, gb, nb_bits);              \
                 if (need_update) {                              \
@@ -616,7 +633,7 @@ static inline const uint8_t *align_get_bits(GetBitContext *s)
                                                                 \
                 index = SHOW_UBITS(name, gb, nb_bits) + level;  \
                 level = table[index].level;                     \
-                n     = table[index].len8;                      \
+                n     = table[index].len;                       \
             }                                                   \
         }                                                       \
         run = table[index].run;                                 \

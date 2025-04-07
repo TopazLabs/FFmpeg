@@ -34,7 +34,7 @@
 #include "internal.h"
 #include "packet_internal.h"
 #include "pthread_internal.h"
-#include "libavutil/refstruct.h"
+#include "refstruct.h"
 #include "thread.h"
 #include "threadframe.h"
 #include "version_major.h"
@@ -365,11 +365,7 @@ static int update_context_from_thread(AVCodecContext *dst, const AVCodecContext 
 
         dst->has_b_frames = src->has_b_frames;
         dst->idct_algo    = src->idct_algo;
-#if FF_API_CODEC_PROPS
-FF_DISABLE_DEPRECATION_WARNINGS
         dst->properties   = src->properties;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
         dst->bits_per_coded_sample = src->bits_per_coded_sample;
         dst->sample_aspect_ratio   = src->sample_aspect_ratio;
@@ -378,6 +374,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
         dst->level   = src->level;
 
         dst->bits_per_raw_sample = src->bits_per_raw_sample;
+#if FF_API_TICKS_PER_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+        dst->ticks_per_frame     = src->ticks_per_frame;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         dst->color_primaries     = src->color_primaries;
 
         dst->color_trc   = src->color_trc;
@@ -404,7 +405,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
         dst->hwaccel_flags = src->hwaccel_flags;
 
-        av_refstruct_replace(&dst->internal->pool, src->internal->pool);
+        ff_refstruct_replace(&dst->internal->pool, src->internal->pool);
         ff_decode_internal_sync(dst, src);
     }
 
@@ -713,7 +714,7 @@ void ff_thread_finish_setup(AVCodecContext *avctx) {
 }
 
 /// Waits for all threads to finish.
-static av_cold void park_frame_worker_threads(FrameThreadContext *fctx, int thread_count)
+static void park_frame_worker_threads(FrameThreadContext *fctx, int thread_count)
 {
     int i;
 
@@ -745,7 +746,7 @@ DEFINE_OFFSET_ARRAY(PerThreadContext, per_thread, pthread_init_cnt,
                     (OFF(input_cond), OFF(progress_cond), OFF(output_cond)));
 #undef OFF
 
-av_cold void ff_frame_thread_free(AVCodecContext *avctx, int thread_count)
+void ff_frame_thread_free(AVCodecContext *avctx, int thread_count)
 {
     FrameThreadContext *fctx = avctx->internal->thread_ctx;
     const FFCodec *codec = ffcodec(avctx->codec);
@@ -779,7 +780,7 @@ av_cold void ff_frame_thread_free(AVCodecContext *avctx, int thread_count)
                 av_freep(&ctx->priv_data);
             }
 
-            av_refstruct_unref(&ctx->internal->pool);
+            ff_refstruct_unref(&ctx->internal->pool);
             av_packet_free(&ctx->internal->in_pkt);
             av_packet_free(&ctx->internal->last_pkt_props);
             ff_decode_internal_uninit(ctx);
@@ -917,7 +918,7 @@ static av_cold int init_thread(PerThreadContext *p, int *threads_to_free,
     return 0;
 }
 
-av_cold int ff_frame_thread_init(AVCodecContext *avctx)
+int ff_frame_thread_init(AVCodecContext *avctx)
 {
     int thread_count = avctx->thread_count;
     const FFCodec *codec = ffcodec(avctx->codec);
@@ -980,7 +981,7 @@ error:
     return err;
 }
 
-av_cold void ff_thread_flush(AVCodecContext *avctx)
+void ff_thread_flush(AVCodecContext *avctx)
 {
     int i;
     FrameThreadContext *fctx = avctx->internal->thread_ctx;
@@ -1061,7 +1062,7 @@ int ff_thread_get_ext_buffer(AVCodecContext *avctx, ThreadFrame *f, int flags)
     if (!(avctx->active_thread_type & FF_THREAD_FRAME))
         return ff_get_buffer(avctx, f->f, flags);
 
-    f->progress = av_refstruct_allocz(sizeof(*f->progress));
+    f->progress = ff_refstruct_allocz(sizeof(*f->progress));
     if (!f->progress)
         return AVERROR(ENOMEM);
 
@@ -1070,19 +1071,19 @@ int ff_thread_get_ext_buffer(AVCodecContext *avctx, ThreadFrame *f, int flags)
 
     ret = ff_thread_get_buffer(avctx, f->f, flags);
     if (ret)
-        av_refstruct_unref(&f->progress);
+        ff_refstruct_unref(&f->progress);
     return ret;
 }
 
 void ff_thread_release_ext_buffer(ThreadFrame *f)
 {
-    av_refstruct_unref(&f->progress);
+    ff_refstruct_unref(&f->progress);
     f->owner[0] = f->owner[1] = NULL;
     if (f->f)
         av_frame_unref(f->f);
 }
 
-av_cold enum ThreadingStatus ff_thread_sync_ref(AVCodecContext *avctx, size_t offset)
+enum ThreadingStatus ff_thread_sync_ref(AVCodecContext *avctx, size_t offset)
 {
     PerThreadContext *p;
     const void *ref;
@@ -1097,7 +1098,7 @@ av_cold enum ThreadingStatus ff_thread_sync_ref(AVCodecContext *avctx, size_t of
 
     memcpy(&ref, (const char*)p->parent->threads[0].avctx->priv_data + offset, sizeof(ref));
     av_assert1(ref);
-    av_refstruct_replace((char*)avctx->priv_data + offset, ref);
+    ff_refstruct_replace((char*)avctx->priv_data + offset, ref);
 
     return FF_THREAD_IS_COPY;
 }

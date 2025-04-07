@@ -289,16 +289,17 @@ static const AVFilterPad segment_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_segment = {
-    .p.name        = "segment",
-    .p.description = NULL_IF_CONFIG_SMALL("Segment video stream."),
-    .p.priv_class  = &segment_class,
-    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS | AVFILTER_FLAG_METADATA_ONLY,
+const AVFilter ff_vf_segment = {
+    .name        = "segment",
+    .description = NULL_IF_CONFIG_SMALL("Segment video stream."),
     .init        = video_init,
     .uninit      = uninit,
     .priv_size   = sizeof(SegmentContext),
+    .priv_class  = &segment_class,
     .activate    = activate,
     FILTER_INPUTS(segment_inputs),
+    .outputs     = NULL,
+    .flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS | AVFILTER_FLAG_METADATA_ONLY,
 };
 #endif // CONFIG_SEGMENT_FILTER
 
@@ -327,15 +328,16 @@ static const AVFilterPad asegment_inputs[] = {
     },
 };
 
-const FFFilter ff_af_asegment = {
-    .p.name        = "asegment",
-    .p.description = NULL_IF_CONFIG_SMALL("Segment audio stream."),
-    .p.priv_class  = &asegment_class,
-    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS | AVFILTER_FLAG_METADATA_ONLY,
+const AVFilter ff_af_asegment = {
+    .name        = "asegment",
+    .description = NULL_IF_CONFIG_SMALL("Segment audio stream."),
     .init        = audio_init,
     .uninit      = uninit,
     .priv_size   = sizeof(SegmentContext),
+    .priv_class  = &asegment_class,
     .activate    = activate,
     FILTER_INPUTS(asegment_inputs),
+    .outputs     = NULL,
+    .flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS | AVFILTER_FLAG_METADATA_ONLY,
 };
 #endif // CONFIG_ASEGMENT_FILTER

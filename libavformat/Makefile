@@ -47,7 +47,6 @@ OBJS-$(CONFIG_RTPDEC)                    += rdt.o                       \
                                             rtpdec_ac3.o                \
                                             rtpdec_amr.o                \
                                             rtpdec_asf.o                \
-                                            rtpdec_av1.o                \
                                             rtpdec_dv.o                 \
                                             rtpdec_g726.o               \
                                             rtpdec_h261.o               \
@@ -311,7 +310,6 @@ OBJS-$(CONFIG_IMAGE_SGI_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_SVG_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_SUNRAST_PIPE_DEMUXER) += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_TIFF_PIPE_DEMUXER)    += img2dec.o img2.o
-OBJS-$(CONFIG_IMAGE_VBN_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_WEBP_PIPE_DEMUXER)    += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_XBM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_XPM_PIPE_DEMUXER)     += img2dec.o img2.o
@@ -372,12 +370,11 @@ OBJS-$(CONFIG_MMF_MUXER)                 += mmf.o rawenc.o
 OBJS-$(CONFIG_MODS_DEMUXER)              += mods.o
 OBJS-$(CONFIG_MOFLEX_DEMUXER)            += moflex.o
 OBJS-$(CONFIG_MOV_DEMUXER)               += mov.o mov_chan.o mov_esds.o \
-                                            qtpalette.o replaygain.o dovi_isom.o \
-                                            dvdclut.o
+                                            qtpalette.o replaygain.o dovi_isom.o
 OBJS-$(CONFIG_MOV_MUXER)                 += movenc.o \
                                             movenchint.o mov_chan.o rtp.o \
                                             movenccenc.o movenc_ttml.o rawutils.o \
-                                            dovi_isom.o evc.o cbs.o cbs_av1.o
+                                            dovi_isom.o evc.o
 OBJS-$(CONFIG_MP2_MUXER)                 += rawenc.o
 OBJS-$(CONFIG_MP3_DEMUXER)               += mp3dec.o replaygain.o
 OBJS-$(CONFIG_MP3_MUXER)                 += mp3enc.o rawenc.o id3v2enc.o
@@ -518,7 +515,6 @@ OBJS-$(CONFIG_RTP_MUXER)                 += rtp.o         \
                                             rtpenc_aac.o     \
                                             rtpenc_latm.o    \
                                             rtpenc_amr.o     \
-                                            rtpenc_av1.o     \
                                             rtpenc_h261.o    \
                                             rtpenc_h263.o    \
                                             rtpenc_h263_rfc2190.o \
@@ -732,7 +728,6 @@ OBJS-$(CONFIG_LIBZMQ_PROTOCOL)           += libzmq.o
 # Objects duplicated from other libraries for shared builds
 SHLIBOBJS                                += log2_tab.o to_upper4.o
 SHLIBOBJS-$(CONFIG_ISO_MEDIA)            += mpegaudiotabs.o
-SHLIBOBJS-$(CONFIG_ISO_WRITER)           += golomb_tab.o
 SHLIBOBJS-$(CONFIG_FLV_MUXER)            += mpeg4audio_sample_rates.o
 SHLIBOBJS-$(CONFIG_HLS_DEMUXER)          += ac3_channel_layout_tab.o
 SHLIBOBJS-$(CONFIG_IMAGE_JPEGXL_PIPE_DEMUXER)    += jpegxl_parse.o

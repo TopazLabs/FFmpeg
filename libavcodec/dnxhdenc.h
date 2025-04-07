@@ -28,7 +28,7 @@
 
 #include "libavutil/mem_internal.h"
 
-#include "mpegvideoenc.h"
+#include "mpegvideo.h"
 #include "dnxhddata.h"
 
 typedef struct RCCMPEntry {
@@ -43,7 +43,7 @@ typedef struct RCEntry {
 
 typedef struct DNXHDEncContext {
     AVClass *class;
-    MPVEncContext m; ///< Used for quantization dsp functions
+    MpegEncContext m; ///< Used for quantization dsp functions
 
     int cid;
     int profile;

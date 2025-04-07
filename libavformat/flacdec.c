@@ -80,13 +80,8 @@ static int flac_read_header(AVFormatContext *s)
 
     /* process metadata blocks */
     while (!avio_feof(s->pb) && !metadata_last) {
-        ret = avio_read(s->pb, header, 4);
-        if (ret < 0) {
-            return ret;
-        } else if (ret != 4) {
-            return AVERROR_EOF;
-        }
-
+        if (avio_read(s->pb, header, 4) != 4)
+            return AVERROR_INVALIDDATA;
         flac_parse_block_header(header, &metadata_last, &metadata_type,
                                    &metadata_size);
         switch (metadata_type) {
@@ -100,11 +95,8 @@ static int flac_read_header(AVFormatContext *s)
             if (!buffer) {
                 return AVERROR(ENOMEM);
             }
-            ret = avio_read(s->pb, buffer, metadata_size);
-            if (ret < 0) {
-                RETURN_ERROR(ret);
-            } else if (ret != metadata_size) {
-                RETURN_ERROR(AVERROR_EOF);
+            if (avio_read(s->pb, buffer, metadata_size) != metadata_size) {
+                RETURN_ERROR(AVERROR(EIO));
             }
             break;
         /* skip metadata block for unsupported types */

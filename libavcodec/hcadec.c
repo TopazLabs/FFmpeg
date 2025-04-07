@@ -634,5 +634,6 @@ const FFCodec ff_hca_decoder = {
     .close          = decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
+    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                      AV_SAMPLE_FMT_NONE },
 };

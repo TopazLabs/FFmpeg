@@ -73,14 +73,7 @@ static av_cold int audio_read_header(AVFormatContext *s1)
     }
     codec_id    = s1->audio_codec_id;
 
-#if FF_API_ALSA_CHANNELS
-    if (s->channels > 0) {
-        av_channel_layout_uninit(&s->ch_layout);
-        s->ch_layout.nb_channels = s->channels;
-    }
-#endif
-
-    ret = ff_alsa_open(s1, SND_PCM_STREAM_CAPTURE, &s->sample_rate, &s->ch_layout,
+    ret = ff_alsa_open(s1, SND_PCM_STREAM_CAPTURE, &s->sample_rate, s->channels,
         &codec_id);
     if (ret < 0) {
         return AVERROR(EIO);
@@ -90,24 +83,20 @@ static av_cold int audio_read_header(AVFormatContext *s1)
     st->codecpar->codec_type  = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id    = codec_id;
     st->codecpar->sample_rate = s->sample_rate;
-    ret = av_channel_layout_copy(&st->codecpar->ch_layout, &s->ch_layout);
-    if (ret < 0)
-        goto fail;
+    st->codecpar->ch_layout.nb_channels = s->channels;
     st->codecpar->frame_size = s->frame_size;
     avpriv_set_pts_info(st, 64, 1, 1000000);  /* 64 bits pts in us */
     /* microseconds instead of seconds, MHz instead of Hz */
     s->timefilter = ff_timefilter_new(1000000.0 / s->sample_rate,
                                       s->period_size, 1.5E-6);
-    if (!s->timefilter) {
-        ret = AVERROR(EIO);
+    if (!s->timefilter)
         goto fail;
-    }
 
     return 0;
 
 fail:
     snd_pcm_close(s->h);
-    return ret;
+    return AVERROR(EIO);
 }
 
 static int audio_read_packet(AVFormatContext *s1, AVPacket *pkt)
@@ -157,10 +146,7 @@ static int audio_get_device_list(AVFormatContext *h, AVDeviceInfoList *device_li
 
 static const AVOption options[] = {
     { "sample_rate", "", offsetof(AlsaData, sample_rate), AV_OPT_TYPE_INT, {.i64 = 48000}, 1, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
-#if FF_API_ALSA_CHANNELS
-    { "channels",    "", offsetof(AlsaData, channels),    AV_OPT_TYPE_INT, {.i64 = 0},     0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_DEPRECATED },
-#endif
-    { "ch_layout",   "", offsetof(AlsaData, ch_layout),   AV_OPT_TYPE_CHLAYOUT, {.str = "2C"}, INT_MIN, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
+    { "channels",    "", offsetof(AlsaData, channels),    AV_OPT_TYPE_INT, {.i64 = 2},     1, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
     { NULL },
 };
 

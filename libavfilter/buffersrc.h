@@ -120,9 +120,6 @@ typedef struct AVBufferSrcParameters {
      */
     enum AVColorSpace color_space;
     enum AVColorRange color_range;
-
-    AVFrameSideData **side_data;
-    int nb_side_data;
 } AVBufferSrcParameters;
 
 /**

@@ -61,7 +61,7 @@ enum IntraMode {
 };
 
 enum MVRefEnum {
-    MVREF_NONE = 0,
+    MVREF_NONE,
     MVREF_REF0,
     MVREF_REF1,
     MVREF_BREF,
@@ -395,13 +395,10 @@ static int read_slice_sizes(RV60Context *s, GetBitContext *gb)
     for (int i = 0; i < s->cu_height; i++)
         s->slice[i].sign = get_bits1(gb);
 
-    s->slice[0].size = last_size = sum = get_bits_long(gb, nbits);
-
-    if (sum < 0)
-        return AVERROR_INVALIDDATA;
+    s->slice[0].size = last_size = sum = get_bits(gb, nbits);
 
     for (int i = 1; i < s->cu_height; i++) {
-        int diff = get_bits_long(gb, nbits);
+        int diff = get_bits(gb, nbits);
         if (s->slice[i].sign)
             last_size += diff;
         else
@@ -1745,24 +1742,15 @@ static int decode_cu_r(RV60Context * s, AVFrame * frame, ThreadContext * thread,
             bx = mv_x << 2;
             by = mv_y << 2;
 
-            if (!(mv.mvref & 2)) {
-                if (!s->last_frame[LAST_PIC]->data[0]) {
-                    av_log(s->avctx, AV_LOG_ERROR, "missing reference frame\n");
-                    return AVERROR_INVALIDDATA;
-                }
-            }
-            if (mv.mvref & 6) {
-                if (!s->last_frame[NEXT_PIC]->data[0]) {
-                    av_log(s->avctx, AV_LOG_ERROR, "missing reference frame\n");
-                    return AVERROR_INVALIDDATA;
-                }
-            }
-
             switch (mv.mvref) {
             case MVREF_REF0:
                 mc(s, frame->data, frame->linesize, s->last_frame[LAST_PIC], bx, by, bw, bh, mv.f_mv, 0);
                 break;
             case MVREF_REF1:
+                if (!s->last_frame[NEXT_PIC]->data[0]) {
+                    av_log(s->avctx, AV_LOG_ERROR, "missing reference frame\n");
+                    return AVERROR_INVALIDDATA;
+                }
                 mc(s, frame->data, frame->linesize, s->last_frame[NEXT_PIC], bx, by, bw, bh, mv.f_mv, 0);
                 break;
             case MVREF_BREF:
@@ -2257,7 +2245,7 @@ static int decode_slice(AVCodecContext *avctx, void *tdata, int cu_y, int thread
     thread.avg_linesize[1] = 32;
     thread.avg_linesize[2] = 32;
 
-    if ((ret = init_get_bits8(&gb, s->slice[cu_y].data, s->slice[cu_y].data_size)) < 0)
+    if ((ret = init_get_bits8(&gb, s->slice[cu_y].data, s->slice[cu_y].size)) < 0)
         return ret;
 
     for (int cu_x = 0; cu_x < s->cu_width; cu_x++) {

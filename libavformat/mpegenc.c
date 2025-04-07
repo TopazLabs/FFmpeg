@@ -24,7 +24,6 @@
 #include <stdint.h>
 
 #include "libavutil/attributes.h"
-#include "libavutil/attributes_internal.h"
 #include "libavutil/fifo.h"
 #include "libavutil/log.h"
 #include "libavutil/mathematics.h"
@@ -89,10 +88,10 @@ typedef struct MpegMuxContext {
     int preload;
 } MpegMuxContext;
 
-EXTERN const FFOutputFormat ff_mpeg1vcd_muxer;
-EXTERN const FFOutputFormat ff_mpeg2dvd_muxer;
-EXTERN const FFOutputFormat ff_mpeg2svcd_muxer;
-EXTERN const FFOutputFormat ff_mpeg2vob_muxer;
+extern const FFOutputFormat ff_mpeg1vcd_muxer;
+extern const FFOutputFormat ff_mpeg2dvd_muxer;
+extern const FFOutputFormat ff_mpeg2svcd_muxer;
+extern const FFOutputFormat ff_mpeg2vob_muxer;
 
 static int put_pack_header(AVFormatContext *ctx, uint8_t *buf,
                            int64_t timestamp)
@@ -125,7 +124,7 @@ static int put_pack_header(AVFormatContext *ctx, uint8_t *buf,
         put_bits(&pb, 3, 0); /* stuffing length */
     }
     flush_put_bits(&pb);
-    return put_bytes_output(&pb);
+    return put_bits_ptr(&pb) - pb.buf;
 }
 
 static int put_system_header(AVFormatContext *ctx, uint8_t *buf,
@@ -270,7 +269,7 @@ static int put_system_header(AVFormatContext *ctx, uint8_t *buf,
     }
 
     flush_put_bits(&pb);
-    size = put_bytes_output(&pb);
+    size = put_bits_ptr(&pb) - pb.buf;
     /* patch packet size */
     AV_WB16(buf + 4, size - 6);
 

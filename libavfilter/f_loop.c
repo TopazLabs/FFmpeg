@@ -284,11 +284,11 @@ static const AVFilterPad ainputs[] = {
     },
 };
 
-const FFFilter ff_af_aloop = {
-    .p.name        = "aloop",
-    .p.description = NULL_IF_CONFIG_SMALL("Loop audio samples."),
-    .p.priv_class  = &aloop_class,
+const AVFilter ff_af_aloop = {
+    .name          = "aloop",
+    .description   = NULL_IF_CONFIG_SMALL("Loop audio samples."),
     .priv_size     = sizeof(LoopContext),
+    .priv_class    = &aloop_class,
     .activate      = aactivate,
     .uninit        = auninit,
     FILTER_INPUTS(ainputs),
@@ -456,11 +456,11 @@ static const AVOption loop_options[] = {
 
 AVFILTER_DEFINE_CLASS(loop);
 
-const FFFilter ff_vf_loop = {
-    .p.name        = "loop",
-    .p.description = NULL_IF_CONFIG_SMALL("Loop video frames."),
-    .p.priv_class  = &loop_class,
+const AVFilter ff_vf_loop = {
+    .name        = "loop",
+    .description = NULL_IF_CONFIG_SMALL("Loop video frames."),
     .priv_size   = sizeof(LoopContext),
+    .priv_class  = &loop_class,
     .init        = init,
     .uninit      = uninit,
     .activate    = activate,

@@ -34,18 +34,37 @@
 #define  MAX_LOOKAHEAD_DEPTH 41
 
 /**
+* AMF trace writer callback class
+* Used to capture all AMF logging
+*/
+
+typedef struct AmfTraceWriter {
+    AMFTraceWriterVtbl *vtbl;
+    AVCodecContext     *avctx;
+} AmfTraceWriter;
+
+/**
 * AMF encoder context
 */
 
-typedef struct AMFEncoderContext {
+typedef struct AmfContext {
     AVClass            *avclass;
     // access to AMF runtime
-    AVBufferRef        *device_ctx_ref;
+    amf_handle          library; ///< handle to DLL library
+    AMFFactory         *factory; ///< pointer to AMF factory
+    AMFDebug           *debug;   ///< pointer to AMF debug interface
+    AMFTrace           *trace;   ///< pointer to AMF trace interface
 
+    amf_uint64          version; ///< version of AMF runtime
+    AmfTraceWriter      tracer;  ///< AMF writer registered with AMF
+    AMFContext         *context; ///< AMF context
     //encoder
     AMFComponent       *encoder; ///< AMF encoder object
     amf_bool            eof;     ///< flag indicating EOF happened
     AMF_SURFACE_FORMAT  format;  ///< AMF surface format
+
+    AVBufferRef        *hw_device_ctx; ///< pointer to HW accelerator (decoder)
+    AVBufferRef        *hw_frames_ctx; ///< pointer to HW accelerator (frame allocator)
 
     int                 hwsurfaces_in_queue;
     int                 hwsurfaces_in_queue_max;
@@ -53,14 +72,18 @@ typedef struct AMFEncoderContext {
 
     // helpers to handle async calls
     int                 delayed_drain;
+    AMFSurface         *delayed_surface;
+    AVFrame            *delayed_frame;
 
     // shift dts back by max_b_frames in timing
     AVFifo             *timestamp_list;
     int64_t             dts_delay;
-    int64_t             submitted_frame;
-    int64_t             encoded_frame;
+    int                 submitted_frame;
+    amf_bool            use_b_frame;
 
-    // common encoder options
+    // common encoder option options
+
+    int                 log_to_dbg;
 
     // Static options, have to be set before Init() call
     int                 usage;
@@ -71,8 +94,6 @@ typedef struct AMFEncoderContext {
     int                 quality;
     int                 b_frame_delta_qp;
     int                 ref_b_frame_delta_qp;
-    int                 bit_depth;
-    int                 smart_access_video;
 
     // Dynamic options, can be set after Init() call
 
@@ -133,7 +154,7 @@ typedef struct AMFEncoderContext {
     int                 pa_adaptive_mini_gop;
 
 
-} AMFEncoderContext;
+} AmfContext;
 
 extern const AVCodecHWConfigInternal *const ff_amfenc_hw_configs[];
 

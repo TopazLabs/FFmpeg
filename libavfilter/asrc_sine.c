@@ -298,14 +298,15 @@ static const AVFilterPad sine_outputs[] = {
     },
 };
 
-const FFFilter ff_asrc_sine = {
-    .p.name        = "sine",
-    .p.description = NULL_IF_CONFIG_SMALL("Generate sine wave audio signal."),
-    .p.priv_class  = &sine_class,
+const AVFilter ff_asrc_sine = {
+    .name          = "sine",
+    .description   = NULL_IF_CONFIG_SMALL("Generate sine wave audio signal."),
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(SineContext),
+    .inputs        = NULL,
     FILTER_OUTPUTS(sine_outputs),
     FILTER_QUERY_FUNC2(query_formats),
+    .priv_class    = &sine_class,
 };

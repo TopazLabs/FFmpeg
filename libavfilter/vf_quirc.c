@@ -164,17 +164,17 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const FFFilter ff_vf_quirc = {
-    .p.name        = "quirc",
-    .p.description = NULL_IF_CONFIG_SMALL("Decode and show QR codes content."),
-    .p.priv_class  = &quirc_class,
-    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
-                     AVFILTER_FLAG_METADATA_ONLY,
+const AVFilter ff_vf_quirc = {
+    .name        = "quirc",
+    .description = NULL_IF_CONFIG_SMALL("Decode and show QR codes content."),
     .priv_size   = sizeof(QuircContext),
+    .priv_class  = &quirc_class,
     .init        = init,
     .uninit      = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
+    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                   AVFILTER_FLAG_METADATA_ONLY,
 };
 

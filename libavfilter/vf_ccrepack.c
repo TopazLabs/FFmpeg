@@ -87,12 +87,12 @@ static const AVFilterPad avfilter_vf_ccrepack_inputs[] = {
     },
 };
 
-const FFFilter ff_vf_ccrepack = {
-    .p.name        = "ccrepack",
-    .p.description = NULL_IF_CONFIG_SMALL("Repack CEA-708 closed caption metadata"),
-    .p.priv_class  = &ccrepack_class,
+const AVFilter ff_vf_ccrepack = {
+    .name        = "ccrepack",
+    .description = NULL_IF_CONFIG_SMALL("Repack CEA-708 closed caption metadata"),
     .uninit      = uninit,
     .priv_size   = sizeof(CCRepackContext),
+    .priv_class  = &ccrepack_class,
     FILTER_INPUTS(avfilter_vf_ccrepack_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
 };
