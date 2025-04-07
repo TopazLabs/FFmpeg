@@ -31,10 +31,11 @@
 #include "libavutil/avutil.h"
 #include "avfilter.h"
 #include "formats.h"
-#include "internal.h"
+#include "avfilter_internal.h"
 #include "video.h"
 #include "tvai.h"
 #include "tvai_common.h"
+#include "tvai_messages.h"
 #include "float.h"
 
 typedef struct TVAIStbContext {
@@ -46,6 +47,10 @@ typedef struct TVAIStbContext {
     int postFlight, windowSize, cacheSize, stabDOF, enableRSC, enableFullFrame, reduceMotion;
     double readStartTime, writeStartTime, canvasScaleX, canvasScaleY;
     AVFrame* previousFrame;
+    AVDictionary *parameters;
+    DictionaryItem *pModelParameters;
+    int modelParametersCount;
+    char *deviceString;    
 } TVAIStbContext;
 
 #define OFFSET(x) offsetof(TVAIStbContext, x)
@@ -54,7 +59,7 @@ typedef struct TVAIStbContext {
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption tvai_stb_options[] = {
     { "model", "Model short name", BASIC_OFFSET(modelName), AV_OPT_TYPE_STRING, {.str="ref-2"}, .flags = FLAGS },
-    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ...)",  DEVICE_OFFSET(index),  AV_OPT_TYPE_INT, {.i64=-2}, -2, 8, FLAGS, "device" },
+    { "device",  "Device index (Auto: -2, CPU: -1, GPU0: 0, ... or a . separated list of GPU indices e.g. 0.1.3)",  OFFSET(deviceString),  AV_OPT_TYPE_STRING, {.str="-2"}, .flags = FLAGS, "device" },
     { "instances",  "Number of extra model instances to use on device",  DEVICE_OFFSET(extraThreadCount),  AV_OPT_TYPE_INT, {.i64=0}, 0, 3, FLAGS, "instances" },
     { "download",  "Enable model downloading",  BASIC_OFFSET(canDownloadModel),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "canDownloadModels" },
     { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
@@ -71,6 +76,7 @@ static const AVOption tvai_stb_options[] = {
     { "dof", "Enable/Disable stabilization of different motions - rotation (1st digit), horizontal pan (2nd), vertical pan (3rd), scale/zoom (4th digit). Non-zero digit enables corresponding motions", OFFSET(stabDOF), AV_OPT_TYPE_INT, {.i64=1111}, 0, 1111, .flags = FLAGS, "dof" },
     { "roll", "Enable rolling shutter correction", OFFSET(enableRSC), AV_OPT_TYPE_INT, {.i64=0}, 0, 1, .flags = FLAGS, "roll" },
     { "reduce", "Reduce motion jitters", OFFSET(reduceMotion), AV_OPT_TYPE_INT, {.i64=0}, 0, 5, .flags = FLAGS, "reduce" },
+    { "parameters", TVAI_STABILIZATION_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
     { NULL }
 };
 
@@ -84,16 +90,26 @@ static av_cold int init(AVFilterContext *ctx) {
 }
 
 static int config_props(AVFilterLink *outlink) {
-  AVFilterContext *ctx = outlink->src;
-  TVAIStbContext *tvai = ctx->priv;
-  VideoProcessorInfo info;
-  tvai->basicInfo.scale = 1;
-  info.options[0] = tvai->filename;
-  info.options[1] = tvai->filler;
-  float parameterValues[11] = {tvai->smoothness, tvai->windowSize, tvai->postFlight, tvai->canvasScaleX, tvai->canvasScaleY, 
-                                tvai->cacheSize, tvai->stabDOF, tvai->enableRSC, tvai->readStartTime, tvai->writeStartTime, 
-                                tvai->reduceMotion};
-  if(ff_tvai_prepareProcessorInfo(&info, ModelTypeStabilization, outlink, &(tvai->basicInfo), tvai->enableFullFrame > 0, parameterValues, 11)) {
+    AVFilterContext *ctx = outlink->src;
+    TVAIStbContext *tvai = ctx->priv;
+    VideoProcessorInfo info;
+    tvai->basicInfo.scale = 1;
+    av_dict_set(&tvai->parameters, "cpePath", tvai->filename, 0);
+    av_dict_set(&tvai->parameters, "filler", tvai->filler, 0);
+    av_dict_set_float(&tvai->parameters, "smoothness", tvai->smoothness, 0);
+    av_dict_set_float(&tvai->parameters, "windowSize", tvai->windowSize, 0);
+    av_dict_set_float(&tvai->parameters, "postFlight", tvai->postFlight, 0);
+    av_dict_set_float(&tvai->parameters, "canvasScaleX", tvai->canvasScaleX, 0);
+    av_dict_set_float(&tvai->parameters, "canvasScaleY", tvai->canvasScaleY, 0);
+    av_dict_set_float(&tvai->parameters, "cacheAfter", tvai->cacheSize, 0);
+    av_dict_set_float(&tvai->parameters, "stabDOF", tvai->stabDOF, 0);
+    av_dict_set_float(&tvai->parameters, "enableRSC", tvai->enableRSC, 0);
+    av_dict_set_float(&tvai->parameters, "readStartTime", tvai->readStartTime, 0);
+    av_dict_set_float(&tvai->parameters, "writeStartTime", tvai->writeStartTime, 0);
+    av_dict_set_float(&tvai->parameters, "reduceMotion", tvai->reduceMotion, 0);
+    tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
+  
+  if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeStabilization, outlink, &(tvai->basicInfo), tvai->enableFullFrame > 0, tvai->pModelParameters, tvai->modelParametersCount)) {
     return AVERROR(EINVAL);  
   }
   tvai->pFrameProcessor = tvai_create(&info);
