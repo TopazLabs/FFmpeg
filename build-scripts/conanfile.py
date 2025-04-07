@@ -19,7 +19,7 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.tool_requires("nasm/2.14")
         if self.settings.os == "Windows":
-            self.tool_requires("yasm/1.3.0")
+            self.tool_requires("nasm/2.16.01")
 
     def requirements(self):
         self.requires("videoai/[~1.9.0]")
@@ -27,7 +27,7 @@ class conanRecipe(ConanFile):
         self.requires("aom/3.5.0")
         self.requires("zimg/3.0.5")
         if self.settings.os == "Windows":
-            self.requires("amf/1.4.33")
+            self.requires("amf/1.4.36")
             self.requires("libvpl/2023.0.0")
             self.requires("zlib-mt/1.2.13")
 
