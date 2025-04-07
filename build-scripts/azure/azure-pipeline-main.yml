@@ -57,15 +57,12 @@ stages:
     - job: Windows2019
       workspace:
         clean: all
-      strategy:
-        matrix:
-          windows:
-            imageName: 'windows-2019'
       pool:
-        vmImage: $(imageName)
+        name: Default
+        demands:
+          - Agent.Name -equals Medusa
       steps:
         - template: win.yml
-
   - ${{ if eq(parameters.linux, true) }}:
     - job: Ubuntu22_04
       workspace:
