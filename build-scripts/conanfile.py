@@ -22,7 +22,7 @@ class conanRecipe(ConanFile):
             self.tool_requires("nasm/2.16.01")
 
     def requirements(self):
-        self.requires("videoai/1.9.9-trtjit")
+        self.requires("videoai/1.9.19-trtjit")
         self.requires("libvpx/1.11.0")
         self.requires("aom/3.5.0")
         self.requires("zimg/3.0.5")
