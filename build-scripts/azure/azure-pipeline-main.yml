@@ -4,7 +4,7 @@ resources:
       type: github
       endpoint: TopazLabs
       name: TopazLabs/topaz-conan-dev
-      ref: master
+      ref: feature/oiio3-video
     - repository: nv-codec-headers
       type: github
       endpoint: TopazLabs
