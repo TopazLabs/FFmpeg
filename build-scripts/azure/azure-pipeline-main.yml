@@ -9,7 +9,7 @@ resources:
       type: github
       endpoint: TopazLabs
       name: FFmpeg/nv-codec-headers
-      ref: refs/tags/n12.1.14.0
+      ref: refs/tags/n13.0.19.0
 
 parameters:
   - name: version
