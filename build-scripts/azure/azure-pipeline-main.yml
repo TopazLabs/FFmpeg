@@ -4,7 +4,7 @@ resources:
       type: github
       endpoint: TopazLabs
       name: TopazLabs/topaz-conan-dev
-      ref: feature/oiio3-video
+      ref: feature/intel-macos11
     - repository: nv-codec-headers
       type: github
       endpoint: TopazLabs
