@@ -1,6 +1,14 @@
 steps:
   - checkout: self
+    persistCredentials: true
+    clean: true
+    fetchDepth: 1
+    fetchTags: false
   - checkout: topaz-conan-dev
+    persistCredentials: true
+    clean: true
+    fetchDepth: 1
+    fetchTags: false
     
   - template: set_tools_and_deps.yml
     parameters:
