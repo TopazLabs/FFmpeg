@@ -24,7 +24,11 @@ class conanRecipe(ConanFile):
     def requirements(self):
         self.requires("videoai/1.9.21-oiio3")
         self.requires("libvpx/1.11.0")
-        self.requires("aom/3.5.0@josh")
+
+        if self.settings.os == "Macos":
+            self.requires("aom/3.5.0@josh")
+        else:
+            self.requires("aom/3.5.0")
         self.requires("zimg/3.0.5")
         if self.settings.os == "Windows":
             self.requires("amf/1.4.36")
