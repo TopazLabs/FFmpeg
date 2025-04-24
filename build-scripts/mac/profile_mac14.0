@@ -1,6 +1,6 @@
 [settings]
 os=Macos
-os.version=10.13
+os.version=11.0
 arch=x86_64
 compiler=apple-clang
 compiler.version=14.0
