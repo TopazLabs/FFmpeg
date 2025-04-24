@@ -40,7 +40,7 @@ steps:
     displayName: 'Set conan cache location'
 
   - script: |
-      python -m pip install conan==2.0.9
+      python -m pip install conan==2.7.1
       conan profile detect --force
       conan remote add topaz-conan https://topaz.jfrog.io/artifactory/api/conan/topaz-conan
       conan remote login -p $(CONAN_PASSWORD) topaz-conan build.bot
