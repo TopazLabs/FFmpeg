@@ -43,7 +43,7 @@ class conanRecipe(ConanFile):
             self.requires("zlib-mt/1.2.13")
 
     def generate(self):
-        for dep in self.dependencies.values():
+        for dep_name, dep in self.dependencies.items():
             if dep.package_folder:
                 print(f"copying {dep}: {dep.package_folder} -> {self.build_folder}")
                 if self.settings.os == "Windows":
@@ -60,6 +60,8 @@ class conanRecipe(ConanFile):
                 if self.settings.os == "Macos":
                     copy(self, "*", src=os.path.join(dep.package_folder, "include"), dst="include")
                     copy(self, "*", src=os.path.join(dep.package_folder, "lib"), dst="lib")
+                    if "nasm" in str(dep_name):
+                        copy(self, "*", src=os.path.join(dep.package_folder, "bin"), dst="bin")
                 if self.settings.os == "Linux":
                     copy(self, "*", src=os.path.join(dep.package_folder, "include"), dst="include")
                     copy(self, "*", src=os.path.join(dep.package_folder, "lib"), dst="lib")
