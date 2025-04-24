@@ -27,6 +27,9 @@ rm -rf $4
 set -e
 shopt -s extglob
 
+# Add conan bins to path for ffmpeg build for pipeline builds as well.
+export PATH=${CONAN_X64}/bin:$PATH
+
 #export PKG_CONFIG_PATH=$OPENH264_ARM_PKG_CONFIG_PATH:$OLD_PKG_CONFIG_PATH
 export OLD_TARGET=${MACOSX_DEPLOYMENT_TARGET}
 export MACOSX_DEPLOYMENT_TARGET=11.0
