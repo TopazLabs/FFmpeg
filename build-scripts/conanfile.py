@@ -17,14 +17,14 @@ class conanRecipe(ConanFile):
 
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
-            self.tool_requires("nasm/2.14")
+            self.tool_requires("nasm/2.16.01@josh")
         if self.settings.os == "Windows":
             self.tool_requires("nasm/2.16.01")
 
     def requirements(self):
         self.requires("videoai/1.9.21-oiio3")
         self.requires("libvpx/1.11.0")
-        self.requires("aom/3.5.0")
+        self.requires("aom/3.5.0@josh")
         self.requires("zimg/3.0.5")
         if self.settings.os == "Windows":
             self.requires("amf/1.4.36")
