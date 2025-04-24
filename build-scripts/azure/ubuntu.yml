@@ -31,9 +31,9 @@ steps:
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         exit 0
       else
-        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_ubuntu22.04/build_type\=Release/
+        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
-        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_ubuntu22.04/build_type\=Release/
+        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cd $(Build.SourcesDirectory)/topaz-conan-dev
         bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
       fi

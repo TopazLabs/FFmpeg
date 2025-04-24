@@ -30,5 +30,8 @@ class conanRecipe(ConanFile):
         )
 
     def layout(self):
-        self.folders.source = self.conf.get("user.profile_name")
+        folder_dir = self.conf.get("user.path:folder_dir", default=None)
+        if not folder_dir:
+            folder_dir = f"{self.settings.os}_{self.settings.arch}".lower()
+        self.folders.source = folder_dir
         self.cpp.package.libs = collect_libs(self)
