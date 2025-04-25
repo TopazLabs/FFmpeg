@@ -47,7 +47,7 @@ fi
 source ${CONAN_X64}/conanbuild.sh
 export MACOSX_DEPLOYMENT_TARGET=10.14
 echo ./configure --prefix="$3" "${XFLAGS[@]}"
-CFLAGS="-mmacosx-version-min=11.0 -fexceptions" LDFLAGS="-mmacosx-version-min=10.14" ./configure --prefix="$3" "${XFLAGS[@]}"
+CFLAGS="-mmacosx-version-min=10.14 -fexceptions" LDFLAGS="-mmacosx-version-min=10.14" ./configure --prefix="$3" "${XFLAGS[@]}"
 make clean
 make -j8 install
 if [ ! -z "$DO_CONAN_EXPORT" ]; then
