@@ -14,10 +14,7 @@ class conanRecipe(ConanFile):
         self.options["zimg"].shared = True
         if self.settings.os == "Macos" or self.settings.os == "Linux":
             self.options["libvpx"].shared = True
-        
-        # if self.settings.os == "Macos":
-        #     self.options["openssl"].shared = True
-
+    
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.tool_requires("nasm/2.16.01@josh/oiio3")
@@ -28,15 +25,15 @@ class conanRecipe(ConanFile):
     def requirements(self):
         self.requires("videoai/1.9.21-oiio3b1")
         self.requires("libvpx/1.11.0")
-
-        # if self.settings.os == "Macos":
-        #     self.requires("openssl/3.1.4")
-
         if self.settings.os != "Linux":
             self.requires("aom/3.5.0@josh")
         else:
             self.requires("aom/3.5.0")
-        self.requires("zimg/3.0.5")
+
+        if self.settings.os == "Macos" and self.settings.arch == "x86_64":
+            self.requires("zimg/3.0.5@josh/oiio3")
+        else:
+            self.requires("zimg/3.0.5")
         if self.settings.os == "Windows":
             self.requires("amf/1.4.36@josh")
             self.requires("libvpl/2023.0.0@josh")
