@@ -1,5 +1,6 @@
 #include "tvai_common.h"
 #include <libavutil/mem.h>
+//Waited too long for processing, ending file 81
 
 int ff_tvai_checkDevice(char* deviceString, DeviceSetting* pDevice, AVFilterContext* ctx) {
   if(tvai_set_device_settings(deviceString, pDevice)) {
@@ -168,7 +169,7 @@ int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* pr
         int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame);
         if(ret)
             return ret;
-        tvai_wait(500);
+        tvai_wait(2000);
         pr = remaining;
         remaining = tvai_remaining_frames(pFrameProcessor);
         if(pr == remaining)
