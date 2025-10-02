@@ -20,7 +20,7 @@
 
 /**
  * @file
- * Topaz Video AI camera pose estimation filter
+ * Topaz Video camera pose estimation filter
  *
  * @see https://www.topazlabs.com/topaz-video-ai
  */
@@ -152,7 +152,7 @@ static const AVFilterPad tvai_cpe_outputs[] = {
 
 const AVFilter ff_vf_tvai_cpe = {
     .name          = "tvai_cpe",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI camera pose estimation model."),
+    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video camera pose estimation model."),
     .priv_size     = sizeof(TVAICPEContext),
     .init          = init,
     .uninit        = uninit,

@@ -122,7 +122,7 @@ static const AVFilterPad tvai_pe_outputs[] = {
 
 const AVFilter ff_vf_tvai_pe = {
     .name          = "tvai_pe",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI parameter estimation models."),
+    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video parameter estimation models."),
     .priv_size     = sizeof(TVAIParamContext),
     .init          = init,
     .uninit        = uninit,

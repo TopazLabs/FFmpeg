@@ -20,7 +20,7 @@
 
 /**
  * @file
- * Topaz Video AI Stabilization filter
+ * Topaz Video Stabilization filter
  *
  * @see https://www.topazlabs.com/topaz-video-ai
  */
@@ -181,7 +181,7 @@ static const AVFilterPad tvai_stb_outputs[] = {
 
 const AVFilter ff_vf_tvai_stb = {
     .name          = "tvai_stb",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI stabilization models"),
+    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video stabilization models"),
     .priv_size     = sizeof(TVAIStbContext),
     .init          = init,
     .uninit        = uninit,

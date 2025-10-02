@@ -20,7 +20,7 @@
 
 /**
  * @file
- * Topaz Video AI Frame Interpolation filter
+ * Topaz Video Frame Interpolation filter
  *
  * @see https://www.topazlabs.com/topaz-video-ai
  */
@@ -189,7 +189,7 @@ static const AVFilterPad tvai_fi_outputs[] = {
 
 const AVFilter ff_vf_tvai_fi = {
     .name          = "tvai_fi",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI frame interpolation models."),
+    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video frame interpolation models."),
     .priv_size     = sizeof(TVAIFIContext),
     .init          = init,
     .uninit        = uninit,

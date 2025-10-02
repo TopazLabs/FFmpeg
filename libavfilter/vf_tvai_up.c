@@ -20,7 +20,7 @@
 
 /**
  * @file
- * Topaz Video AI Upscale filter
+ * Topaz Video Upscale filter
  *
  * @see https://www.topazlabs.com/topaz-video-ai
  */
@@ -186,7 +186,7 @@ static const AVFilterPad tvai_up_outputs[] = {
 
 const AVFilter ff_vf_tvai_up = {
     .name          = "tvai_up",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI upscale models, parameters will only be applied to appropriate models"),
+    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video upscale models, parameters will only be applied to appropriate models"),
     .priv_size     = sizeof(TVAIUpContext),
     .init          = init,
     .uninit        = uninit,
