@@ -28,6 +28,8 @@ class conanRecipe(ConanFile):
 
     # windows libaom-av1 build different recipe revision id for some reason...
     def requirements(self):
+        # self.requires("aiengine/3.8.8", override=True)
+        self.requires("openvino/2025.4.1.20426", override=True)
         self.requires("videoai/[~2.0.0]")
         self.requires("libvpx/1.14.1")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":

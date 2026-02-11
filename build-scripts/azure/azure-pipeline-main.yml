@@ -19,6 +19,10 @@ parameters:
     displayName: 'MacOS'
     type: boolean
     default: true
+  - name: icx
+    displayName: 'Intel Compiler (ICX)'
+    type: boolean
+    default: false
   - name: nv_codec_headers
     displayName: 'NV CODEC HEADERS version(tag)'
     type: string
@@ -84,6 +88,8 @@ stages:
             - Agent.Name -equals Medusa
       steps:
         - template: win.yml
+          parameters:
+            icx: ${{ parameters.icx }}
 
   - ${{ if eq(parameters.linux, true) }}:
     - job: Ubuntu22_04
