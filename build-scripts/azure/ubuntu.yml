@@ -18,14 +18,29 @@ steps:
       cd "$(Build.SourcesDirectory)/FFmpeg"
       bash ./build-scripts/linux/conan_linux.sh
     displayName: Install conan packages
+    env:
+      BUILD_LINUX_GPL: $(BUILD_LINUX_GPL)
     
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
       git apply ./build-scripts/configure-zimg.patch
       git apply ./build-scripts/configure-aom.patch
-      echo ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      git apply --verbose ./build-scripts/linux/configure-x264-x265.patch
+
+      configure_flags="--enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec"
+      build_linux_gpl="${BUILD_LINUX_GPL,,}"
+      if [[ "${build_linux_gpl}" == "true" ]]; then
+        configure_flags="--enable-gpl --enable-libx264 --enable-libx265 ${configure_flags}"
+      fi
+
+      echo ./configure ${configure_flags} --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
       set -e
-      ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      ./configure ${configure_flags} --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      
+    displayName: Apply patch and configure
+
+  - bash: |
+      cd "$(Build.SourcesDirectory)/FFmpeg"
       
       make clean
       make -j$(nproc) install
@@ -37,7 +52,12 @@ steps:
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
         cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cd $(Build.SourcesDirectory)/topaz-conan-dev
-        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
+        build_linux_gpl="${BUILD_LINUX_GPL,,}"
+        if [[ "${build_linux_gpl}" == "true" ]]; then
+          bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -o build_linux_GPL=True -r topaz-conan
+        else
+          bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -o build_linux_GPL=False -r topaz-conan
+        fi
       fi
     displayName: Build FFmpeg
 

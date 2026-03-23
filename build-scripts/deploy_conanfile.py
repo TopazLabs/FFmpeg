@@ -5,6 +5,12 @@ import os
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
     settings = "os", "build_type", "arch"
+    options = {
+        "build_linux_GPL": [True, False]
+    }
+    default_options = {
+        "build_linux_GPL": False
+    }
 
     def configure(self):
         self.options["zimg"].shared = True
@@ -15,6 +21,10 @@ class conanRecipe(ConanFile):
 
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.options["libx265"].shared = True
+            self.options["libx264"].shared = True
 
     def requirements(self):
         self.requires("videoai/[~2.0.0]")
@@ -28,6 +38,10 @@ class conanRecipe(ConanFile):
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
         else:
             self.requires("libaom-av1/3.5.0#041e72afabd2cb62567a667c7f9ed08a")
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.requires("libx264/cci.20240224")
+            self.requires("libx265/3.4")
             
     def package_id(self):
         self.info.requires["videoai"].minor_mode()

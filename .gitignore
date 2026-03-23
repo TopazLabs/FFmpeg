@@ -56,3 +56,5 @@
 # topaz
 **/conan-x64
 **/output-conan
+
+**/CHANGELOG.md

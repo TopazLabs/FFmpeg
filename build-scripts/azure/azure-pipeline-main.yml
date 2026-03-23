@@ -15,6 +15,10 @@ parameters:
     displayName: 'Linux (Ubuntu 22.04)'
     type: boolean
     default: true
+  - name: linux_GPL
+    displayName: 'Linux GPL Software encoders'
+    type: boolean
+    default: false  
   - name: mac
     displayName: 'MacOS'
     type: boolean
@@ -50,6 +54,12 @@ variables:
       value: ''
   - name: BUILD_NOTE
     value: ${{ parameters.build_note }}
+  - ${{ if eq(parameters.linux_GPL, true) }}:
+    - name: BUILD_LINUX_GPL
+      value: 'true'
+  - ${{ if eq(parameters.linux_GPL, false) }}:
+    - name: BUILD_LINUX_GPL
+      value: 'false'
 
 resources:
   repositories:
