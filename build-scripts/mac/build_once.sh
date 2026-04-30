@@ -53,6 +53,9 @@ apply_patch_once() {
 
 apply_patch_once ./build-scripts/configure-zimg.patch \
 	"check_lib libzimg zimg.h zimg_get_api_version -lzimg"
+apply_patch_once ./build-scripts/configure-dav1d.patch \
+	"check_lib libdav1d dav1d/dav1d.h dav1d_version -ldav1d" \
+	"check_pkg_config libdav1d \"dav1d >= 1.0.0\""
 apply_patch_once ./build-scripts/configure-aom.patch \
 	"check_lib libaom aom/aom_codec.h aom_codec_version" \
 	"check_pkg_config libaom \"aom >= 2.0.0\""
