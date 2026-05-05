@@ -56,3 +56,9 @@
 # topaz
 **/conan-x64
 **/output-conan
+**/CHANGELOG.md
+
+builds-arm/
+builds-x86/
+conan_arm/
+conan_x64/
