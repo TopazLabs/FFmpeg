@@ -15,4 +15,6 @@ re2/*:compiler.cppstd=17
 abseil/*:compiler.cppstd=17
 protobuf/*:compiler.cppstd=17
 stduuid/*:compiler.cppstd=17
+[replace_requires]
+aiengine/*: aiengine/3.8.19-wbd
 [options]
