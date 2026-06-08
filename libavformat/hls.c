@@ -574,9 +574,11 @@ static struct rendition *new_rendition(HLSContext *c, struct rendition_info *inf
     return rend;
 }
 
-static void handle_rendition_args(struct rendition_info *info, const char *key,
+static void handle_rendition_args(void *vinfo, const char *key,
                                   int key_len, char **dest, int *dest_len)
 {
+    struct rendition_info *info = vinfo;
+
     if (!strncmp(key, "TYPE=", key_len)) {
         *dest     =        info->type;
         *dest_len = sizeof(info->type);
@@ -968,13 +970,22 @@ static int parse_playlist(HLSContext *c, const char *url,
             if (pls)
                 pls->finished = 1;
         } else if (av_strstart(line, "#EXTINF:", &ptr)) {
+            double d = atof(ptr) * AV_TIME_BASE;
+            if (d < 0 || d > INT64_MAX || isnan(d)) {
+                av_log(c->ctx, AV_LOG_WARNING, "EXTINF %f unsupported\n", d / AV_TIME_BASE);
+                d = 0;
+            }
+            duration = d;
             is_segment = 1;
-            duration   = atof(ptr) * AV_TIME_BASE;
         } else if (av_strstart(line, "#EXT-X-BYTERANGE:", &ptr)) {
             seg_size = strtoll(ptr, NULL, 10);
             ptr = strchr(ptr, '@');
             if (ptr)
                 seg_offset = strtoll(ptr+1, NULL, 10);
+            if (seg_size < 0 || seg_offset > INT64_MAX - seg_size) {
+                ret = AVERROR_INVALIDDATA;
+                goto fail;
+            }
         } else if (av_strstart(line, "#", NULL)) {
             av_log(c->ctx, AV_LOG_VERBOSE, "Skip ('%s')\n", line);
             continue;
@@ -2838,7 +2849,7 @@ const FFInputFormat ff_hls_demuxer = {
     .p.name         = "hls",
     .p.long_name    = NULL_IF_CONFIG_SMALL("Apple HTTP Live Streaming"),
     .p.priv_class   = &hls_class,
-    .p.flags        = AVFMT_NOGENSEARCH | AVFMT_TS_DISCONT | AVFMT_NO_BYTE_SEEK,
+    .p.flags        = AVFMT_NOGENSEARCH | AVFMT_TS_DISCONT | AVFMT_NO_BYTE_SEEK | AVFMT_SHOW_IDS,
     .priv_data_size = sizeof(HLSContext),
     .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .read_probe     = hls_probe,

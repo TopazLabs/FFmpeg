@@ -45,6 +45,7 @@
 #include "codec_internal.h"
 #include "decode.h"
 #include "golomb.h"
+#include "h274.h"
 #include "hevc.h"
 #include "parse.h"
 #include "hevcdec.h"
@@ -916,6 +917,7 @@ static int hls_slice_header(SliceHeader *sh, const HEVCContext *s, GetBitContext
             sh->short_term_ref_pic_set_size     = 0;
             sh->short_term_rps                  = NULL;
             sh->long_term_ref_pic_set_size      = 0;
+            sh->long_term_rps.nb_refs           = 0;
             sh->slice_temporal_mvp_enabled_flag = 0;
         }
 
@@ -1660,16 +1662,12 @@ static int hls_pcm_sample(HEVCLocalContext *lc, const HEVCLayerContext *l,
     GetBitContext gb;
     int cb_size   = 1 << log2_cb_size;
     ptrdiff_t stride0 = s->cur_frame->f->linesize[0];
-    ptrdiff_t stride1 = s->cur_frame->f->linesize[1];
-    ptrdiff_t stride2 = s->cur_frame->f->linesize[2];
     uint8_t *dst0 = &s->cur_frame->f->data[0][y0 * stride0 + (x0 << sps->pixel_shift)];
-    uint8_t *dst1 = &s->cur_frame->f->data[1][(y0 >> sps->vshift[1]) * stride1 + ((x0 >> sps->hshift[1]) << sps->pixel_shift)];
-    uint8_t *dst2 = &s->cur_frame->f->data[2][(y0 >> sps->vshift[2]) * stride2 + ((x0 >> sps->hshift[2]) << sps->pixel_shift)];
 
-    int length         = cb_size * cb_size * sps->pcm.bit_depth +
+    int length         = cb_size * cb_size * sps->pcm.bit_depth + (sps->chroma_format_idc != 0 ?
                          (((cb_size >> sps->hshift[1]) * (cb_size >> sps->vshift[1])) +
                           ((cb_size >> sps->hshift[2]) * (cb_size >> sps->vshift[2]))) *
-                          sps->pcm.bit_depth_chroma;
+                          sps->pcm.bit_depth_chroma : 0);
     const uint8_t *pcm = skip_bytes(&lc->cc, (length + 7) >> 3);
     int ret;
 
@@ -1680,8 +1678,13 @@ static int hls_pcm_sample(HEVCLocalContext *lc, const HEVCLayerContext *l,
     if (ret < 0)
         return ret;
 
-    s->hevcdsp.put_pcm(dst0, stride0, cb_size, cb_size,     &gb, sps->pcm.bit_depth);
+    s->hevcdsp.put_pcm(dst0, stride0, cb_size, cb_size, &gb, sps->pcm.bit_depth);
     if (sps->chroma_format_idc) {
+        ptrdiff_t stride1 = s->cur_frame->f->linesize[1];
+        ptrdiff_t stride2 = s->cur_frame->f->linesize[2];
+        uint8_t *dst1 = &s->cur_frame->f->data[1][(y0 >> sps->vshift[1]) * stride1 + ((x0 >> sps->hshift[1]) << sps->pixel_shift)];
+        uint8_t *dst2 = &s->cur_frame->f->data[2][(y0 >> sps->vshift[2]) * stride2 + ((x0 >> sps->hshift[2]) << sps->pixel_shift)];
+
         s->hevcdsp.put_pcm(dst1, stride1,
                            cb_size >> sps->hshift[1],
                            cb_size >> sps->vshift[1],
@@ -2096,7 +2099,7 @@ static void hls_prediction_unit(HEVCLocalContext *lc,
                                 int log2_cb_size, int partIdx, int idx)
 {
 #define POS(c_idx, x, y)                                                          \
-    &s->cur_frame->f->data[c_idx] ?                                               \
+    s->cur_frame->f->data[c_idx] ?                                                \
     &s->cur_frame->f->data[c_idx][((y) >> sps->vshift[c_idx]) * linesize[c_idx] + \
                            (((x) >> sps->hshift[c_idx]) << sps->pixel_shift)] : NULL
     const HEVCContext *const s = lc->parent;
@@ -3409,7 +3412,6 @@ fail:
         ff_hevc_unref_frame(l->cur_frame, ~0);
     l->cur_frame = NULL;
     s->cur_frame = s->collocated_ref = NULL;
-    s->slice_initialized = 0;
     return ret;
 }
 
@@ -3496,8 +3498,7 @@ static int hevc_frame_end(HEVCContext *s, HEVCLayerContext *l)
             av_assert0(0);
             return AVERROR_BUG;
         case AV_FILM_GRAIN_PARAMS_H274:
-            ret = ff_h274_apply_film_grain(out->frame_grain, out->f,
-                                           &s->h274db, fgp);
+            ret = ff_h274_apply_film_grain(out->frame_grain, out->f, fgp);
             break;
         case AV_FILM_GRAIN_PARAMS_AV1:
             ret = ff_aom_apply_film_grain(out->frame_grain, out->f, fgp);
@@ -3543,9 +3544,11 @@ static int decode_slice(HEVCContext *s, unsigned nal_idx, GetBitContext *gb)
         return 0;
 
     ret = hls_slice_header(&s->sh, s, gb);
+    // Once hls_slice_header has been called, the context is inconsistent with the slice header
+    // until the context is reinitialized according to the contents of the new slice header
+    // at the start of decode_slice_data.
+    s->slice_initialized = 0;
     if (ret < 0) {
-        // hls_slice_header() does not cleanup on failure thus the state now is inconsistent so we cannot use it on dependent slices
-        s->slice_initialized = 0;
         return ret;
     }
 
@@ -3663,10 +3666,11 @@ static int decode_nal_unit(HEVCContext *s, unsigned nal_idx)
     case HEVC_NAL_EOB_NUT:
     case HEVC_NAL_AUD:
     case HEVC_NAL_FD_NUT:
-    case HEVC_NAL_UNSPEC62:
+    case HEVC_NAL_UNSPEC62: // Dolby Vision RPU
+    case HEVC_NAL_UNSPEC63: // Dolby Vision EL
         break;
     default:
-        av_log(s->avctx, AV_LOG_INFO,
+        av_log(s->avctx, AV_LOG_VERBOSE,
                "Skipping NAL unit %d\n", s->nal_unit_type);
     }
 
@@ -4106,7 +4110,7 @@ static int hevc_sei_to_context(AVCodecContext *avctx, HEVCSEI *sei)
 {
     int ret;
 
-    if (sei->tdrdi.num_ref_displays) {
+    if (sei->tdrdi.present) {
         AVBufferRef *buf;
         size_t size;
         AV3DReferenceDisplaysInfo *tdrdi = av_tdrdi_alloc(sei->tdrdi.num_ref_displays, &size);
@@ -4187,7 +4191,7 @@ static av_cold int hevc_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static void hevc_decode_flush(AVCodecContext *avctx)
+static av_cold void hevc_decode_flush(AVCodecContext *avctx)
 {
     HEVCContext *s = avctx->priv_data;
     ff_hevc_flush_dpb(s);

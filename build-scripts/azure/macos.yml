@@ -10,6 +10,7 @@ steps:
 
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
+      git apply ./build-scripts/configure-dav1d.patch
       git apply ./build-scripts/configure-zimg.patch
       git apply ./build-scripts/configure-aom.patch
       git apply ./build-scripts/mac/configure-ossl.patch
@@ -28,8 +29,8 @@ steps:
       cp ./mac/profile_mac_armv8 ./profile_mac_armv8
       cp ./mac/profile_mac14.0 ./profile_mac_x86_64
 
-      python dependency_viewer.py -os=MAC -ar=armv8 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py"
-      python dependency_viewer.py -os=MAC -ar=x86_64 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py"
+      python dependency_viewer.py -os=MAC -ar=armv8 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
+      python dependency_viewer.py -os=MAC -ar=x86_64 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
 
     condition: and(succeeded(), ne(variables['PUBLISH'], ''))
     displayName: Slack Dependency Manager

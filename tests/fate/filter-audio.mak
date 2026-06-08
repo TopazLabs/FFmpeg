@@ -57,7 +57,8 @@ FATE_AFILTER_SAMPLES-$(call FILTERDEMDECENCMUX, ACROSSFADE, WAV, PCM_S16LE, PCM_
 fate-filter-acrossfade: tests/data/asynth-44100-2.wav
 fate-filter-acrossfade: SRC = $(TARGET_PATH)/tests/data/asynth-44100-2.wav
 fate-filter-acrossfade: SRC2 = $(TARGET_SAMPLES)/audio-reference/luckynight_2ch_44kHz_s16.wav
-fate-filter-acrossfade: CMD = framecrc -i $(SRC) -i $(SRC2) -filter_complex acrossfade=d=2:c1=log:c2=exp
+fate-filter-acrossfade: SRC3 = $(TARGET_SAMPLES)/audio-reference/chorusnoise_2ch_44kHz_s16.wav
+fate-filter-acrossfade: CMD = framecrc -i $(SRC) -i $(SRC2) -i $(SRC3) -filter_complex acrossfade=n=3:d=2:c1=log:c2=exp
 
 FATE_AFILTER-$(call FILTERDEMDECENCMUX, AGATE ARESAMPLE, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-filter-agate
 fate-filter-agate: tests/data/asynth-44100-2.wav
@@ -73,6 +74,12 @@ FATE_AFILTER-$(call FILTERDEMDECENCMUX, AMERGE, WAV, PCM_S16LE, PCM_S16LE, WAV) 
 fate-filter-amerge: tests/data/asynth-44100-1.wav
 fate-filter-amerge: SRC = $(TARGET_PATH)/tests/data/asynth-44100-1.wav
 fate-filter-amerge: CMD = framecrc -i $(SRC) -i $(SRC) -filter_complex "[0:a][1:a]amerge=inputs=2[aout]" -map "[aout]"
+
+FATE_AFILTER-$(call FILTERDEMDECENCMUX, AMERGE, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-filter-amerge-mode
+fate-filter-amerge-mode: tests/data/asynth-44100-1.wav
+fate-filter-amerge-mode: SRC = $(TARGET_PATH)/tests/data/asynth-44100-1.wav
+fate-filter-amerge-mode: CMD = framecrc -channel_layout FL -i $(SRC) -ss 0.1 -channel_layout FR -i $(SRC) -ss 0.2 -i $(SRC) -ss 0.3 -i $(SRC) -ss 0.4 -i $(SRC) -ss 0.5 -i $(SRC) \
+                               -filter_complex "[1:a][0:a]amerge[tmp1];[2:a][3:a]amerge=layout_mode=reset[tmp2];[tmp1][tmp2][4:a][5:a]amerge=inputs=4:layout_mode=normal[aout]" -map "[aout]"
 
 FATE_AFILTER-$(call FILTERDEMDECENCMUX, APAD, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-filter-apad
 fate-filter-apad: tests/data/asynth-44100-2.wav
@@ -257,6 +264,11 @@ fate-filter-aresample: SRC = $(TARGET_SAMPLES)/nellymoser/nellymoser-discont.flv
 fate-filter-aresample: CMD = pcm -analyzeduration 10000000 -i $(SRC) -af aresample=min_comp=0.001:min_hard_comp=0.1:first_pts=0
 fate-filter-aresample: CMP = oneoff
 fate-filter-aresample: REF = $(SAMPLES)/nellymoser/nellymoser-discont.pcm
+
+FATE_AFILTER-$(call FILTERDEMDECENCMUX, ASELECT, WAV, PCM_S16LE, PCM_S16LE, WAV) += fate-filter-aselect
+fate-filter-aselect: tests/data/asynth-44100-2.wav
+fate-filter-aselect: SRC = $(TARGET_PATH)/tests/data/asynth-44100-2.wav
+fate-filter-aselect: CMD = framecrc -i $(SRC) -af "aselect=gte(t\,1)*lt(t\,2)"
 
 FATE_ATRIM += fate-filter-atrim-duration
 fate-filter-atrim-duration: CMD = framecrc -i $(SRC) -af atrim=start=0.1:duration=0.01

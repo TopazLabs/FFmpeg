@@ -235,6 +235,18 @@ fate-hevc-bsf-mp4toannexb: CMD = md5 -i $(TARGET_PATH)/tests/data/hevc-mp4.mov -
 fate-hevc-bsf-mp4toannexb: CMP = oneline
 fate-hevc-bsf-mp4toannexb: REF = 73019329ed7f81c24f9af67c34c640c0
 
+# Start with IDR, POC < 0 after the second IDR
+FATE_HEVC-$(call FRAMECRC, MOV HEVC,, HEVC_PARSER MOV_MUXER DTS2PTS_BSF) += fate-hevc-bsf-dts2pts-idr
+fate-hevc-bsf-dts2pts-idr: CMD = transcode "hevc" $(TARGET_SAMPLES)/hevc-conformance/SLIST_B_Sony_8.bit mov "-c:v copy -bsf:v dts2pts" "-c:v copy"
+
+# IDR + CRA, POC = 0
+FATE_HEVC-$(call FRAMECRC, MOV HEVC,, HEVC_PARSER MOV_MUXER DTS2PTS_BSF) += fate-hevc-bsf-dts2pts-idr-cra
+fate-hevc-bsf-dts2pts-idr-cra: CMD = transcode "hevc" $(TARGET_SAMPLES)/hevc-conformance/SLIST_A_Sony_4.bit mov "-c:v copy -bsf:v dts2pts" "-c:v copy"
+
+# First frame is CRA, POC != 0
+FATE_HEVC-$(call FRAMECRC, MOV HEVC,, HEVC_PARSER MOV_MUXER DTS2PTS_BSF) += fate-hevc-bsf-dts2pts-cra
+fate-hevc-bsf-dts2pts-cra: CMD = transcode "hevc" $(TARGET_SAMPLES)/hevc-conformance/RAP_A_docomo_4.bit mov "-c:v copy -bsf:v dts2pts -frames:v 80" "-c:v copy"
+
 fate-hevc-skiploopfilter: CMD = framemd5 -skip_loop_filter nokey -i $(TARGET_SAMPLES)/hevc-conformance/SAO_D_Samsung_5.bit -sws_flags bitexact
 FATE_HEVC-$(call FRAMEMD5, HEVC, HEVC, HEVC_PARSER) += fate-hevc-skiploopfilter
 
@@ -290,6 +302,11 @@ FATE_HEVC-$(call FRAMECRC, HEVC, HEVC, SCALE_FILTER CONCAT_PROTOCOL) += fate-hev
 # (depends on Three Dimensional Reference Displays Information SEI)
 fate-hevc-mv-position: CMD = framecrc -i $(TARGET_SAMPLES)/hevc/multiview.mov -map 0:v:vpos:left -map 0:v:vpos:right
 FATE_HEVC-$(call FRAMECRC, MOV, HEVC) += fate-hevc-mv-position
+
+# The sample is from PICO VR. It use long term ref.
+# Check long term ref being reset in IDR frame.
+fate-hevc-mv-ltr: CMD = framecrc -i $(TARGET_SAMPLES)/hevc/pico-mv-hevc.mp4 -map 0:vidx:1
+FATE_HEVC-$(call FRAMECRC, MOV, HEVC) += fate-hevc-mv-ltr
 
 fate-hevc-alpha: CMD = framecrc -i $(TARGET_SAMPLES)/hevc/alpha.mp4
 FATE_HEVC-$(call FRAMECRC, MOV, HEVC) += fate-hevc-alpha

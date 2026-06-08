@@ -38,7 +38,7 @@ PROJECT_NAME           = FFmpeg
 # could be handy for archiving the generated documentation or if some version
 # control system is used.
 
-PROJECT_NUMBER         = 8.0
+PROJECT_NUMBER         = 8.1
 
 # Using the PROJECT_BRIEF tag one can provide an optional one line description
 # for a project that appears at the top of each page and should give viewer a
@@ -295,7 +295,7 @@ MARKDOWN_SUPPORT       = YES
 
 # When enabled doxygen tries to link words that correspond to documented
 # classes, or namespaces to their corresponding documentation. Such a link can
-# be prevented in individual cases by by putting a % sign in front of the word
+# be prevented in individual cases by putting a % sign in front of the word
 # or globally by setting AUTOLINK_SUPPORT to NO.
 # The default value is: YES.
 

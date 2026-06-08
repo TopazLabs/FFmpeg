@@ -74,6 +74,7 @@ typedef struct LV2Context {
     float *controls;
 
     LilvInstance *instance;
+    int           instance_activated;
 
     LilvNode  *atom_AtomPort;
     LilvNode  *atom_Sequence;
@@ -387,6 +388,9 @@ static int config_output(AVFilterLink *outlink)
         inlink->min_samples = inlink->max_samples = 4096;
     }
 
+    lilv_instance_activate(s->instance);
+    s->instance_activated = 1;
+
     return 0;
 }
 
@@ -483,7 +487,7 @@ static int query_formats(const AVFilterContext *ctx,
     AVFilterChannelLayouts *layouts;
     static const enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
-    int ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    int ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -562,6 +566,8 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     LV2Context *s = ctx->priv;
 
+    if (s->instance_activated)
+        lilv_instance_deactivate(s->instance);
     lilv_node_free(s->powerOf2BlockLength);
     lilv_node_free(s->fixedBlockLength);
     lilv_node_free(s->boundedBlockLength);

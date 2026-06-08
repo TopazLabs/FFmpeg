@@ -13,8 +13,10 @@ steps:
       cd "$(Build.SourcesDirectory)/FFmpeg"
       unix2dos ./build-scripts/win/configure-win.patch
       git apply ./build-scripts/win/configure-win.patch
-      git apply ./build-scripts/configure-zimg.patch
-      git apply ./build-scripts/configure-aom.patch
+      # Patches are already applied
+      # git apply ./build-scripts/configure-zimg.patch
+      # git apply ./build-scripts/configure-aom.patch
+      git apply ./build-scripts/configure-dav1d.patch
       bash ./build-scripts/win/conan_win.sh
     displayName: Install conan packages
 
@@ -55,7 +57,7 @@ steps:
 
       cp ./win/profile_win2022 ./profile_win2022
 
-      python dependency_viewer.py -os=WIN -ar=$arch -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py"
+      python dependency_viewer.py -os=WIN -ar=$arch -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
     condition: and(succeeded(), ne(variables['PUBLISH'], ''))
     displayName: Slack Dependency Manager
     continueOnError: true 

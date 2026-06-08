@@ -78,6 +78,9 @@
 #include "libavdevice/avdevice.h"
 
 #include "cmdutils.h"
+#if CONFIG_MEDIACODEC
+#include "compat/android/binder.h"
+#endif
 #include "ffmpeg.h"
 #include "ffmpeg_sched.h"
 #include "ffmpeg_utils.h"
@@ -250,7 +253,6 @@ void term_init(void)
 /* read a key without blocking */
 static int read_key(void)
 {
-    unsigned char ch;
 #if HAVE_TERMIOS_H
     int n = 1;
     struct timeval tv;
@@ -262,6 +264,7 @@ static int read_key(void)
     tv.tv_usec = 0;
     n = select(1, &rfds, NULL, NULL, &tv);
     if (n > 0) {
+        unsigned char ch;
         n = read(0, &ch, 1);
         if (n == 1)
             return ch;
@@ -286,6 +289,7 @@ static int read_key(void)
         }
         //Read it
         if(nchars != 0) {
+            unsigned char ch;
             if (read(0, &ch, 1) == 1)
                 return ch;
             return 0;
@@ -400,6 +404,7 @@ static void frame_data_free(void *opaque, uint8_t *data)
 {
     FrameData *fd = (FrameData *)data;
 
+    av_frame_side_data_free(&fd->side_data, &fd->nb_side_data);
     avcodec_parameters_free(&fd->par_enc);
 
     av_free(data);
@@ -429,6 +434,8 @@ static int frame_data_ensure(AVBufferRef **dst, int writable)
 
             memcpy(fd, fd_src, sizeof(*fd));
             fd->par_enc = NULL;
+            fd->side_data = NULL;
+            fd->nb_side_data = 0;
 
             if (fd_src->par_enc) {
                 int ret = 0;
@@ -437,6 +444,16 @@ static int frame_data_ensure(AVBufferRef **dst, int writable)
                 ret = fd->par_enc ?
                       avcodec_parameters_copy(fd->par_enc, fd_src->par_enc) :
                       AVERROR(ENOMEM);
+                if (ret < 0) {
+                    av_buffer_unref(dst);
+                    av_buffer_unref(&src);
+                    return ret;
+                }
+            }
+
+            if (fd_src->nb_side_data) {
+                int ret = clone_side_data(&fd->side_data, &fd->nb_side_data,
+                                          fd_src->side_data, fd_src->nb_side_data, 0);
                 if (ret < 0) {
                     av_buffer_unref(dst);
                     av_buffer_unref(&src);
@@ -806,8 +823,6 @@ static int check_keyboard_interaction(int64_t cur_time)
 {
     int i, key;
     static int64_t last_time;
-    if (received_nb_signals)
-        return AVERROR_EXIT;
     /* read_key() returns 0 on EOF */
     if (cur_time - last_time >= 100000) {
         key =  read_key();
@@ -890,6 +905,9 @@ static int transcode(Scheduler *sch)
 
     while (!sch_wait(sch, stats_period, &transcode_ts)) {
         int64_t cur_time= av_gettime_relative();
+
+        if (received_nb_signals)
+            break;
 
         /* if 'q' pressed, exits */
         if (stdin_interaction)
@@ -1004,6 +1022,10 @@ int main(int argc, char **argv)
         ret = 1;
         goto finish;
     }
+
+#if CONFIG_MEDIACODEC
+    android_binder_threadpool_init_if_required();
+#endif
 
     current_time = ti = get_benchmark_time_stamps();
     ret = transcode(sch);

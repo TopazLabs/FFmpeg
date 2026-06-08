@@ -205,19 +205,10 @@ int enc_open(void *opaque, const AVFrame *frame)
         av_assert0(frame->opaque_ref);
         fd = (FrameData*)frame->opaque_ref->data;
 
-        for (int i = 0; i < frame->nb_side_data; i++) {
-            const AVSideDataDescriptor *desc = av_frame_side_data_desc(frame->side_data[i]->type);
-
-            if (!(desc->props & AV_SIDE_DATA_PROP_GLOBAL))
-                continue;
-
-            ret = av_frame_side_data_clone(&enc_ctx->decoded_side_data,
-                                           &enc_ctx->nb_decoded_side_data,
-                                           frame->side_data[i],
-                                           AV_FRAME_SIDE_DATA_FLAG_UNIQUE);
-            if (ret < 0)
-                return ret;
-        }
+        ret = clone_side_data(&enc_ctx->decoded_side_data, &enc_ctx->nb_decoded_side_data,
+                              fd->side_data, fd->nb_side_data, AV_FRAME_SIDE_DATA_FLAG_UNIQUE);
+        if (ret < 0)
+            return ret;
     }
 
     if (ist)
@@ -274,6 +265,7 @@ int enc_open(void *opaque, const AVFrame *frame)
         enc_ctx->color_primaries        = frame->color_primaries;
         enc_ctx->color_trc              = frame->color_trc;
         enc_ctx->colorspace             = frame->colorspace;
+        enc_ctx->alpha_mode             = frame->alpha_mode;
 
         /* Video properties which are not part of filter graph negotiation */
         if (enc_ctx->chroma_sample_location == AVCHROMA_LOC_UNSPECIFIED) {
@@ -736,7 +728,7 @@ static int encode_frame(OutputFile *of, OutputStream *ost, AVFrame *frame,
         }
     }
 
-    av_assert0(0);
+    av_unreachable("encode_frame() loop should return");
 }
 
 static enum AVPictureType forced_kf_apply(void *logctx, KeyframeForceCtx *kf,
@@ -775,6 +767,9 @@ static enum AVPictureType forced_kf_apply(void *logctx, KeyframeForceCtx *kf,
             goto force_keyframe;
         }
     } else if (kf->type == KF_FORCE_SOURCE && (frame->flags & AV_FRAME_FLAG_KEY)) {
+        goto force_keyframe;
+    } else if (kf->type == KF_FORCE_SCD_METADATA &&
+               av_dict_get(frame->metadata, "lavfi.scd.time", NULL, 0)) {
         goto force_keyframe;
     }
 

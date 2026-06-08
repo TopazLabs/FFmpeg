@@ -67,6 +67,7 @@ typedef struct DemuxStream {
     int                      reinit_filters;
     int                      autorotate;
     int                      apply_cropping;
+    int                      force_display_matrix;
     int                      drop_changed;
 
 
@@ -102,6 +103,13 @@ typedef struct DemuxStream {
     // measure of how far behind packet reading is against spceified readrate
     int64_t                  lag;
 } DemuxStream;
+
+typedef struct DemuxStreamGroup {
+    InputStreamGroup         istg;
+
+    // name used for logging
+    char                     log_name[32];
+} DemuxStreamGroup;
 
 typedef struct Demuxer {
     InputFile             f;
@@ -517,7 +525,10 @@ static void readrate_sleep(Demuxer *d)
         pts = av_rescale(ds->dts, 1000000, AV_TIME_BASE);
         now = av_gettime_relative();
         wc_elapsed = now - d->wallclock_start;
-        max_pts = stream_ts_offset + initial_burst + wc_elapsed * d->readrate;
+
+        if (pts <= stream_ts_offset + initial_burst) continue;
+
+        max_pts = stream_ts_offset + initial_burst + (int64_t)(wc_elapsed * d->readrate);
         lag = FFMAX(max_pts - pts, 0);
         if ( (!ds->lag && lag > 0.3 * AV_TIME_BASE) || ( lag > ds->lag + 0.3 * AV_TIME_BASE) ) {
             ds->lag = lag;
@@ -531,7 +542,7 @@ static void readrate_sleep(Demuxer *d)
             ds->lag = ds->resume_wc = ds->resume_pts = 0;
         if (ds->resume_wc) {
             elapsed = now - ds->resume_wc;
-            limit_pts = ds->resume_pts + elapsed * d->readrate_catchup;
+            limit_pts = ds->resume_pts + (int64_t)(elapsed * d->readrate_catchup);
         } else {
             elapsed = wc_elapsed;
             limit_pts = max_pts;
@@ -885,6 +896,16 @@ static void ist_free(InputStream **pist)
     av_freep(pist);
 }
 
+static void istg_free(InputStreamGroup **pistg)
+{
+    InputStreamGroup *istg = *pistg;
+
+    if (!istg)
+        return;
+
+    av_freep(pistg);
+}
+
 void ifile_close(InputFile **pf)
 {
     InputFile *f = *pf;
@@ -899,6 +920,10 @@ void ifile_close(InputFile **pf)
     for (int i = 0; i < f->nb_streams; i++)
         ist_free(&f->streams[i]);
     av_freep(&f->streams);
+
+    for (int i = 0; i < f->nb_stream_groups; i++)
+        istg_free(&f->stream_groups[i]);
+    av_freep(&f->stream_groups);
 
     avformat_close_input(&f->ctx);
 
@@ -1183,6 +1208,7 @@ static int add_display_matrix_to_stream(const OptionsContext *o,
                                         AVFormatContext *ctx, InputStream *ist)
 {
     AVStream *st = ist->st;
+    DemuxStream *ds = ds_from_ist(ist);
     AVPacketSideData *sd;
     double rotation = DBL_MAX;
     int hflip = -1, vflip = -1;
@@ -1216,6 +1242,8 @@ static int add_display_matrix_to_stream(const OptionsContext *o,
     av_display_matrix_flip(buf,
                            hflip_set ? hflip : 0,
                            vflip_set ? vflip : 0);
+
+    ds->force_display_matrix = 1;
 
     return 0;
 }
@@ -1455,6 +1483,15 @@ static int ist_add(const OptionsContext *o, Demuxer *d, AVStream *st, AVDictiona
     av_dict_set_int(&ds->decoder_opts, "apply_cropping",
                     ds->apply_cropping && ds->apply_cropping != CROP_CONTAINER, 0);
 
+    if (ds->force_display_matrix) {
+        char buf[32];
+        if (av_dict_get(ds->decoder_opts, "side_data_prefer_packet", NULL, 0))
+            buf[0] = ',';
+        else
+            buf[0] = '\0';
+        av_strlcat(buf, "displaymatrix", sizeof(buf));
+        av_dict_set(&ds->decoder_opts, "side_data_prefer_packet", buf, AV_DICT_APPEND);
+    }
     /* Attached pics are sparse, therefore we would not want to delay their decoding
      * till EOF. */
     if (ist->st->disposition & AV_DISPOSITION_ATTACHED_PIC)
@@ -1573,6 +1610,194 @@ static int ist_add(const OptionsContext *o, Demuxer *d, AVStream *st, AVDictiona
     return 0;
 }
 
+static const char *input_stream_group_item_name(void *obj)
+{
+    const DemuxStreamGroup *dsg = obj;
+
+    return dsg->log_name;
+}
+
+static const AVClass input_stream_group_class = {
+    .class_name = "InputStreamGroup",
+    .version    = LIBAVUTIL_VERSION_INT,
+    .item_name  = input_stream_group_item_name,
+    .category   = AV_CLASS_CATEGORY_DEMUXER,
+};
+
+static DemuxStreamGroup *demux_stream_group_alloc(Demuxer *d, AVStreamGroup *stg)
+{
+    InputFile    *f = &d->f;
+    DemuxStreamGroup *dsg;
+
+    dsg = allocate_array_elem(&f->stream_groups, sizeof(*dsg), &f->nb_stream_groups);
+    if (!dsg)
+        return NULL;
+
+    dsg->istg.stg        = stg;
+    dsg->istg.file       = f;
+    dsg->istg.index      = stg->index;
+    dsg->istg.class      = &input_stream_group_class;
+
+    snprintf(dsg->log_name, sizeof(dsg->log_name), "istg#%d:%d/%s",
+             d->f.index, stg->index, avformat_stream_group_name(stg->type));
+
+    return dsg;
+}
+
+static int istg_parse_tile_grid(const OptionsContext *o, Demuxer *d, InputStreamGroup *istg)
+{
+    InputFile *f = &d->f;
+    AVFormatContext *ic = d->f.ctx;
+    AVStreamGroup *stg = istg->stg;
+    const AVStreamGroupTileGrid *tg = stg->params.tile_grid;
+    OutputFilterOptions opts;
+    AVBPrint bp;
+    char *graph_str;
+    int autorotate = 1;
+    const char *apply_cropping = NULL;
+    int  ret;
+
+    if (tg->nb_tiles == 1)
+        return 0;
+
+    memset(&opts, 0, sizeof(opts));
+
+    opt_match_per_stream_group_int(istg, &o->autorotate, ic, stg, &autorotate);
+    if (autorotate)
+        opts.flags |= OFILTER_FLAG_AUTOROTATE;
+
+    opts.flags |= OFILTER_FLAG_CROP;
+    opt_match_per_stream_group_str(istg, &o->apply_cropping, ic, stg, &apply_cropping);
+    if (apply_cropping) {
+        char *p;
+        int crop = strtol(apply_cropping, &p, 0);
+        if (*p)
+            return AVERROR(EINVAL);
+        if (!crop)
+            opts.flags &= ~OFILTER_FLAG_CROP;
+    }
+
+    av_bprint_init(&bp, 0, AV_BPRINT_SIZE_UNLIMITED);
+    for (int i = 0; i < tg->nb_tiles; i++)
+        av_bprintf(&bp, "[%d:g:%d:%d]", f->index, stg->index, tg->offsets[i].idx);
+    av_bprintf(&bp, "xstack=inputs=%d:layout=", tg->nb_tiles);
+    for (int i = 0; i < tg->nb_tiles - 1; i++)
+        av_bprintf(&bp, "%d_%d|", tg->offsets[i].horizontal,
+                                  tg->offsets[i].vertical);
+    av_bprintf(&bp, "%d_%d:fill=0x%02X%02X%02X@0x%02X", tg->offsets[tg->nb_tiles - 1].horizontal,
+                                                        tg->offsets[tg->nb_tiles - 1].vertical,
+                                                        tg->background[0], tg->background[1],
+                                                        tg->background[2], tg->background[3]);
+    av_bprintf(&bp, "[%d:g:%d]", f->index, stg->index);
+    ret = av_bprint_finalize(&bp, &graph_str);
+    if (ret < 0)
+        return ret;
+
+    if (tg->coded_width != tg->width || tg->coded_height != tg->height) {
+        opts.crop_top    = tg->vertical_offset;
+        opts.crop_bottom = tg->coded_height - tg->height - tg->vertical_offset;
+        opts.crop_left   = tg->horizontal_offset;
+        opts.crop_right  = tg->coded_width - tg->width - tg->horizontal_offset;
+    }
+
+    for (int i = 0; i < tg->nb_coded_side_data; i++) {
+        const AVPacketSideData *sd = &tg->coded_side_data[i];
+
+        ret = av_packet_side_data_to_frame(&opts.side_data, &opts.nb_side_data, sd, 0);
+        if (ret < 0 && ret != AVERROR(EINVAL))
+            goto fail;
+    }
+
+    ret = fg_create(NULL, &graph_str, d->sch, &opts);
+    if (ret < 0)
+        goto fail;
+
+    istg->fg = filtergraphs[nb_filtergraphs-1];
+    istg->fg->is_internal = 1;
+
+    ret = 0;
+fail:
+    if (ret < 0)
+        av_freep(&graph_str);
+
+    return ret;
+}
+
+static int istg_add(const OptionsContext *o, Demuxer *d, AVStreamGroup *stg)
+{
+    DemuxStreamGroup *dsg;
+    InputStreamGroup *istg;
+    int ret;
+
+    dsg = demux_stream_group_alloc(d, stg);
+    if (!dsg)
+        return AVERROR(ENOMEM);
+
+    istg = &dsg->istg;
+
+    switch (stg->type) {
+    case AV_STREAM_GROUP_PARAMS_TILE_GRID:
+        ret = istg_parse_tile_grid(o, d, istg);
+        if (ret < 0)
+            return ret;
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+static int is_windows_reserved_device_name(const char *f)
+{
+#if HAVE_DOS_PATHS
+    for (const char *p = f; p && *p; ) {
+        char stem[6], *s;
+        av_strlcpy(stem, p, sizeof(stem));
+        if ((s = strchr(stem, '.')))
+            *s = 0;
+        if ((s = strpbrk(stem, "123456789")))
+            *s = '1';
+
+        if( !av_strcasecmp(stem, "AUX") ||
+            !av_strcasecmp(stem, "CON") ||
+            !av_strcasecmp(stem, "NUL") ||
+            !av_strcasecmp(stem, "PRN") ||
+            !av_strcasecmp(stem, "COM1") ||
+            !av_strcasecmp(stem, "LPT1")
+        )
+            return 1;
+
+        p = strchr(p, '/');
+        if (p)
+            p++;
+    }
+#endif
+    return 0;
+}
+
+static int safe_filename(const char *f, int allow_subdir)
+{
+    const char *start = f;
+
+    if (!*f || is_windows_reserved_device_name(f))
+        return 0;
+
+    for (; *f; f++) {
+        /* A-Za-z0-9_- */
+        if (!((unsigned)((*f | 32) - 'a') < 26 ||
+              (unsigned)(*f - '0') < 10 || *f == '_' || *f == '-')) {
+            if (f == start)
+                return 0;
+            else if (allow_subdir && *f == '/')
+                start = f + 1;
+            else if (*f != '.')
+                return 0;
+        }
+    }
+    return 1;
+}
+
 static int dump_attachment(InputStream *ist, const char *filename)
 {
     AVStream *st = ist->st;
@@ -1584,8 +1809,13 @@ static int dump_attachment(InputStream *ist, const char *filename)
         av_log(ist, AV_LOG_WARNING, "No extradata to dump.\n");
         return 0;
     }
-    if (!*filename && (e = av_dict_get(st->metadata, "filename", NULL, 0)))
+    if (!*filename && (e = av_dict_get(st->metadata, "filename", NULL, 0))) {
         filename = e->value;
+        if (!safe_filename(filename, 0)) {
+            av_log(ist, AV_LOG_ERROR, "Filename %s is unsafe\n", filename);
+            return AVERROR(EINVAL);
+        }
+    }
     if (!*filename) {
         av_log(ist, AV_LOG_FATAL, "No filename specified and no 'filename' tag");
         return AVERROR(EINVAL);
@@ -1704,6 +1934,7 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
     ic = avformat_alloc_context();
     if (!ic)
         return AVERROR(ENOMEM);
+    ic->name = av_strdup(d->log_name);
     if (o->audio_sample_rate.nb_opt) {
         av_dict_set_int(&o->g->format_opts, "sample_rate", o->audio_sample_rate.opt[o->audio_sample_rate.nb_opt - 1].u.i, 0);
     }
@@ -1792,6 +2023,8 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
 
     av_strlcat(d->log_name, "/",               sizeof(d->log_name));
     av_strlcat(d->log_name, ic->iformat->name, sizeof(d->log_name));
+    av_freep(&ic->name);
+    ic->name = av_strdup(d->log_name);
 
     if (scan_all_pmts_set)
         av_dict_set(&o->g->format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE);
@@ -1939,6 +2172,13 @@ int ifile_open(const OptionsContext *o, const char *filename, Scheduler *sch)
             av_dict_free(&opts_used);
             return ret;
         }
+    }
+
+    /* Add all the stream groups from the given input file to the demuxer */
+    for (int i = 0; i < ic->nb_stream_groups; i++) {
+        ret = istg_add(o, d, ic->stream_groups[i]);
+        if (ret < 0)
+            return ret;
     }
 
     /* dump the file content */

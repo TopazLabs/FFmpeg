@@ -167,12 +167,23 @@ struct SwrContext {
     struct Resampler const *resampler;              ///< resampler virtual function table
 
     double matrix[SWR_CH_MAX][SWR_CH_MAX];          ///< floating point rematrixing coefficients
-    float matrix_flt[SWR_CH_MAX][SWR_CH_MAX];       ///< single precision floating point rematrixing coefficients
+    union {
+        float matrix_flt[SWR_CH_MAX][SWR_CH_MAX];   ///< single precision floating point rematrixing coefficients
+                                                    ///< valid iff int_sample_fmt is AV_SAMPLE_FMT_FLTP
+        int32_t matrix32[SWR_CH_MAX][SWR_CH_MAX];   ///< 17.15 fixed point rematrixing coefficients
+                                                    ///< valid iff int_sample_fmt is != AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP
+    };
+    union {
+        int    i;
+        float  f;
+        double d;
+    } native_one;
     uint8_t *native_matrix;
-    uint8_t *native_one;
-    uint8_t *native_simd_one;
+    union {
+        int16_t i16[2];
+        float   f;
+    } native_simd_one;
     uint8_t *native_simd_matrix;
-    int32_t matrix32[SWR_CH_MAX][SWR_CH_MAX];       ///< 17.15 fixed point rematrixing coefficients
     uint8_t matrix_ch[SWR_CH_MAX][SWR_CH_MAX+1];    ///< Lists of input channels per output channel that have non zero rematrixing coefficients
     mix_1_1_func_type *mix_1_1_f;
     mix_1_1_func_type *mix_1_1_simd;
@@ -187,6 +198,7 @@ struct SwrContext {
 
 av_warn_unused_result
 int swri_realloc_audio(AudioData *a, int count);
+int swri_check_chlayout(struct SwrContext *s, const AVChannelLayout *chl, const char *name);
 
 void swri_noise_shaping_int16 (SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);
 void swri_noise_shaping_int32 (SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);

@@ -57,7 +57,7 @@ resources:
       type: github
       endpoint: TopazLabs
       name: TopazLabs/pipeline-helper
-      ref: feature/upgrade
+      ref: main
     - repository: topaz-conan-dev
       type: github
       endpoint: TopazLabs

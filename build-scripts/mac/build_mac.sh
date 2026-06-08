@@ -7,8 +7,12 @@ if [ -z "$2" -o -z "$3" -o -z "$4" ]; then
 	exit 1
 fi;
 
-FLAGS=(--enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-ffplay --enable-shared --disable-static --disable-asm --enable-neon --disable-libxcb --disable-sdl2 --disable-xlib)
-XFLAGS=(--arch=x86_64 --disable-ffplay --enable-cross-compile --enable-shared --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-libxcb --disable-sdl2 --disable-xlib)
+FLAGS=(--enable-libdav1d --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-ffplay --enable-shared --disable-static --disable-asm --enable-neon --disable-libxcb --disable-sdl2 --disable-xlib)
+XFLAGS=(--arch=x86_64 --enable-libdav1d --disable-ffplay --enable-cross-compile --enable-shared --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-libxcb --disable-sdl2 --disable-xlib)
+if [ ! -z "${BUILD_MAC_EXTRA_CONFIGURE_FLAGS}" ]; then
+	FLAGS=(${FLAGS[@]} ${BUILD_MAC_EXTRA_CONFIGURE_FLAGS})
+	XFLAGS=(${XFLAGS[@]} ${BUILD_MAC_EXTRA_CONFIGURE_FLAGS})
+fi
 if [[ "$1" -eq 1 ]]; then
 	bash ./build-scripts/mac/conan_mac.sh
 	CONAN_X64=./conan_x64

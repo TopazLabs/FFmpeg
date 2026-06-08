@@ -41,11 +41,11 @@
 typedef struct TVAIStbContext {
     const AVClass *class;
     BasicProcessorInfo basicInfo;
-    char *filename, *filler;
+    char *filename;
     void* pFrameProcessor;
     double smoothness;
-    int postFlight, windowSize, cacheSize, stabDOF, enableRSC, enableFullFrame, reduceMotion;
-    double readStartTime, writeStartTime, canvasScaleX, canvasScaleY;
+    int windowSize, cacheSize, stabDOF, enableRSC, enableFullFrame, reduceMotion;
+    double readStartTime, readEndTime, canvasScaleX, canvasScaleY;
     AVFrame* previousFrame;
     AVDictionary *parameters;
     DictionaryItem *pModelParameters;
@@ -66,8 +66,7 @@ static const AVOption tvai_stb_options[] = {
     { "full", "Perform full-frame stabilization. If disabled, performs auto-crop (ignores full-reame related options)", OFFSET(enableFullFrame), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, .flags = FLAGS, "full" },
     { "filename", "CPE output filename", OFFSET(filename), AV_OPT_TYPE_STRING, {.str="cpe.json"}, .flags = FLAGS, "filename"},
     { "rst", "Read start time relative to CPE", OFFSET(readStartTime), AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0, DBL_MAX, .flags = FLAGS, "rst" },
-    { "wst", "Write start time relative to read start time (rst)", OFFSET(writeStartTime), AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0, DBL_MAX, .flags = FLAGS, "wst" },
-    { "postFlight", "Enable postflight", OFFSET(postFlight), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, .flags = FLAGS, "postFlight"  },
+    { "ret", "Read end time relative to read start time (rst)", OFFSET(readEndTime), AV_OPT_TYPE_DOUBLE, {.dbl=DBL_MAX}, 0, DBL_MAX, .flags = FLAGS, "ret" },
     { "ws", "Window size for full-frame synthesis", OFFSET(windowSize), AV_OPT_TYPE_INT, {.i64=64}, 0, 512, .flags = FLAGS, "ws"  },
     { "csx", "Scale of the canvas relative to input width", OFFSET(canvasScaleX), AV_OPT_TYPE_DOUBLE, {.dbl=2}, 1, 8, .flags = FLAGS, "csx"  },
     { "csy", "Scale of the canvas relative to input height", OFFSET(canvasScaleY), AV_OPT_TYPE_DOUBLE, {.dbl=2}, 1, 8, .flags = FLAGS, "csy"  },
@@ -84,7 +83,7 @@ AVFILTER_DEFINE_CLASS(tvai_stb);
 
 static av_cold int init(AVFilterContext *ctx) {
   TVAIStbContext *tvai = ctx->priv;
-  av_log(ctx, AV_LOG_VERBOSE, "Here init with params: %s %d %s %s %lf\n", tvai->basicInfo.modelName, tvai->basicInfo.device.index, tvai->filename, tvai->filler, tvai->smoothness);
+  av_log(ctx, AV_LOG_VERBOSE, "Here init with params: %s %d %s %lf\n", tvai->basicInfo.modelName, tvai->basicInfo.device.index, tvai->filename, tvai->smoothness);
   tvai->previousFrame = NULL;
   return 0;
 }
@@ -95,17 +94,15 @@ static int config_props(AVFilterLink *outlink) {
     VideoProcessorInfo info;
     tvai->basicInfo.scale = 1;
     av_dict_set(&tvai->parameters, "cpePath", tvai->filename, 0);
-    av_dict_set(&tvai->parameters, "filler", tvai->filler, 0);
     av_dict_set_float(&tvai->parameters, "smoothness", tvai->smoothness, 0);
     av_dict_set_float(&tvai->parameters, "windowSize", tvai->windowSize, 0);
-    av_dict_set_float(&tvai->parameters, "postFlight", tvai->postFlight, 0);
     av_dict_set_float(&tvai->parameters, "canvasScaleX", tvai->canvasScaleX, 0);
     av_dict_set_float(&tvai->parameters, "canvasScaleY", tvai->canvasScaleY, 0);
     av_dict_set_float(&tvai->parameters, "cacheAfter", tvai->cacheSize, 0);
     av_dict_set_float(&tvai->parameters, "stabDOF", tvai->stabDOF, 0);
     av_dict_set_float(&tvai->parameters, "enableRSC", tvai->enableRSC, 0);
     av_dict_set_float(&tvai->parameters, "readStartTime", tvai->readStartTime, 0);
-    av_dict_set_float(&tvai->parameters, "writeStartTime", tvai->writeStartTime, 0);
+    av_dict_set_float(&tvai->parameters, "readEndTime", tvai->readEndTime, 0);
     av_dict_set_float(&tvai->parameters, "reduceMotion", tvai->reduceMotion, 0);
     tvai->pModelParameters = ff_tvai_alloc_copy_entries(tvai->parameters, &tvai->modelParametersCount);
   

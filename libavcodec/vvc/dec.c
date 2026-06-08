@@ -726,7 +726,6 @@ static int frame_context_setup(VVCFrameContext *fc, VVCContext *s)
     }
 
     if (IS_IDR(s)) {
-        s->seq_decode = (s->seq_decode + 1) & 0xff;
         ff_vvc_clear_refs(fc);
     }
 
@@ -808,10 +807,10 @@ static int frame_start(VVCContext *s, VVCFrameContext *fc, SliceContext *sc)
     if (!s->temporal_id && !ph->r->ph_non_ref_pic_flag && !(IS_RASL(s) || IS_RADL(s)))
         s->poc_tid0 = ph->poc;
 
+    decode_prefix_sei(fc, s);
+
     if ((ret = ff_vvc_set_new_ref(s, fc, &fc->frame)) < 0)
         goto fail;
-
-    decode_prefix_sei(fc, s);
 
     ret = set_side_data(s, fc);
     if (ret < 0)
@@ -851,8 +850,6 @@ static int slice_start(SliceContext *sc, VVCContext *s, VVCFrameContext *fc,
     ret = ff_vvc_decode_sh(sh, &fc->ps, unit);
     if (ret < 0)
         return ret;
-
-    av_refstruct_replace(&sc->ref, unit->content_ref);
 
     if (is_first_slice) {
         ret = frame_start(s, fc, sc);
@@ -927,7 +924,7 @@ static int export_frame_params(VVCContext *s, const VVCFrameContext *fc)
 
 static int frame_setup(VVCFrameContext *fc, VVCContext *s)
 {
-    int ret = ff_vvc_decode_frame_ps(&fc->ps, s);
+    int ret = ff_vvc_decode_frame_ps(fc, s);
     if (ret < 0)
         return ret;
 
@@ -954,6 +951,7 @@ static int decode_slice(VVCContext *s, VVCFrameContext *fc, AVBufferRef *buf_ref
         return ret;
 
     sc = fc->slices[fc->nb_slices];
+    av_refstruct_replace(&sc->ref, unit->content_ref);
 
     s->vcl_unit_type = nal->type;
     if (is_first_slice) {
@@ -1091,8 +1089,7 @@ static int frame_end(VVCContext *s, VVCFrameContext *fc)
             av_assert0(0);
             return AVERROR_BUG;
         case AV_FILM_GRAIN_PARAMS_H274:
-            ret = ff_h274_apply_film_grain(fc->ref->frame_grain, fc->ref->frame,
-                &s->h274db, fgp);
+            ret = ff_h274_apply_film_grain(fc->ref->frame_grain, fc->ref->frame, fgp);
             if (ret < 0)
                 return ret;
             break;
@@ -1228,6 +1225,7 @@ static av_cold void vvc_decode_flush(AVCodecContext *avctx)
 
     if (s->fcs) {
         VVCFrameContext *last = get_frame_context(s, s->fcs, s->nb_frames - 1);
+        ff_vvc_sei_reset(&last->sei);
         ff_vvc_flush_dpb(last);
     }
 

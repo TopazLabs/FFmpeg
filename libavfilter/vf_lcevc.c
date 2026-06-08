@@ -110,7 +110,7 @@ static int alloc_base_frame(AVFilterLink *inlink, const AVFrame *in,
     desc.matrixCoefficients = (LCEVC_MatrixCoefficients)in->colorspace;
     desc.transferCharacteristics = (LCEVC_TransferCharacteristics)in->color_trc;
     av_log(ctx, AV_LOG_DEBUG, "in  PTS %"PRId64", %dx%d, "
-                              "%"SIZE_SPECIFIER"/%"SIZE_SPECIFIER"/%"SIZE_SPECIFIER"/%"SIZE_SPECIFIER", "
+                              "%zu/%zu/%zu/%zu, "
                               "SAR %d:%d\n",
            in->pts, in->width, in->height,
            in->crop_top, in->crop_bottom, in->crop_left, in->crop_right,
@@ -139,11 +139,7 @@ static int send_frame(AVFilterLink *inlink, AVFrame *in)
         return ret;
 
     if (sd) {
-#ifdef LCEVC_DEC_VERSION_MAJOR
         res = LCEVC_SendDecoderEnhancementData(lcevc->decoder, in->pts, sd->data, sd->size);
-#else
-        res = LCEVC_SendDecoderEnhancementData(lcevc->decoder, in->pts, 0, sd->data, sd->size);
-#endif
         if (res == LCEVC_Again)
             return AVERROR(EAGAIN);
         else if (res != LCEVC_Success) {
@@ -152,11 +148,14 @@ static int send_frame(AVFilterLink *inlink, AVFrame *in)
         }
     }
 
-#ifdef LCEVC_DEC_VERSION_MAJOR
+    res = LCEVC_SetPictureUserData(lcevc->decoder, picture, in);
+    if (res != LCEVC_Success) {
+        av_log(ctx, AV_LOG_ERROR, "LCEVC_SetPictureUserData failed\n");
+        LCEVC_FreePicture(lcevc->decoder, picture);
+        return AVERROR_EXTERNAL;
+    }
+
     res = LCEVC_SendDecoderBase(lcevc->decoder, in->pts, picture, -1, in);
-#else
-    res = LCEVC_SendDecoderBase(lcevc->decoder, in->pts, 0, picture, -1, in);
-#endif
     if (res != LCEVC_Success) {
         av_log(ctx, AV_LOG_ERROR, "LCEVC_SendDecoderBase failed\n");
         LCEVC_FreePicture(lcevc->decoder, picture);
@@ -223,8 +222,6 @@ static int generate_output(AVFilterLink *inlink, AVFrame *out)
     av_frame_copy_props(out, (AVFrame *)info.baseUserData);
     av_frame_remove_side_data(out, AV_FRAME_DATA_LCEVC);
 
-    av_frame_free((AVFrame **)&info.baseUserData);
-
     res = LCEVC_GetPictureDesc(lcevc->decoder, picture, &desc);
     LCEVC_FreePicture(lcevc->decoder, picture);
 
@@ -242,7 +239,7 @@ static int generate_output(AVFilterLink *inlink, AVFrame *out)
     out->height = outlink->h = desc.height + out->crop_top + out->crop_bottom;
 
     av_log(ctx, AV_LOG_DEBUG, "out PTS %"PRId64", %dx%d, "
-                              "%"SIZE_SPECIFIER"/%"SIZE_SPECIFIER"/%"SIZE_SPECIFIER"/%"SIZE_SPECIFIER", "
+                              "%zu/%zu/%zu/%zu, "
                               "SAR %d:%d, "
                               "hasEnhancement %d, enhanced %d\n",
            out->pts, out->width, out->height,
@@ -292,8 +289,12 @@ static void flush_bases(AVFilterContext *ctx)
     LCEVCContext *lcevc = ctx->priv;
     LCEVC_PictureHandle picture;
 
-    while (LCEVC_ReceiveDecoderBase(lcevc->decoder, &picture) == LCEVC_Success)
+    while (LCEVC_ReceiveDecoderBase(lcevc->decoder, &picture) == LCEVC_Success) {
+        AVFrame *base = NULL;
+        LCEVC_GetPictureUserData(lcevc->decoder, picture, (void **)&base);
         LCEVC_FreePicture(lcevc->decoder, picture);
+        av_frame_free(&base);
+    }
 }
 
 static int activate(AVFilterContext *ctx)
@@ -407,6 +408,8 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     LCEVCContext *lcevc = ctx->priv;
 
+    LCEVC_FlushDecoder(lcevc->decoder);
+    flush_bases(ctx);
     LCEVC_DestroyDecoder(lcevc->decoder);
 }
 

@@ -23,6 +23,9 @@
 *.metal.air
 *.metallib
 *.metallib.c
+*.spv
+*.spv.c
+*.spv.gz
 *.ptx
 *.ptx.c
 *.ptx.gz
@@ -36,6 +39,7 @@
 /ffprobe
 /config.asm
 /config.h
+/config_components.asm
 /config_components.h
 /coverage.info
 /lcov/
@@ -49,5 +53,12 @@
 !/.forgejo/
 
 
-output-conan/
-conan/
+# topaz
+**/conan-x64
+**/output-conan
+**/CHANGELOG.md
+
+builds-arm/
+builds-x86/
+conan_arm/
+conan_x64/
