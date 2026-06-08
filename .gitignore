@@ -47,3 +47,7 @@
 /.*/
 /conan
 !/.forgejo/
+
+
+output-conan/
+conan/
