@@ -44,7 +44,7 @@ steps:
         --enable-nvenc
         --enable-nvdec
         --extra-cflags="-I./conan/include -I./conan/include/videoai"
-        --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib"
+        --extra-ldflags="-Wl,-rpath,./conan/lib/ -Wl,-rpath-link,./conan/lib/ -L./conan/lib"
         --prefix=./output-conan/
       )
 
