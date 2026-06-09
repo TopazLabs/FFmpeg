@@ -73,7 +73,7 @@ steps:
         deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
         EOF
         sudo apt update
-        sudo apt -y install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libsystemd0 libsystemd0:arm64 libsystemd-dev libsystemd-dev:arm64 libvulkan1:arm64 libvulkan-dev:arm64 uuid-dev:arm64
+        sudo apt -y install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
       displayName: Install ARM64 cross-compile packages
 
 #Install Dependencies
