@@ -67,7 +67,13 @@ steps:
       esac
 
       echo ./configure "${configure_flags[@]}"
-      ./configure "${configure_flags[@]}"
+      if ! ./configure "${configure_flags[@]}"; then
+        if [ -f ffbuild/config.log ]; then
+          echo "===== ffbuild/config.log ====="
+          tail -n 200 ffbuild/config.log
+        fi
+        exit 1
+      fi
       
       make clean
       make -j$(nproc) install

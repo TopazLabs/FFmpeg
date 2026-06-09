@@ -8,3 +8,4 @@ update nasm/2.16.01 for mac x64 builds
 
 ## 2026-06-09
 fixed Linux ARM64 configure detection for the Topaz Video AI libraries.
+linked the Topaz Video AI configure check with the C++ runtime.
