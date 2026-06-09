@@ -5,3 +5,6 @@ synced to ffmpeg/master.
 ## 03/19/2026
 synced with ffmpeg/master v8.1 (#9047fa)
 update nasm/2.16.01 for mac x64 builds 
+
+## 2026-06-09
+fixed Linux ARM64 configure detection for the Topaz Video AI libraries.
