@@ -29,6 +29,7 @@ steps:
       set -e
       cd "$(Build.SourcesDirectory)/FFmpeg"
       git apply ./build-scripts/configure-dav1d.patch
+      export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 
       configure_flags=(
         --enable-libdav1d
