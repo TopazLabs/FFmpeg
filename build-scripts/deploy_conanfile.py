@@ -7,6 +7,7 @@ class conanRecipe(ConanFile):
     settings = "os", "build_type", "arch"
 
     def configure(self):
+        self.options["videoai"].aiengine_version = "3.8.26-dgx"
         self.options["videoai"].with_rlm = False
         self.options["zimg"].shared = True
         if self.settings.os == "Macos" or self.settings.os == "Linux":
