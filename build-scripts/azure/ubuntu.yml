@@ -98,6 +98,7 @@ steps:
 
       if [ "${{ parameters.ARCH }}" = "armv8" ]; then
         cp ./linux/profile_ubuntu22.04_armv8 ./profile_ubuntu22.04_armv8
+        cp ./linux/profile_ubuntu22.04_armv8 ./profile_ubuntu22.04
       elif [ "${{ parameters.ARCH }}" = "x86_64" ]; then
         cp ./linux/profile_ubuntu22.04 ./profile_ubuntu22.04
       else
