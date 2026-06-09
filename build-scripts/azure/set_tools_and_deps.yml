@@ -59,7 +59,7 @@ steps:
         sudo apt -y install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
       displayName: Install APT packages
 
-  - ${{ if and(eq(parameters.os, 'linux'), eq(parameters.ARCH, 'ARM64')) }}:
+  - ${{ if and(eq(parameters.os, 'linux'), or(eq(parameters.ARCH, 'ARM64'), eq(parameters.ARCH, 'armv8'))) }}:
     - script: |
         sudo dpkg --add-architecture arm64
         sudo sed -i -E 's|^deb (http://azure\.archive\.ubuntu\.com/ubuntu)|deb [arch=amd64] http://archive.ubuntu.com/ubuntu|' /etc/apt/sources.list
