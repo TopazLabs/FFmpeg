@@ -58,6 +58,7 @@ steps:
             --arch=aarch64
             --target-os=linux
             --cross-prefix=aarch64-linux-gnu-
+            --extra-ldflags="-Wl,--allow-shlib-undefined"
           )
           ;;
         *)
