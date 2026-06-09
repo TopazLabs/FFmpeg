@@ -15,6 +15,10 @@ parameters:
   type: string
   default: '$(Pipeline.Workspace)'
 
+- name: ARCH
+  type: string
+  default: 'AMD64'
+
 steps:
 
 #Install tools
@@ -54,6 +58,23 @@ steps:
         sudo apt -y update
         sudo apt -y install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
       displayName: Install APT packages
+
+  - ${{ if and(eq(parameters.os, 'linux'), eq(parameters.ARCH, 'ARM64')) }}:
+    - script: |
+        sudo dpkg --add-architecture arm64
+        sudo sed -i -E 's|^deb (http://azure\.archive\.ubuntu\.com/ubuntu)|deb [arch=amd64] http://archive.ubuntu.com/ubuntu|' /etc/apt/sources.list
+        if compgen -G "/etc/apt/sources.list.d/*.list" > /dev/null; then
+          sudo sed -i -E 's|^deb (http://azure\.archive\.ubuntu\.com/ubuntu)|deb [arch=amd64] http://archive.ubuntu.com/ubuntu|' /etc/apt/sources.list.d/*.list
+        fi
+        sudo tee /etc/apt/sources.list.d/ubuntu-arm64-ports.list >/dev/null <<'EOF'
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+        deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+        EOF
+        sudo apt update
+        sudo apt -y install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libsystemd0 libsystemd0:arm64 libsystemd-dev libsystemd-dev:arm64 libvulkan1:arm64 libvulkan-dev:arm64 uuid-dev:arm64
+      displayName: Install ARM64 cross-compile packages
 
 #Install Dependencies
   - task: Cache@2

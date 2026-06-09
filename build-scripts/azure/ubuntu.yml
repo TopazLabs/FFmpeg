@@ -1,3 +1,8 @@
+parameters:
+  - name: ARCH
+    type: string
+    default: 'x86_64'
+
 steps:
   - checkout: self
   - checkout: topaz-conan-dev
@@ -8,6 +13,7 @@ steps:
     parameters:
       OS: 'linux'
       SHOULD_RESTORE_CONAN_CACHE: true
+      ARCH: ${{ parameters.ARCH }}
       
   - bash: |
       cd "$(Build.SourcesDirectory)/nv-codec-headers"
@@ -16,14 +22,13 @@ steps:
       
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
-      bash ./build-scripts/linux/conan_linux.sh
+      ARCH="${{ parameters.ARCH }}" bash ./build-scripts/linux/conan_linux.sh
     displayName: Install conan packages
     
   - bash: |
+      set -e
       cd "$(Build.SourcesDirectory)/FFmpeg"
       git apply ./build-scripts/configure-dav1d.patch
-      git apply ./build-scripts/configure-zimg.patch
-      git apply ./build-scripts/configure-aom.patch
       echo ./configure --enable-libdav1d  --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
       set -e
       ./configure --enable-libdav1d  --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
@@ -34,9 +39,10 @@ steps:
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         exit 0
       else
-        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
+        package_dir="$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_${{ parameters.ARCH }}/build_type=Release"
+        mkdir -p "$package_dir"
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
-        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
+        cp -Rp "output-conan"/* "$package_dir"
         cd $(Build.SourcesDirectory)/topaz-conan-dev
         bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
       fi
@@ -46,9 +52,16 @@ steps:
       cp "$(Build.SourcesDirectory)/pipeline-helper/dependency-manager/dependency_viewer.py" "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
       cd "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
 
-      cp ./linux/profile_ubuntu22.04 ./profile_ubuntu22.04
+      if [ "${{ parameters.ARCH }}" = "armv8" ]; then
+        cp ./linux/profile_ubuntu22.04_armv8 ./profile_ubuntu22.04_armv8
+      elif [ "${{ parameters.ARCH }}" = "x86_64" ]; then
+        cp ./linux/profile_ubuntu22.04 ./profile_ubuntu22.04
+      else
+        echo "Invalid ARCH: ${{ parameters.ARCH }}"
+        exit 1
+      fi
 
-      python dependency_viewer.py -os=LIN -ar=x86_64 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
+      python dependency_viewer.py -os=LIN -ar=${{ parameters.ARCH }} -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
     condition: and(succeeded(), ne(variables['PUBLISH'], ''))
     displayName: Slack Dependency Manager
     continueOnError: true 
