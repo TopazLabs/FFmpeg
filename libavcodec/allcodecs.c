@@ -903,6 +903,7 @@ extern const FFCodec ff_hevc_oh_encoder;
 extern const FFCodec ff_hevc_qsv_encoder;
 extern const FFCodec ff_hevc_v4l2m2m_encoder;
 extern const FFCodec ff_hevc_vaapi_encoder;
+extern const FFCodec ff_hevc_videotoolbox_decoder;
 extern const FFCodec ff_hevc_videotoolbox_encoder;
 extern const FFCodec ff_hevc_vulkan_encoder;
 extern const FFCodec ff_libkvazaar_encoder;

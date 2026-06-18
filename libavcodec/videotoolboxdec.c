@@ -1,9 +1,9 @@
 /*
- * VideoToolbox H.264 standalone hardware decoder
+ * VideoToolbox H.264/HEVC standalone hardware decoder
  *
- * This is a standalone decoder that does NOT depend on the software h264
- * decoder. It uses h264_parser for SPS/PPS extraction and feeds compressed
- * bitstream directly to VideoToolbox's VTDecompressionSession.
+ * These are standalone decoders that do NOT depend on the software h264/hevc
+ * decoders. They use h264_parser/hevc_parser for parameter set extraction and
+ * feed compressed bitstream directly to VideoToolbox's VTDecompressionSession.
  *
  * This file is part of FFmpeg.
  *
@@ -28,6 +28,10 @@
 #include <VideoToolbox/VideoToolbox.h>
 #undef Picture
 
+#include <Availability.h>
+#include <AvailabilityMacros.h>
+#include <TargetConditionals.h>
+
 #include "libavutil/avutil.h"
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_videotoolbox.h"
@@ -38,10 +42,19 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "decode.h"
-#include "h264_parse.h"
-#include "h264_ps.h"
 #include "hwconfig.h"
 #include "internal.h"
+
+#if CONFIG_H264_VIDEOTOOLBOX_DECODER
+#include "h264_parse.h"
+#include "h264_ps.h"
+#endif
+
+#if CONFIG_HEVC_VIDEOTOOLBOX_DECODER
+#include "hevc/parse.h"
+#include "hevc/ps.h"
+#include "hevc/sei.h"
+#endif
 
 #ifndef kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder
 #define kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder \
@@ -52,26 +65,36 @@
     CFSTR("EnableHardwareAcceleratedVideoDecoder")
 #endif
 
+#if !HAVE_KCMVIDEOCODECTYPE_HEVC
+enum { kCMVideoCodecType_HEVC = 'hvc1' };
+#endif
+
 typedef struct VTDecContext {
     AVClass *avclass;
 
     /* VideoToolbox session state */
     VTDecompressionSessionRef   session;
     CMVideoFormatDescriptionRef cm_fmt_desc;
+    CMVideoCodecType            cm_codec_type;
 
     /* Decoded frame from VT callback */
     CVPixelBufferRef            decoded_frame;
 
-    /* H.264 parameter sets for extradata parsing */
-    H264ParamSets ps;
-    int           is_avc;
-    int           nal_length_size;
+    /* Codec-specific parameter sets */
+#if CONFIG_H264_VIDEOTOOLBOX_DECODER
+    H264ParamSets h264_ps;
+#endif
+#if CONFIG_HEVC_VIDEOTOOLBOX_DECODER
+    HEVCParamSets hevc_ps;
+    HEVCSEI       hevc_sei;
+#endif
+
+    /* Bitstream format info (shared between H.264 is_avc / HEVC is_nalff) */
+    int is_nalff;
+    int nal_length_size;
 
     /* Hardware frames context */
     AVBufferRef *cached_hw_frames_ctx;
-
-    /* SPS profile/compat/level for reconfig detection */
-    uint8_t sps_header[3];
 
     /* Options */
     int require_hw;
@@ -102,14 +125,20 @@ static void vtdec_decoder_callback(void *opaque,
     ctx->decoded_frame = CVPixelBufferRetain(image_buffer);
 }
 
-/* Create CMVideoFormatDescription from avcC extradata */
-static int vtdec_create_fmt_desc_avcc(AVCodecContext *avctx)
+/* Create CMVideoFormatDescription from nalff extradata (avcC / hvcC) */
+static int vtdec_create_fmt_desc_nalff(AVCodecContext *avctx)
 {
     VTDecContext *ctx = avctx->priv_data;
     CFMutableDictionaryRef decoder_spec;
     CFMutableDictionaryRef atoms;
-    CFDataRef avcc_data;
+    CFDataRef extradata_cfdata;
+    CFStringRef extradata_key;
     OSStatus status;
+
+    if (ctx->cm_codec_type == kCMVideoCodecType_H264)
+        extradata_key = CFSTR("avcC");
+    else
+        extradata_key = CFSTR("hvcC");
 
     decoder_spec = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
                                              &kCFTypeDictionaryKeyCallBacks,
@@ -131,16 +160,16 @@ static int vtdec_create_fmt_desc_avcc(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
     }
 
-    avcc_data = CFDataCreate(kCFAllocatorDefault,
-                             avctx->extradata, avctx->extradata_size);
-    if (!avcc_data) {
+    extradata_cfdata = CFDataCreate(kCFAllocatorDefault,
+                                    avctx->extradata, avctx->extradata_size);
+    if (!extradata_cfdata) {
         CFRelease(atoms);
         CFRelease(decoder_spec);
         return AVERROR(ENOMEM);
     }
 
-    CFDictionarySetValue(atoms, CFSTR("avcC"), avcc_data);
-    CFRelease(avcc_data);
+    CFDictionarySetValue(atoms, extradata_key, extradata_cfdata);
+    CFRelease(extradata_cfdata);
 
     CFDictionarySetValue(decoder_spec,
                          kCMFormatDescriptionExtension_SampleDescriptionExtensionAtoms,
@@ -148,7 +177,7 @@ static int vtdec_create_fmt_desc_avcc(AVCodecContext *avctx)
     CFRelease(atoms);
 
     status = CMVideoFormatDescriptionCreate(kCFAllocatorDefault,
-                                            kCMVideoCodecType_H264,
+                                            ctx->cm_codec_type,
                                             avctx->width,
                                             avctx->height,
                                             decoder_spec,
@@ -157,7 +186,7 @@ static int vtdec_create_fmt_desc_avcc(AVCodecContext *avctx)
 
     if (status != noErr) {
         av_log(avctx, AV_LOG_ERROR,
-               "Failed to create CMVideoFormatDescription from avcC: %d\n",
+               "Failed to create CMVideoFormatDescription: %d\n",
                (int)status);
         return AVERROR_EXTERNAL;
     }
@@ -175,7 +204,6 @@ static int vtdec_find_annexb_nalus(const uint8_t *data, int size,
     *nb_nalus = 0;
 
     while (i < size) {
-        /* Find start code: 0x000001 or 0x00000001 */
         if (i + 2 < size && data[i] == 0 && data[i + 1] == 0) {
             int sc_len;
             if (data[i + 2] == 1) {
@@ -188,7 +216,6 @@ static int vtdec_find_annexb_nalus(const uint8_t *data, int size,
             }
 
             int nalu_start = i + sc_len;
-            /* Find end of this NALU (next start code or end of data) */
             int nalu_end = size;
             for (int j = nalu_start + 1; j + 2 < size; j++) {
                 if (data[j] == 0 && data[j + 1] == 0 &&
@@ -198,7 +225,6 @@ static int vtdec_find_annexb_nalus(const uint8_t *data, int size,
                 }
             }
 
-            /* Remove trailing zeros */
             while (nalu_end > nalu_start && data[nalu_end - 1] == 0)
                 nalu_end--;
 
@@ -217,21 +243,17 @@ static int vtdec_find_annexb_nalus(const uint8_t *data, int size,
     return 0;
 }
 
-/* Create CMVideoFormatDescription from Annex B extradata */
-static int vtdec_create_fmt_desc_annexb(AVCodecContext *avctx)
+#if CONFIG_H264_VIDEOTOOLBOX_DECODER
+/* Create CMVideoFormatDescription from H.264 Annex B extradata */
+static int vtdec_create_fmt_desc_h264_annexb(AVCodecContext *avctx)
 {
     VTDecContext *ctx = avctx->priv_data;
     const uint8_t *nalus[32];
     size_t nalu_sizes[32];
     int nb_nalus = 0;
-    const uint8_t *sps_list[16];
-    size_t sps_sizes[16];
-    const uint8_t *pps_list[16];
-    size_t pps_sizes[16];
-    int nb_sps = 0, nb_pps = 0;
-    int nb_ps;
-    const uint8_t **ps_array;
-    size_t *ps_sizes;
+    const uint8_t *ps_array[32];
+    size_t ps_sizes[32];
+    int nb_ps = 0;
     OSStatus status;
 
     vtdec_find_annexb_nalus(avctx->extradata, avctx->extradata_size,
@@ -239,61 +261,83 @@ static int vtdec_create_fmt_desc_annexb(AVCodecContext *avctx)
 
     for (int i = 0; i < nb_nalus; i++) {
         uint8_t nal_type = nalus[i][0] & 0x1F;
-        if (nal_type == 7 && nb_sps < 16) { /* SPS */
-            sps_list[nb_sps] = nalus[i];
-            sps_sizes[nb_sps] = nalu_sizes[i];
-            nb_sps++;
-        } else if (nal_type == 8 && nb_pps < 16) { /* PPS */
-            pps_list[nb_pps] = nalus[i];
-            pps_sizes[nb_pps] = nalu_sizes[i];
-            nb_pps++;
+        if ((nal_type == 7 || nal_type == 8) && nb_ps < 32) { /* SPS or PPS */
+            ps_array[nb_ps] = nalus[i];
+            ps_sizes[nb_ps] = nalu_sizes[i];
+            nb_ps++;
         }
     }
 
-    if (nb_sps == 0 || nb_pps == 0) {
+    if (nb_ps < 2) {
         av_log(avctx, AV_LOG_ERROR,
-               "No SPS/PPS found in Annex B extradata\n");
+               "No SPS/PPS found in H.264 Annex B extradata\n");
         return AVERROR_INVALIDDATA;
-    }
-
-    nb_ps = nb_sps + nb_pps;
-    ps_array = av_malloc_array(nb_ps, sizeof(*ps_array));
-    ps_sizes = av_malloc_array(nb_ps, sizeof(*ps_sizes));
-    if (!ps_array || !ps_sizes) {
-        av_free(ps_array);
-        av_free(ps_sizes);
-        return AVERROR(ENOMEM);
-    }
-
-    for (int i = 0; i < nb_sps; i++) {
-        ps_array[i] = sps_list[i];
-        ps_sizes[i] = sps_sizes[i];
-    }
-    for (int i = 0; i < nb_pps; i++) {
-        ps_array[nb_sps + i] = pps_list[i];
-        ps_sizes[nb_sps + i] = pps_sizes[i];
     }
 
     status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
                  kCFAllocatorDefault,
-                 nb_ps,
-                 ps_array,
-                 ps_sizes,
-                 4, /* NAL length size */
-                 &ctx->cm_fmt_desc);
-
-    av_free(ps_array);
-    av_free(ps_sizes);
+                 nb_ps, ps_array, ps_sizes,
+                 4, &ctx->cm_fmt_desc);
 
     if (status != noErr) {
         av_log(avctx, AV_LOG_ERROR,
-               "Failed to create CMVideoFormatDescription from Annex B: %d\n",
+               "CMVideoFormatDescriptionCreateFromH264ParameterSets failed: %d\n",
                (int)status);
         return AVERROR_EXTERNAL;
     }
 
     return 0;
 }
+#endif
+
+#if CONFIG_HEVC_VIDEOTOOLBOX_DECODER
+/* Create CMVideoFormatDescription from HEVC Annex B extradata */
+static int vtdec_create_fmt_desc_hevc_annexb(AVCodecContext *avctx)
+{
+    VTDecContext *ctx = avctx->priv_data;
+    const uint8_t *nalus[32];
+    size_t nalu_sizes[32];
+    int nb_nalus = 0;
+    const uint8_t *ps_array[32];
+    size_t ps_sizes[32];
+    int nb_ps = 0;
+    OSStatus status;
+
+    vtdec_find_annexb_nalus(avctx->extradata, avctx->extradata_size,
+                            nalus, nalu_sizes, 32, &nb_nalus);
+
+    for (int i = 0; i < nb_nalus; i++) {
+        /* HEVC NAL type is bits [1:6] of first byte */
+        uint8_t nal_type = (nalus[i][0] >> 1) & 0x3F;
+        if ((nal_type == 32 || nal_type == 33 || nal_type == 34) && nb_ps < 32) {
+            /* VPS=32, SPS=33, PPS=34 */
+            ps_array[nb_ps] = nalus[i];
+            ps_sizes[nb_ps] = nalu_sizes[i];
+            nb_ps++;
+        }
+    }
+
+    if (nb_ps < 3) {
+        av_log(avctx, AV_LOG_ERROR,
+               "No VPS/SPS/PPS found in HEVC Annex B extradata\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    status = CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+                 kCFAllocatorDefault,
+                 nb_ps, ps_array, ps_sizes,
+                 4, NULL, &ctx->cm_fmt_desc);
+
+    if (status != noErr) {
+        av_log(avctx, AV_LOG_ERROR,
+               "CMVideoFormatDescriptionCreateFromHEVCParameterSets failed: %d\n",
+               (int)status);
+        return AVERROR_EXTERNAL;
+    }
+
+    return 0;
+}
+#endif
 
 static int vtdec_create_session(AVCodecContext *avctx)
 {
@@ -309,7 +353,6 @@ static int vtdec_create_session(AVCodecContext *avctx)
     int height = avctx->height;
     OSType pix_fmt = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
 
-    /* Build destination buffer attributes */
     w = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &width);
     h = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &height);
     cv_pix_fmt = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &pix_fmt);
@@ -336,7 +379,6 @@ static int vtdec_create_session(AVCodecContext *avctx)
     CFRelease(w);
     CFRelease(h);
 
-    /* Build decoder specification */
     decoder_spec = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
                                              &kCFTypeDictionaryKeyCallBacks,
                                              &kCFTypeDictionaryValueCallBacks);
@@ -349,7 +391,7 @@ static int vtdec_create_session(AVCodecContext *avctx)
 #if defined(MAC_OS_VERSION_11_0) && !TARGET_OS_IPHONE && \
     (MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_11_0) && AV_HAS_BUILTIN(__builtin_available)
     if (__builtin_available(macOS 11.0, *))
-        VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_H264);
+        VTRegisterSupplementalVideoDecoderIfAvailable(ctx->cm_codec_type);
 #endif
 
     decoder_cb.decompressionOutputCallback = vtdec_decoder_callback;
@@ -441,7 +483,8 @@ static int vtdec_init_hw_frames_ctx(AVCodecContext *avctx)
     return 0;
 }
 
-static av_cold int vtdec_init(AVCodecContext *avctx)
+#if CONFIG_H264_VIDEOTOOLBOX_DECODER
+static av_cold int vtdec_h264_init(AVCodecContext *avctx)
 {
     VTDecContext *ctx = avctx->priv_data;
     int ret;
@@ -452,56 +495,109 @@ static av_cold int vtdec_init(AVCodecContext *avctx)
         return AVERROR_INVALIDDATA;
     }
 
-    /* Parse extradata to determine format and extract SPS/PPS info */
+    ctx->cm_codec_type = kCMVideoCodecType_H264;
+
     ret = ff_h264_decode_extradata(avctx->extradata, avctx->extradata_size,
-                                   &ctx->ps, &ctx->is_avc,
+                                   &ctx->h264_ps, &ctx->is_nalff,
                                    &ctx->nal_length_size, 0, avctx);
-    if (ret < 0) {
-        av_log(avctx, AV_LOG_ERROR, "Failed to parse H.264 extradata\n");
+    if (ret < 0)
         return ret;
-    }
 
-    /* Set dimensions from SPS if not already set */
-    if (ctx->ps.sps && (!avctx->width || !avctx->height)) {
-        avctx->width  = 16 * ctx->ps.sps->mb_width;
-        avctx->height = 16 * ctx->ps.sps->mb_height;
-        if (ctx->ps.sps->frame_mbs_only_flag == 0)
+    if (ctx->h264_ps.sps && (!avctx->width || !avctx->height)) {
+        avctx->width  = 16 * ctx->h264_ps.sps->mb_width;
+        avctx->height = 16 * ctx->h264_ps.sps->mb_height;
+        if (ctx->h264_ps.sps->frame_mbs_only_flag == 0)
             avctx->height *= 2;
-
-        if (ctx->ps.sps->crop) {
-            avctx->width  -= (ctx->ps.sps->crop_left + ctx->ps.sps->crop_right);
-            avctx->height -= (ctx->ps.sps->crop_top + ctx->ps.sps->crop_bottom);
+        if (ctx->h264_ps.sps->crop) {
+            avctx->width  -= (ctx->h264_ps.sps->crop_left + ctx->h264_ps.sps->crop_right);
+            avctx->height -= (ctx->h264_ps.sps->crop_top + ctx->h264_ps.sps->crop_bottom);
         }
     }
 
-    if (ctx->ps.sps) {
-        avctx->profile = ff_h264_get_profile(ctx->ps.sps);
-        avctx->level   = ctx->ps.sps->level_idc;
-        memcpy(ctx->sps_header, ctx->ps.sps->data + 1, 3);
+    if (ctx->h264_ps.sps) {
+        avctx->profile = ff_h264_get_profile(ctx->h264_ps.sps);
+        avctx->level   = ctx->h264_ps.sps->level_idc;
     }
 
     avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
 
-    /* Create CMVideoFormatDescription */
-    if (ctx->is_avc)
-        ret = vtdec_create_fmt_desc_avcc(avctx);
+    if (ctx->is_nalff)
+        ret = vtdec_create_fmt_desc_nalff(avctx);
     else
-        ret = vtdec_create_fmt_desc_annexb(avctx);
+        ret = vtdec_create_fmt_desc_h264_annexb(avctx);
     if (ret < 0)
         return ret;
 
-    /* Set up hardware frames context */
     ret = vtdec_init_hw_frames_ctx(avctx);
     if (ret < 0)
         return ret;
 
-    /* Create VTDecompressionSession */
-    ret = vtdec_create_session(avctx);
+    return vtdec_create_session(avctx);
+}
+#endif
+
+#if CONFIG_HEVC_VIDEOTOOLBOX_DECODER
+static av_cold int vtdec_hevc_init(AVCodecContext *avctx)
+{
+    VTDecContext *ctx = avctx->priv_data;
+    int ret;
+
+    if (!avctx->extradata || avctx->extradata_size < 7) {
+        av_log(avctx, AV_LOG_ERROR,
+               "hevc_videotoolbox decoder requires extradata\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    ctx->cm_codec_type = kCMVideoCodecType_HEVC;
+
+    ret = ff_hevc_decode_extradata(avctx->extradata, avctx->extradata_size,
+                                   &ctx->hevc_ps, &ctx->hevc_sei,
+                                   &ctx->is_nalff, &ctx->nal_length_size,
+                                   0, 1, avctx);
     if (ret < 0)
         return ret;
 
-    return 0;
+    /* Find active SPS for dimensions */
+    {
+        const HEVCSPS *sps = NULL;
+        const HEVCPPS *pps = NULL;
+
+        for (int i = 0; i < HEVC_MAX_PPS_COUNT; i++) {
+            if (ctx->hevc_ps.pps_list[i]) {
+                pps = ctx->hevc_ps.pps_list[i];
+                break;
+            }
+        }
+        if (pps && ctx->hevc_ps.sps_list[pps->sps_id])
+            sps = ctx->hevc_ps.sps_list[pps->sps_id];
+
+        if (sps && (!avctx->width || !avctx->height)) {
+            avctx->width  = sps->width;
+            avctx->height = sps->height;
+        }
+
+        if (sps) {
+            avctx->profile = sps->ptl.general_ptl.profile_idc;
+            avctx->level   = sps->ptl.general_ptl.level_idc;
+        }
+    }
+
+    avctx->pix_fmt = AV_PIX_FMT_VIDEOTOOLBOX;
+
+    if (ctx->is_nalff)
+        ret = vtdec_create_fmt_desc_nalff(avctx);
+    else
+        ret = vtdec_create_fmt_desc_hevc_annexb(avctx);
+    if (ret < 0)
+        return ret;
+
+    ret = vtdec_init_hw_frames_ctx(avctx);
+    if (ret < 0)
+        return ret;
+
+    return vtdec_create_session(avctx);
 }
+#endif
 
 /* Convert Annex B start-code-prefixed NALUs to length-prefixed format */
 static int vtdec_annexb_to_mp4(const uint8_t *data, int size,
@@ -535,7 +631,6 @@ static int vtdec_annexb_to_mp4(const uint8_t *data, int size,
                 }
             }
 
-            /* Remove trailing zeros */
             while (nalu_end > nalu_start && nalu_end[-1] == 0)
                 nalu_end--;
 
@@ -596,17 +691,16 @@ static int vtdec_annexb_to_mp4(const uint8_t *data, int size,
     return 0;
 }
 
-/* Convert avcC NALUs from nal_length_size-byte length prefix to 4-byte */
-static int vtdec_normalize_avcc(const uint8_t *data, int size,
-                                int nal_length_size,
-                                uint8_t **out, int *out_size)
+/* Convert nalff NALUs from nal_length_size-byte length prefix to 4-byte */
+static int vtdec_normalize_nalff(const uint8_t *data, int size,
+                                 int nal_length_size,
+                                 uint8_t **out, int *out_size)
 {
     const uint8_t *p = data;
     const uint8_t *end = data + size;
     int total_size = 0;
     uint8_t *dst;
 
-    /* First pass: compute output size */
     while (p + nal_length_size <= end) {
         int nalu_size = 0;
         for (int i = 0; i < nal_length_size; i++)
@@ -629,7 +723,6 @@ static int vtdec_normalize_avcc(const uint8_t *data, int size,
     *out = dst;
     *out_size = total_size;
 
-    /* Second pass: write output */
     p = data;
     while (p + nal_length_size <= end) {
         int nalu_size = 0;
@@ -659,21 +752,17 @@ static int vtdec_decode_packet(AVCodecContext *avctx, const AVPacket *pkt)
     int send_size;
     int ret = 0;
 
-    /* Prepare packet data in length-prefixed format */
-    if (ctx->is_avc && ctx->nal_length_size == 4) {
-        /* Already 4-byte length prefixed, pass directly */
+    if (ctx->is_nalff && ctx->nal_length_size == 4) {
         send_data = pkt->data;
         send_size = pkt->size;
-    } else if (ctx->is_avc) {
-        /* Convert from nal_length_size-byte to 4-byte length prefix */
-        ret = vtdec_normalize_avcc(pkt->data, pkt->size,
-                                   ctx->nal_length_size,
-                                   &converted, &send_size);
+    } else if (ctx->is_nalff) {
+        ret = vtdec_normalize_nalff(pkt->data, pkt->size,
+                                    ctx->nal_length_size,
+                                    &converted, &send_size);
         if (ret < 0)
             return ret;
         send_data = converted;
     } else {
-        /* Convert Annex B to length-prefixed */
         ret = vtdec_annexb_to_mp4(pkt->data, pkt->size,
                                   &converted, &send_size);
         if (ret < 0)
@@ -681,7 +770,6 @@ static int vtdec_decode_packet(AVCodecContext *avctx, const AVPacket *pkt)
         send_data = converted;
     }
 
-    /* Create CMBlockBuffer */
     status = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault,
                                                 (void *)send_data,
                                                 send_size,
@@ -693,7 +781,6 @@ static int vtdec_decode_packet(AVCodecContext *avctx, const AVPacket *pkt)
         goto fail;
     }
 
-    /* Create CMSampleBuffer */
     status = CMSampleBufferCreate(kCFAllocatorDefault,
                                   block_buf, TRUE,
                                   0, 0,
@@ -705,7 +792,6 @@ static int vtdec_decode_packet(AVCodecContext *avctx, const AVPacket *pkt)
         goto fail;
     }
 
-    /* Decode */
     status = VTDecompressionSessionDecodeFrame(ctx->session,
                                                sample_buf,
                                                0, NULL, 0);
@@ -738,10 +824,8 @@ static int vtdec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     AVPacket pkt;
     int ret;
 
-    /* Get a packet from the decoder framework */
     ret = ff_decode_get_packet(avctx, &pkt);
     if (ret == AVERROR_EOF) {
-        /* Flush: drain remaining frames */
         if (ctx->session)
             VTDecompressionSessionWaitForAsynchronousFrames(ctx->session);
         if (!ctx->decoded_frame)
@@ -749,18 +833,15 @@ static int vtdec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     } else if (ret < 0) {
         return ret;
     } else {
-        /* Decode the packet */
         ret = vtdec_decode_packet(avctx, &pkt);
         av_packet_unref(&pkt);
         if (ret < 0)
             return ret;
     }
 
-    /* Check if we got a decoded frame */
     if (!ctx->decoded_frame)
         return AVERROR(EAGAIN);
 
-    /* Set up the output frame */
     frame->format = AV_PIX_FMT_VIDEOTOOLBOX;
     frame->width  = avctx->width;
     frame->height = avctx->height;
@@ -774,7 +855,7 @@ static int vtdec_receive_frame(AVCodecContext *avctx, AVFrame *frame)
         ctx->decoded_frame = NULL;
         return AVERROR(ENOMEM);
     }
-    ctx->decoded_frame = NULL; /* ownership transferred to frame */
+    ctx->decoded_frame = NULL;
 
     if (ctx->cached_hw_frames_ctx) {
         frame->hw_frames_ctx = av_buffer_ref(ctx->cached_hw_frames_ctx);
@@ -797,7 +878,15 @@ static av_cold int vtdec_close(AVCodecContext *avctx)
     }
 
     av_buffer_unref(&ctx->cached_hw_frames_ctx);
-    ff_h264_ps_uninit(&ctx->ps);
+
+#if CONFIG_H264_VIDEOTOOLBOX_DECODER
+    if (avctx->codec_id == AV_CODEC_ID_H264)
+        ff_h264_ps_uninit(&ctx->h264_ps);
+#endif
+#if CONFIG_HEVC_VIDEOTOOLBOX_DECODER
+    if (avctx->codec_id == AV_CODEC_ID_HEVC)
+        ff_hevc_ps_uninit(&ctx->hevc_ps);
+#endif
 
     return 0;
 }
@@ -811,7 +900,6 @@ static void vtdec_flush(AVCodecContext *avctx)
         ctx->decoded_frame = NULL;
     }
 
-    /* Recreate session to flush VT's internal state */
     if (ctx->session) {
         VTDecompressionSessionInvalidate(ctx->session);
         CFRelease(ctx->session);
@@ -841,7 +929,8 @@ static const AVOption vtdec_options[] = {
     { NULL },
 };
 
-static const AVClass vtdec_class = {
+#if CONFIG_H264_VIDEOTOOLBOX_DECODER
+static const AVClass h264_vtdec_class = {
     .class_name = "h264_videotoolbox",
     .item_name  = av_default_item_name,
     .option     = vtdec_options,
@@ -853,9 +942,9 @@ const FFCodec ff_h264_videotoolbox_decoder = {
     CODEC_LONG_NAME("H.264 VideoToolbox Decoder"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_H264,
-    .p.priv_class   = &vtdec_class,
+    .p.priv_class   = &h264_vtdec_class,
     .priv_data_size = sizeof(VTDecContext),
-    .init           = vtdec_init,
+    .init           = vtdec_h264_init,
     FF_CODEC_RECEIVE_FRAME_CB(vtdec_receive_frame),
     .flush          = vtdec_flush,
     .close          = vtdec_close,
@@ -864,3 +953,30 @@ const FFCodec ff_h264_videotoolbox_decoder = {
     .hw_configs     = vtdec_hw_configs,
     .p.wrapper_name = "videotoolbox",
 };
+#endif
+
+#if CONFIG_HEVC_VIDEOTOOLBOX_DECODER
+static const AVClass hevc_vtdec_class = {
+    .class_name = "hevc_videotoolbox",
+    .item_name  = av_default_item_name,
+    .option     = vtdec_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
+const FFCodec ff_hevc_videotoolbox_decoder = {
+    .p.name         = "hevc_videotoolbox",
+    CODEC_LONG_NAME("HEVC VideoToolbox Decoder"),
+    .p.type         = AVMEDIA_TYPE_VIDEO,
+    .p.id           = AV_CODEC_ID_HEVC,
+    .p.priv_class   = &hevc_vtdec_class,
+    .priv_data_size = sizeof(VTDecContext),
+    .init           = vtdec_hevc_init,
+    FF_CODEC_RECEIVE_FRAME_CB(vtdec_receive_frame),
+    .flush          = vtdec_flush,
+    .close          = vtdec_close,
+    .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
+    .hw_configs     = vtdec_hw_configs,
+    .p.wrapper_name = "videotoolbox",
+};
+#endif
