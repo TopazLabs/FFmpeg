@@ -7,7 +7,7 @@ if [ -z "$2" -o -z "$3" -o -z "$4" ]; then
 	exit 1
 fi;
 
-FLAGS=(--disable-decoder=h264 --disable-decoder=hevc --enable-libdav1d --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-ffplay --enable-shared --disable-static --disable-asm --enable-neon --disable-libxcb --disable-sdl2 --disable-xlib)
+FLAGS=(--disable-decoder=h264 --enable-decoder=h264_videotoolbox --disable-decoder=hevc --enable-libdav1d --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-ffplay --enable-shared --disable-static --disable-asm --enable-neon --disable-libxcb --disable-sdl2 --disable-xlib)
 XFLAGS=(--arch=x86_64 --disable-decoder=h264 --disable-decoder=hevc --enable-libdav1d --disable-ffplay --enable-cross-compile --enable-shared --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-libxcb --disable-sdl2 --disable-xlib)
 if [ ! -z "${BUILD_MAC_EXTRA_CONFIGURE_FLAGS}" ]; then
 	FLAGS=(${FLAGS[@]} ${BUILD_MAC_EXTRA_CONFIGURE_FLAGS})

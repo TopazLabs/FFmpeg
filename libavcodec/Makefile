@@ -452,6 +452,7 @@ OBJS-$(CONFIG_H264_VAAPI_ENCODER)      += vaapi_encode_h264.o h264_levels.o \
 OBJS-$(CONFIG_H264_VULKAN_ENCODER)     += vulkan_encode.o vulkan_encode_h264.o \
                                           hw_base_encode.o hw_base_encode_h264.o \
                                           h264_levels.o h2645data.o
+OBJS-$(CONFIG_H264_VIDEOTOOLBOX_DECODER) += videotoolboxdec.o
 OBJS-$(CONFIG_H264_VIDEOTOOLBOX_ENCODER) += videotoolboxenc.o
 OBJS-$(CONFIG_H264_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
 OBJS-$(CONFIG_H264_V4L2M2M_ENCODER)    += v4l2_m2m_enc.o
@@ -484,6 +485,7 @@ OBJS-$(CONFIG_HEVC_VULKAN_ENCODER)     += vulkan_encode.o vulkan_encode_h265.o \
                                           h265_profile_level.o h2645data.o
 OBJS-$(CONFIG_HEVC_V4L2M2M_DECODER)    += v4l2_m2m_dec.o
 OBJS-$(CONFIG_HEVC_V4L2M2M_ENCODER)    += v4l2_m2m_enc.o
+OBJS-$(CONFIG_HEVC_VIDEOTOOLBOX_DECODER) += videotoolboxdec.o
 OBJS-$(CONFIG_HEVC_VIDEOTOOLBOX_ENCODER) += videotoolboxenc.o
 OBJS-$(CONFIG_HNM4_VIDEO_DECODER)      += hnm4video.o
 OBJS-$(CONFIG_HQ_HQA_DECODER)          += hq_hqa.o hq_hqadsp.o hq_common.o canopus.o

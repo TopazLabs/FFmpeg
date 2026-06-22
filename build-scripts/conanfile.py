@@ -42,6 +42,7 @@ class conanRecipe(ConanFile):
             self.requires("zlib-mt/1.2.13")
         else:
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
+
     def generate(self):
         for dep in self.dependencies.values():
             if dep.package_folder:
