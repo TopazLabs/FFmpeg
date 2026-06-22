@@ -17,7 +17,7 @@ class conanRecipe(ConanFile):
             self.options["libaom-av1"].shared = True
 
     def requirements(self):
-        self.requires("videoai/2.0.33-rlm")
+        self.requires("videoai/[~2.0.0]", package_id_mode="minor_mode")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.requires("zimg/3.0.5@josh/oiio3")
         else:
@@ -28,9 +28,6 @@ class conanRecipe(ConanFile):
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
         else:
             self.requires("libaom-av1/3.5.0#041e72afabd2cb62567a667c7f9ed08a")
-            
-    def package_id(self):
-        self.info.requires["videoai"].minor_mode()
 
     def package(self):
 
