@@ -5,6 +5,13 @@ import os
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
     settings = "os", "build_type", "arch"
+    options = {"tensorrt_rtx": [True, False]}
+    default_options = {"tensorrt_rtx": True}
+
+    def config_options(self):
+        # tensorrt_rtx only applies on Windows/Linux; omit from package id elsewhere
+        if self.settings.os not in ("Windows", "Linux"):
+            del self.options.tensorrt_rtx
 
     def configure(self):
         self.options["zimg"].shared = True
@@ -15,6 +22,9 @@ class conanRecipe(ConanFile):
 
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
+
+        if self.settings.os == "Windows" or self.settings.os == "Linux":
+            self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
 
     def requirements(self):
         self.requires("videoai/[~2.0.0]", package_id_mode="minor_mode")
