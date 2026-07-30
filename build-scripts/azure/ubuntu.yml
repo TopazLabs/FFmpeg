@@ -1,3 +1,8 @@
+parameters:
+  - name: tensorrt_rtx
+    type: boolean
+    default: false
+
 steps:
   - checkout: self
   - checkout: topaz-conan-dev
@@ -16,7 +21,7 @@ steps:
       
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
-      bash ./build-scripts/linux/conan_linux.sh
+      bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }}
     displayName: Install conan packages
     
   - bash: |

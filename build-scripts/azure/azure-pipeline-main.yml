@@ -15,6 +15,10 @@ parameters:
     displayName: 'Linux (Ubuntu 22.04)'
     type: boolean
     default: true
+  - name: linux_tensorrt_rtx
+    displayName: 'Linux TensorRT RTX (Ubuntu 22.04)'
+    type: boolean
+    default: false
   - name: mac
     displayName: 'MacOS'
     type: boolean
@@ -93,6 +97,8 @@ stages:
         name: UbuntuVMSS
       steps:
         - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: ${{ parameters.linux_tensorrt_rtx }}
 
   - ${{ if eq(parameters.mac, true) }}:
     - job: Mac
