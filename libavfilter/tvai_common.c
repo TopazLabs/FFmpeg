@@ -49,8 +49,102 @@ void ff_tvai_prepareBufferInput(TVAIBuffer* ioBuffer, AVFrame *in) {
   ioBuffer->duration = in->duration;
 }
 
-AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer) {
-  AVFrame* out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
+static void tvai_frame_release_cb(void *opaque, uint8_t *data) {
+    tvai_release_frame(opaque);
+}
+
+/* Zero-copy output: wrap an SDK-owned frame (tvai_output_frame_ref) into an
+ * AVFrame whose buffer returns to the SDK's frame pool on last unref. Only
+ * possible for rgbf32, where the SDK's internal FP32 frame matches the link
+ * pixel format bit-for-bit. Returns NULL if the SDK has no frame to hand out
+ * (caller falls back to the copying path). */
+static AVFrame* tvai_wrap_output_frame(void *pProcessor, AVFilterLink *outlink, TVAIBuffer* oBuffer) {
+    void *handle = NULL;
+    AVFrame *out;
+    if (tvai_output_frame_ref(pProcessor, oBuffer, &handle))
+        return NULL;
+    out = av_frame_alloc();
+    if (!out) {
+        tvai_release_frame(handle);
+        return NULL;
+    }
+    out->format = outlink->format;
+    out->width  = outlink->w;
+    out->height = outlink->h;
+    /* NOTE: the SDK pool memory is currently not CUDA-pinned. If the SDK ever
+     * pins its OUT_FRAME pool, hwupload's host->device copy becomes truly
+     * asynchronous and freeing this buffer right after av_hwframe_transfer_data
+     * would race the DMA; the transfer would then need a sync or a held ref. */
+    out->buf[0] = av_buffer_create(oBuffer->pBuffer, oBuffer->lineSize * outlink->h,
+                                   tvai_frame_release_cb, handle, 0);
+    if (!out->buf[0]) {
+        av_frame_free(&out);
+        tvai_release_frame(handle);
+        return NULL;
+    }
+    out->data[0]     = oBuffer->pBuffer;
+    out->linesize[0] = oBuffer->lineSize;
+    out->sample_aspect_ratio = outlink->sample_aspect_ratio;
+    out->colorspace  = outlink->colorspace;
+    out->color_range = outlink->color_range;
+    return out;
+}
+
+#define TVAI_POOL_ALIGN 64
+
+static void tvai_pool_buffer_free(void *opaque, uint8_t *data) {
+  tvai_free_buffer(data);
+}
+
+static AVBufferRef *tvai_pool_alloc_cb(size_t size) {
+  void *p = tvai_alloc_buffer(size);
+  AVBufferRef *ref;
+  if (!p)
+      return NULL;
+  ref = av_buffer_create(p, size, tvai_pool_buffer_free, NULL, 0);
+  if (!ref)
+      tvai_free_buffer(p);
+  return ref;
+}
+
+AVFrame* ff_tvai_pool_frame(AVBufferPool **pPool, AVFilterLink *link, int format, int w, int h) {
+  AVFrame *frame;
+  if (!*pPool) {
+      int size = av_image_get_buffer_size(format, w, h, TVAI_POOL_ALIGN);
+      if (size < 0)
+          return NULL;
+      *pPool = av_buffer_pool_init(size, tvai_pool_alloc_cb);
+      if (!*pPool)
+          return NULL;
+  }
+  frame = av_frame_alloc();
+  if (!frame)
+      return NULL;
+  frame->buf[0] = av_buffer_pool_get(*pPool);
+  if (!frame->buf[0])
+      goto fail;
+  if (av_image_fill_arrays(frame->data, frame->linesize, frame->buf[0]->data,
+                           format, w, h, TVAI_POOL_ALIGN) < 0)
+      goto fail;
+  frame->format = format;
+  frame->width  = w;
+  frame->height = h;
+  frame->sample_aspect_ratio = link->sample_aspect_ratio;
+  frame->colorspace  = link->colorspace;
+  frame->color_range = link->color_range;
+  frame->alpha_mode  = link->alpha_mode;
+  return frame;
+fail:
+  av_frame_free(&frame);
+  return NULL;
+}
+
+AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer, AVBufferPool **pPool) {
+  AVFrame* out = NULL;
+  if (pPool)
+      out = ff_tvai_pool_frame(pPool, outlink, outlink->format, outlink->w, outlink->h);
+  if (!out)
+      out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
   if (!out) {
       av_log(NULL, AV_LOG_ERROR, "The processing has failed, unable to create output buffer of size:%dx%d\n", outlink->w, outlink->h);
       return NULL;
@@ -72,7 +166,17 @@ int ff_tvai_prepareProcessorInfo(char *deviceString, VideoProcessorInfo* pProces
   }
   tvai_vp_name(pProcessorInfo->basic.modelName, procIndex, (char*)pProcessorInfo->basic.processorName);
   pProcessorInfo->basic.preflight = 0;
-  pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGB16;
+  switch (pInlink->format) {
+  case AV_PIX_FMT_RGBF32:
+      pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGB32F;
+      break;
+  case AV_PIX_FMT_RGBAF32:
+      pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGBA32F;
+      break;
+  default:
+      pProcessorInfo->basic.pixelFormat = TVAIPixelFormatRGB16;
+      break;
+  }
   pProcessorInfo->basic.inputWidth = pInlink->w;
   pProcessorInfo->basic.inputHeight = pInlink->h;
   pProcessorInfo->basic.timebase = av_q2d(pInlink->time_base);
@@ -95,12 +199,19 @@ int ff_tvai_process(void *pFrameProcessor, AVFrame* frame) {
     return 0;
 }
 
-int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame) {
+int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, AVBufferPool **pPool) {
     int n = tvai_output_count(pProcessor), i;
     for(i=0;i<n;i++) {
-        TVAIBuffer oBuffer;
-        AVFrame *out = ff_tvai_prepareBufferOutput(outlink, &oBuffer);
-        if(out != NULL && tvai_output_frame(pProcessor, &oBuffer) == 0) {
+        TVAIBuffer oBuffer = {0};
+        AVFrame *out = NULL;
+        if (outlink->format == AV_PIX_FMT_RGBF32)
+            out = tvai_wrap_output_frame(pProcessor, outlink, &oBuffer);
+        if (out == NULL) {
+            out = ff_tvai_prepareBufferOutput(outlink, &oBuffer, pPool);
+            if (out != NULL && tvai_output_frame(pProcessor, &oBuffer) != 0)
+                av_frame_free(&out);
+        }
+        if(out != NULL) {
             av_frame_copy_props(out, frame);
             out->duration = oBuffer.duration;
             out->pts = oBuffer.pts;
@@ -161,12 +272,12 @@ DictionaryItem* ff_tvai_alloc_copy_entries(AVDictionary* dict, int *pCount) {
     return pDictInfo;
 }
 
-int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame) {
+int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame, AVBufferPool **pPool) {
     tvai_end_stream(pFrameProcessor);
     int i = 0, remaining = tvai_remaining_frames(pFrameProcessor), pr = 0;
     unsigned int timeout_count = tvai_timeout_count(pFrameProcessor, remaining);
     while(remaining > 0 && i < timeout_count) {
-        int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame);
+        int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame, pPool);
         if(ret)
             return ret;
         tvai_wait(500);

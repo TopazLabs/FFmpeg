@@ -137,7 +137,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in);
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, NULL);
 }
 
 static int request_frame(AVFilterLink *outlink) {
@@ -145,7 +145,7 @@ static int request_frame(AVFilterLink *outlink) {
     TVAIStbContext *tvai = ctx->priv;
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
-        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame);
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame, NULL);
         if(r)
             return r;
     }

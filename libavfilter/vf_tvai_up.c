@@ -46,7 +46,13 @@ typedef struct TVAIUpContext {
     AVDictionary *parameters;
     DictionaryItem* modelParameters;
     int modelParameterCount;
-    char *deviceString;    
+    char *deviceString;
+    /* Pools of SDK page-locked host buffers so upstream hwdownload and
+     * downstream hwupload DMA directly instead of staging through pageable
+     * memory. in_pool serves the input pad's get_buffer hook (i.e. the
+     * upstream filter's output allocation), out_pool the output frames. */
+    AVBufferPool *in_pool, *out_pool;
+    int in_pool_w, in_pool_h, in_pool_fmt;
 } TVAIUpContext;
 
 #define OFFSET(x) offsetof(TVAIUpContext, x)
@@ -116,8 +122,8 @@ static int config_props(AVFilterLink *outlink) {
       av_log(ctx, AV_LOG_VERBOSE, "SAR: %lf scale: %d x: %f y: %f v: %f\n", sar, tvai->basicInfo.scale, x, y, v);
     }
     info.frameCount = tvai->estimateFrameCount;
-    av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", info.basic.modelName, info.basic.scale, 
-            info.basic.device.index, info.basic.device.maxMemory, info.basic.device.extraThreadCount, info.basic.canDownloadModel);
+    av_log(ctx, AV_LOG_VERBOSE, "Here init with perf options: model: %s scale: %d device: %d vram: %lf threads: %d downloads: %d\n", tvai->basicInfo.modelName, tvai->basicInfo.scale, 
+            tvai->basicInfo.device.index, tvai->basicInfo.device.maxMemory, tvai->basicInfo.device.extraThreadCount, tvai->basicInfo.canDownloadModel);
     ff_av_dict_log(ctx, "Parameters", tvai->parameters);
     if(ff_tvai_prepareProcessorInfo(tvai->deviceString, &info, ModelTypeUpscaling, outlink, &(tvai->basicInfo), tvai->estimateFrameCount > 0, tvai->modelParameters, tvai->modelParameterCount)) {
         return AVERROR(EINVAL);
@@ -130,8 +136,26 @@ static int config_props(AVFilterLink *outlink) {
 
 static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_RGB48,
+    AV_PIX_FMT_RGBF32,
+    AV_PIX_FMT_RGBAF32,
     AV_PIX_FMT_NONE
 };
+
+static AVFrame *get_in_buffer(AVFilterLink *inlink, int w, int h) {
+    AVFilterContext *ctx = inlink->dst;
+    TVAIUpContext *tvai = ctx->priv;
+    AVFrame *frame;
+    if (tvai->in_pool && (w != tvai->in_pool_w || h != tvai->in_pool_h ||
+                          inlink->format != tvai->in_pool_fmt))
+        av_buffer_pool_uninit(&tvai->in_pool);
+    tvai->in_pool_w   = w;
+    tvai->in_pool_h   = h;
+    tvai->in_pool_fmt = inlink->format;
+    frame = ff_tvai_pool_frame(&tvai->in_pool, inlink, inlink->format, w, h);
+    if (!frame)
+        frame = ff_default_get_video_buffer(inlink, w, h);
+    return frame;
+}
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
@@ -145,7 +169,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in);
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, &tvai->out_pool);
 }
 
 static int request_frame(AVFilterLink *outlink) {
@@ -153,7 +177,7 @@ static int request_frame(AVFilterLink *outlink) {
     TVAIUpContext *tvai = ctx->priv;
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
-        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame);
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame, &tvai->out_pool);
         if(r)
             return r;
     }
@@ -165,6 +189,9 @@ static av_cold void uninit(AVFilterContext *ctx) {
     av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s %d\n", tvai->basicInfo.modelName, tvai->pFrameProcessor == NULL);
     if(tvai->pFrameProcessor)
         tvai_destroy(tvai->pFrameProcessor);
+    av_frame_free(&tvai->previousFrame);
+    av_buffer_pool_uninit(&tvai->in_pool);
+    av_buffer_pool_uninit(&tvai->out_pool);
 }
 
 static const AVFilterPad tvai_up_inputs[] = {
@@ -172,6 +199,9 @@ static const AVFilterPad tvai_up_inputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
+        /* Upstream (typically hwdownload) allocates its output here, so
+         * frames land in SDK pinned memory and download via direct DMA. */
+        .get_buffer.video = get_in_buffer,
     },
 };
 

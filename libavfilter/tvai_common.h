@@ -20,15 +20,25 @@ void ff_tvai_handleLogging(void);
 int ff_tvai_prepareProcessorInfo(char *deviceString, VideoProcessorInfo* pProcessorInfo, ModelType modelType, AVFilterLink *pOutlink, 
         BasicProcessorInfo* pBasic, int procIndex, DictionaryItem *pParameters, int parameterCount);
 void ff_tvai_prepareBufferInput(TVAIBuffer* ioBuffer, AVFrame *in);
-AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer);
+/* pPool: optional slot for a pool of SDK page-locked (DMA-capable) host
+ * buffers, lazily created on first use; pass NULL for regular allocation.
+ * Owned by the caller, release with av_buffer_pool_uninit(). */
+AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer, AVBufferPool **pPool);
 
-int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame);
+/* Allocates an AVFrame backed by the SDK frame pool (tvai_alloc_buffer,
+ * page-locked when CUDA is available), creating *pPool on first use.
+ * Returns NULL on failure; the caller should fall back to default
+ * allocation. Frame props are stamped from link like
+ * ff_default_get_video_buffer does. */
+AVFrame* ff_tvai_pool_frame(AVBufferPool **pPool, AVFilterLink *link, int format, int w, int h);
+
+int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, AVBufferPool **pPool);
 int ff_tvai_process(void *pFrameProcessor, AVFrame* frame);
 void ff_tvai_ignore_output(void *pProcessor);
 void av_dict_set_float(AVDictionary **dict, const char *key, float value, int flag);
 void ff_av_dict_log(AVFilterContext *ctx, const char* msg, const AVDictionary *dict);
 DictionaryItem* ff_tvai_alloc_copy_entries(AVDictionary* dict, int *pCount);
 int ff_tvai_copy_entries(AVDictionary* dict, DictionaryItem* pDictInfo);
-int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame);
+int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame, AVBufferPool **pPool);
 
 #endif

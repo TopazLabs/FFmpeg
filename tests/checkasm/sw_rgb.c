@@ -352,7 +352,14 @@ static const enum AVPixelFormat rgb_formats[] = {
         AV_PIX_FMT_BGRA,
         AV_PIX_FMT_ABGR,
         AV_PIX_FMT_ARGB,
+        AV_PIX_FMT_RGB48LE,
+        AV_PIX_FMT_BGR48LE,
 };
+
+/* rgb48/bgr48 use 6 bytes per pixel, the other formats 3 or 4 */
+#define INPUT_SRC(desc, src24, src32, src48)      \
+    ((desc)->comp[0].step == 6 ? (src48) :        \
+     (desc)->nb_components == 3 ? (src24) : (src32))
 
 static void check_rgb_to_y(SwsContext *sws)
 {
@@ -360,6 +367,7 @@ static void check_rgb_to_y(SwsContext *sws)
 
     LOCAL_ALIGNED_16(uint8_t, src24,  [MAX_LINE_SIZE * 3]);
     LOCAL_ALIGNED_16(uint8_t, src32,  [MAX_LINE_SIZE * 4]);
+    LOCAL_ALIGNED_16(uint8_t, src48,  [MAX_LINE_SIZE * 6]);
     LOCAL_ALIGNED_32(uint8_t, dst0_y, [MAX_LINE_SIZE * 2]);
     LOCAL_ALIGNED_32(uint8_t, dst1_y, [MAX_LINE_SIZE * 2]);
 
@@ -369,6 +377,7 @@ static void check_rgb_to_y(SwsContext *sws)
 
     randomize_buffers(src24, MAX_LINE_SIZE * 3);
     randomize_buffers(src32, MAX_LINE_SIZE * 4);
+    randomize_buffers(src48, MAX_LINE_SIZE * 6);
 
     for (int i = 0; i < FF_ARRAY_ELEMS(rgb_formats); i++) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(rgb_formats[i]);
@@ -380,7 +389,7 @@ static void check_rgb_to_y(SwsContext *sws)
             int w = input_sizes[j];
 
             if (check_func(ctx->lumToYV12, "%s_to_y_%d", desc->name, w)) {
-                const uint8_t *src = desc->nb_components == 3 ? src24 : src32;
+                const uint8_t *src = INPUT_SRC(desc, src24, src32, src48);
                 memset(dst0_y, 0xFA, MAX_LINE_SIZE * 2);
                 memset(dst1_y, 0xFA, MAX_LINE_SIZE * 2);
 
@@ -405,6 +414,7 @@ static void check_rgb_to_uv(SwsContext *sws)
 
     LOCAL_ALIGNED_16(uint8_t, src24,  [MAX_LINE_SIZE * 3]);
     LOCAL_ALIGNED_16(uint8_t, src32,  [MAX_LINE_SIZE * 4]);
+    LOCAL_ALIGNED_16(uint8_t, src48,  [MAX_LINE_SIZE * 6]);
     LOCAL_ALIGNED_16(uint8_t, dst0_u, [MAX_LINE_SIZE * 2]);
     LOCAL_ALIGNED_16(uint8_t, dst0_v, [MAX_LINE_SIZE * 2]);
     LOCAL_ALIGNED_16(uint8_t, dst1_u, [MAX_LINE_SIZE * 2]);
@@ -416,6 +426,7 @@ static void check_rgb_to_uv(SwsContext *sws)
 
     randomize_buffers(src24, MAX_LINE_SIZE * 3);
     randomize_buffers(src32, MAX_LINE_SIZE * 4);
+    randomize_buffers(src48, MAX_LINE_SIZE * 6);
 
     for (int i = 0; i < 2 * FF_ARRAY_ELEMS(rgb_formats); i++) {
         enum AVPixelFormat src_fmt = rgb_formats[i / 2];
@@ -432,7 +443,7 @@ static void check_rgb_to_uv(SwsContext *sws)
             if (check_func(ctx->chrToYV12, "%s_to_uv%s_%d", desc->name,
                            ctx->chrSrcHSubSample ? "_half" : "",
                            input_sizes[j])) {
-                const uint8_t *src = desc->nb_components == 3 ? src24 : src32;
+                const uint8_t *src = INPUT_SRC(desc, src24, src32, src48);
                 memset(dst0_u, 0xFF, MAX_LINE_SIZE * 2);
                 memset(dst0_v, 0xFF, MAX_LINE_SIZE * 2);
                 memset(dst1_u, 0xFF, MAX_LINE_SIZE * 2);

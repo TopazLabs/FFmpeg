@@ -2411,7 +2411,7 @@ void ff_get_unscaled_swscale(SwsInternal *c)
     }
     /* yuv2bgr */
     if ((srcFormat == AV_PIX_FMT_YUV420P || srcFormat == AV_PIX_FMT_YUV422P ||
-         srcFormat == AV_PIX_FMT_YUVA420P) && isAnyRGB(dstFormat) &&
+         srcFormat == AV_PIX_FMT_YUVA420P) && isAnyRGB(dstFormat) && !isFloat(dstFormat) &&
         !(flags & SWS_ACCURATE_RND) && (c->opts.dither == SWS_DITHER_BAYER || c->opts.dither == SWS_DITHER_AUTO) && !(dstH & 1)) {
         c->convert_unscaled = ff_yuv2rgb_get_func_ptr(c);
         c->dst_slice_align = 2;
