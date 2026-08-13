@@ -1,6 +1,8 @@
 $(SUBDIR)x86/swscale_mmx.o: CFLAGS += $(NOREDZONE_FLAGS)
 
-OBJS                            += x86/rgb2rgb.o                        \
+OBJS                            += x86/input_rgb48.o                    \
+                                   x86/output_rgbf32.o                  \
+                                   x86/rgb2rgb.o                        \
                                    x86/swscale.o                        \
                                    x86/yuv2rgb.o                        \
 

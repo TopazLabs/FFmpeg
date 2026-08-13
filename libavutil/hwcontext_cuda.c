@@ -61,6 +61,9 @@ static const enum AVPixelFormat supported_formats[] = {
     AV_PIX_FMT_0BGR32,
     AV_PIX_FMT_RGB32,
     AV_PIX_FMT_BGR32,
+    AV_PIX_FMT_RGB48,
+    AV_PIX_FMT_RGBF32,
+    AV_PIX_FMT_RGBAF32,
 #if CONFIG_VULKAN
     AV_PIX_FMT_VULKAN,
 #endif
@@ -283,11 +286,13 @@ static int cuda_transfer_data(AVHWFramesContext *ctx, AVFrame *dst,
             goto exit;
     }
 
-    if (!dst->hw_frames_ctx) {
-        ret = CHECK_CU(cu->cuStreamSynchronize(hwctx->stream));
-        if (ret < 0)
-            goto exit;
-    }
+    /* Synchronize for uploads as well as downloads: with a page-locked
+     * source (e.g. buffers from the TVAI frame pool) cuMemcpy2DAsync is
+     * genuinely asynchronous, and callers like hwupload free the source
+     * frame as soon as this function returns. */
+    ret = CHECK_CU(cu->cuStreamSynchronize(hwctx->stream));
+    if (ret < 0)
+        goto exit;
 
 exit:
     CHECK_CU(cu->cuCtxPopCurrent(&dummy));

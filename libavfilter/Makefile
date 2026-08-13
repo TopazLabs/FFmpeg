@@ -252,6 +252,9 @@ OBJS-$(CONFIG_COLORSPACE_FILTER)             += vf_colorspace.o colorspacedsp.o
 OBJS-$(CONFIG_COLORSPACE_CUDA_FILTER)        += vf_colorspace_cuda.o \
                                                 vf_colorspace_cuda.ptx.o \
                                                 cuda/load_helper.o
+OBJS-$(CONFIG_RGB48_CUDA_FILTER)             += vf_rgb48_cuda.o \
+                                                vf_rgb48_cuda.ptx.o \
+                                                cuda/load_helper.o
 OBJS-$(CONFIG_COLORTEMPERATURE_FILTER)       += vf_colortemperature.o
 OBJS-$(CONFIG_CONVOLUTION_FILTER)            += vf_convolution.o
 OBJS-$(CONFIG_CONVOLUTION_OPENCL_FILTER)     += vf_convolution_opencl.o opencl.o \
