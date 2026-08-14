@@ -19,6 +19,7 @@ class conanRecipe(ConanFile):
         
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
+            self.options["videoai"].tensorrt_rtx = True
 
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
@@ -28,7 +29,7 @@ class conanRecipe(ConanFile):
 
     # windows libaom-av1 build different recipe revision id for some reason...
     def requirements(self):
-        self.requires("videoai/2.0.31-n1x+1")
+        self.requires("videoai/2.0.39-n1x+1")
         if self.settings.os == "Windows" and self.settings.arch == "armv8":
             self.requires("libvpx/1.15.2")    
             self.requires("libaom-av1/3.8.0")
