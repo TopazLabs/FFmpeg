@@ -3,16 +3,11 @@ os=Windows
 arch=x86_64
 compiler=msvc
 compiler.version=194
-compiler.cppstd=14
+compiler.cppstd=17
 compiler.runtime=dynamic
 compiler.runtime_type=Release
 build_type=Release
 libvpx*:compiler.runtime=static
 libaom-av1*:compiler.runtime=static
 zlib-mt*:compiler.runtime=static
-onnx/*:compiler.cppstd=17
-onnxruntime/*:compiler.cppstd=17
-re2/*:compiler.cppstd=17
-abseil/*:compiler.cppstd=17
-protobuf/*:compiler.cppstd=17
 [options]
