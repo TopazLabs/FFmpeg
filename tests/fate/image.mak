@@ -331,7 +331,7 @@ FATE_EXR-$(call DEMDEC, IMAGE2, EXR, SCALE_FILTER) += $(FATE_EXR)
 FATE_IMAGE_FRAMECRC += $(FATE_EXR-yes)
 fate-exr: $(FATE_EXR-yes)
 
-FATE_JPG-$(call DEMDEC, IMAGE2, MJPEG, SCALE_FILTER) += fate-jpg-12bpp
+FATE_JPG-$(call FRAMECRC, IMAGE2, MJPEG, SCALE_FILTER SETSAR_FILTER) += fate-jpg-12bpp
 fate-jpg-12bpp: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpg/12bpp.jpg -f rawvideo -pix_fmt gray16le -vf setsar=sar=sar,scale
 
 FATE_JPG += fate-jpg-jfif
@@ -360,7 +360,14 @@ fate-jpg-rgb-5: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpg/jpg-8930-5.
 FATE_JPG_TRANSCODE-$(call TRANSCODE, MJPEG, MJPEG IMAGE_JPEG_PIPE, IMAGE_PNG_PIPE_DEMUXER PNG_DECODER SCALE_FILTER) += fate-jpg-icc
 fate-jpg-icc: CMD = transcode png_pipe $(TARGET_SAMPLES)/png1/lena-int_rgb24.png mjpeg "-vf scale" "" "-show_frames"
 
-FATE_JPG-$(call DEMDEC, IMAGE2, MJPEG) += $(FATE_JPG)
+FATE_JPG_TRANSCODE-$(call TRANSCODE, TIFF, IMAGE2 IMAGE_JPEG_PIPE, IMAGE_TIFF_PIPE_DEMUXER MJPEG_DECODER SCALE_FILTER) += fate-jpg-exif-autorotate fate-jpg-exif-rotation-override
+fate-jpg-exif-autorotate: CMD = transcode jpeg_pipe $(TARGET_SAMPLES)/jpg/Landscape_5.jpg image2 "-c:v tiff -vf scale" "" "-show_frames"
+fate-jpg-exif-rotation-override: CMD = transcode jpeg_pipe $(TARGET_SAMPLES)/jpg/Landscape_5.jpg image2 "-c:v tiff -vf scale" "" "-show_frames" "" "" "-noautorotate -display_rotation 0"
+
+FATE_JPG_TRANSCODE-$(call TRANSCODE, PNG, IMAGE2 IMAGE_JPEG_PIPE, IMAGE_PNG_PIPE_DEMUXER MJPEG_DECODER SCALE_FILTER) += fate-jpg-exif-noautorotate
+fate-jpg-exif-noautorotate: CMD = transcode jpeg_pipe $(TARGET_SAMPLES)/jpg/Landscape_5.jpg image2 "-c:v png -vf scale" "" "-show_frames" "" "-noautorotate" "-noautorotate"
+
+FATE_JPG-$(call FRAMECRC, IMAGE2, MJPEG) += $(FATE_JPG)
 FATE_IMAGE_FRAMECRC += $(FATE_JPG-yes)
 FATE_IMAGE_TRANSCODE += $(FATE_JPG_TRANSCODE-yes)
 fate-jpg: $(FATE_JPG-yes) $(FATE_JPG_TRANSCODE-yes)
@@ -376,6 +383,12 @@ fate-jpegls-5bpc: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/32.jls
 
 FATE_JPEGLS += fate-jpegls-7bpc
 fate-jpegls-7bpc: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/128.jls
+
+FATE_JPEGLS += fate-jpegls-ilv0-rst
+fate-jpegls-ilv0-rst: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/ilv0_rst.jls
+
+FATE_JPEGLS += fate-jpegls-ilv1-rst
+fate-jpegls-ilv1-rst: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/jpegls/ilv1_rst.jls
 
 FATE_JPEGLS-$(call DEMDEC, IMAGE2, JPEGLS) += $(FATE_JPEGLS)
 FATE_IMAGE_FRAMECRC += $(FATE_JPEGLS-yes)
@@ -437,7 +450,7 @@ FATE_PSD-$(call DEMDEC, IMAGE2, PSD, SCALE_FILTER) += fate-psd-$(1)
 fate-psd-$(1): CMD = framecrc -i $(TARGET_SAMPLES)/psd/lena-$(1).psd -sws_flags +accurate_rnd+bitexact -pix_fmt rgb24 -vf scale
 endef
 
-PSD_COLORSPACES = gray8 gray16 rgb24 rgb48 rgba rgba64 ya8 ya16
+PSD_COLORSPACES = gray8 gray16 rgb24 rgb48 rgba rgbxx rgba64 ya8 ya16
 $(foreach CLSP,$(PSD_COLORSPACES),$(eval $(call FATE_IMGSUITE_PSD,$(CLSP))))
 
 FATE_PSD += fate-psd-lena-127x127-rgb24
@@ -589,7 +602,7 @@ FATE_XBM-$(call DEMDEC, IMAGE2, XBM) += $(FATE_XBM)
 FATE_IMAGE_FRAMECRC += $(FATE_XBM-yes)
 fate-xbm: $(FATE_XBM-yes)
 
-FATE_IMAGE-$(call ALLYES, FILE_PROTOCOL FRAMECRC_MUXER PIPE_PROTOCOL) += $(FATE_IMAGE_FRAMECRC) $(FATE_IMAGE_FRAMECRC-yes)
+FATE_IMAGE-$(call ALLYES, FRAMECRC_MUXER PIPE_PROTOCOL) += $(FATE_IMAGE_FRAMECRC) $(FATE_IMAGE_FRAMECRC-yes)
 FATE_IMAGE += $(FATE_IMAGE-yes)
 FATE_IMAGE_PROBE += $(FATE_IMAGE_PROBE-yes)
 FATE_IMAGE_TRANSCODE += $(FATE_IMAGE_TRANSCODE-yes)

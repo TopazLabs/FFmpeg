@@ -169,6 +169,7 @@ typedef struct VVCPH {
 #define ALF_NUM_COEFF_CC         7
 
 typedef struct VVCALF {
+    const H266RawAPS *r;
     int16_t luma_coeff     [ALF_NUM_FILTERS_LUMA][ALF_NUM_COEFF_LUMA];
     uint8_t luma_clip_idx  [ALF_NUM_FILTERS_LUMA][ALF_NUM_COEFF_LUMA];
 
@@ -265,8 +266,9 @@ typedef struct VVCSH {
 } VVCSH;
 
 struct VVCContext;
+struct VVCFrameContext;
 
-int ff_vvc_decode_frame_ps(VVCFrameParamSets *fps, struct VVCContext *s);
+int ff_vvc_decode_frame_ps(struct VVCFrameContext *fc, struct VVCContext *s);
 int ff_vvc_decode_aps(VVCParamSets *ps, const CodedBitstreamUnit *unit);
 int ff_vvc_decode_sh(VVCSH *sh, const VVCFrameParamSets *ps, const CodedBitstreamUnit *unit);
 void ff_vvc_frame_ps_free(VVCFrameParamSets *fps);

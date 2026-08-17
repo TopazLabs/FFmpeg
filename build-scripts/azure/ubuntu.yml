@@ -1,7 +1,13 @@
+parameters:
+  - name: tensorrt_rtx
+    type: boolean
+    default: false
+
 steps:
   - checkout: self
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
+  - checkout: pipeline-helper
   
   - template: set_tools_and_deps.yml
     parameters:
@@ -15,15 +21,17 @@ steps:
       
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
-      bash ./build-scripts/linux/conan_linux.sh
+      bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }}
     displayName: Install conan packages
     
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
+      git apply ./build-scripts/configure-dav1d.patch
       git apply ./build-scripts/configure-zimg.patch
-      echo ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      git apply ./build-scripts/configure-aom.patch
+      echo ./configure --enable-libdav1d  --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
       set -e
-      ./configure --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      ./configure --enable-libdav1d  --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
       
       make clean
       make -j$(nproc) install
@@ -31,10 +39,24 @@ steps:
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         exit 0
       else
-        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_ubuntu22.04/build_type\=Release/
+        mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
-        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_ubuntu22.04/build_type\=Release/
+        cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cd $(Build.SourcesDirectory)/topaz-conan-dev
-        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan
+        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }}
       fi
     displayName: Build FFmpeg
+
+  - bash: |
+      cp "$(Build.SourcesDirectory)/pipeline-helper/dependency-manager/dependency_viewer.py" "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
+      cd "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
+
+      cp ./linux/profile_ubuntu22.04 ./profile_ubuntu22.04
+
+      python dependency_viewer.py -os=LIN -ar=x86_64 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
+    condition: and(succeeded(), ne(variables['PUBLISH'], ''))
+    displayName: Slack Dependency Manager
+    continueOnError: true 
+    env:
+      DEPENDENCY_MANAGER_SLACK_WEBHOOK: $(DEPENDENCY_MANAGER_SLACK_WEBHOOK)
+      BUILD_TYPE: ""

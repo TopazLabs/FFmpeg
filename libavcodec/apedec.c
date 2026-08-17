@@ -22,6 +22,7 @@
 
 #include <inttypes.h>
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/crc.h"
@@ -1729,7 +1730,7 @@ static int ape_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     return !s->samples ? avpkt->size : 0;
 }
 
-static void ape_flush(AVCodecContext *avctx)
+static av_cold void ape_flush(AVCodecContext *avctx)
 {
     APEContext *s = avctx->priv_data;
     s->samples= 0;
@@ -1759,17 +1760,9 @@ const FFCodec ff_ape_decoder = {
     .init           = ape_decode_init,
     .close          = ape_decode_close,
     FF_CODEC_DECODE_CB(ape_decode_frame),
-    .p.capabilities =
-#if FF_API_SUBFRAMES
-                      AV_CODEC_CAP_SUBFRAMES |
-#endif
-                      AV_CODEC_CAP_DELAY |
+    .p.capabilities = AV_CODEC_CAP_DELAY |
                       AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
     .flush          = ape_flush,
-    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
-                                                      AV_SAMPLE_FMT_S16P,
-                                                      AV_SAMPLE_FMT_S32P,
-                                                      AV_SAMPLE_FMT_NONE },
     .p.priv_class   = &ape_decoder_class,
 };

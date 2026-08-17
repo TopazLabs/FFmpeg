@@ -65,7 +65,7 @@ static const char *const slave_bsfs_spec_sep = "/";
 static const char *const slave_select_sep = ",";
 
 #define OFFSET(x) offsetof(TeeContext, x)
-static const AVOption options[] = {
+static const AVOption tee_options[] = {
         {"use_fifo", "Use fifo pseudo-muxer to separate actual muxers from encoder",
          OFFSET(use_fifo), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
         {"fifo_options", "fifo pseudo-muxer options", OFFSET(fifo_options),
@@ -76,7 +76,7 @@ static const AVOption options[] = {
 static const AVClass tee_muxer_class = {
     .class_name = "Tee muxer",
     .item_name  = av_default_item_name,
-    .option = options,
+    .option     = tee_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
@@ -167,6 +167,8 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
     if ((ret = ff_tee_parse_slave_options(avf, slave, &options, &filename)) < 0)
         return ret;
 
+    tee_slave->on_fail = DEFAULT_SLAVE_FAILURE_POLICY;
+
 #define CONSUME_OPTION(option, field, action) do {                      \
         AVDictionaryEntry *en = av_dict_get(options, option, NULL, 0);  \
         if (en) {                                                       \
@@ -197,7 +199,7 @@ static int open_slave(AVFormatContext *avf, char *slave, TeeSlave *tee_slave)
     PROCESS_OPTION("fifo_options",
                    parse_slave_fifo_options(value, tee_slave), ;);
     entry = NULL;
-    while ((entry = av_dict_get(options, "bsfs", entry, AV_DICT_IGNORE_SUFFIX))) {
+    while ((entry = av_dict_get(options, "bsfs", NULL, AV_DICT_IGNORE_SUFFIX))) {
         /* trim out strlen("bsfs") characters from key */
         av_dict_set(&bsf_options, entry->key + 4, entry->value, 0);
         av_dict_set(&options, entry->key, NULL, 0);
@@ -610,10 +612,6 @@ const FFOutputFormat ff_tee_muxer = {
     .write_trailer     = tee_write_trailer,
     .write_packet      = tee_write_packet,
     .p.priv_class      = &tee_muxer_class,
-#if FF_API_ALLOW_FLUSH
-    .p.flags           = AVFMT_NOFILE | AVFMT_ALLOW_FLUSH | AVFMT_TS_NEGATIVE,
-#else
     .p.flags           = AVFMT_NOFILE | AVFMT_TS_NEGATIVE,
-#endif
     .flags_internal    = FF_OFMT_FLAG_ALLOW_FLUSH,
 };

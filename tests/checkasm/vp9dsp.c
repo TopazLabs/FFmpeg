@@ -47,7 +47,7 @@ static const uint32_t pixel_mask[3] = { 0xffffffff, 0x03ff03ff, 0x0fff0fff };
         }                                                          \
     } while (0)
 
-static void check_ipred(void)
+void checkasm_check_vp9_ipred(void)
 {
     LOCAL_ALIGNED_32(uint8_t, a_buf, [64 * 2]);
     uint8_t *a = &a_buf[32 * 2];
@@ -256,7 +256,7 @@ static int copy_subcoefs(int16_t *out, const int16_t *in, enum TxfmMode tx,
     // copy the topleft coefficients such that the return value (being the
     // coefficient scantable index for the eob token) guarantees that only
     // the topleft $sub out of $sz (where $sz >= $sub) coefficients in both
-    // dimensions are non-zero. This leads to braching to specific optimized
+    // dimensions are non-zero. This leads to branching to specific optimized
     // simd versions (e.g. dc-only) so that we get full asm coverage in this
     // test
 
@@ -308,15 +308,15 @@ static int is_zero(const int16_t *c, int sz)
 
 #define SIZEOF_COEF (2 * ((bit_depth + 7) / 8))
 
-static void check_itxfm(void)
+void checkasm_check_vp9_itxfm(void)
 {
-    LOCAL_ALIGNED_32(uint8_t, src, [32 * 32 * 2]);
-    LOCAL_ALIGNED_32(uint8_t, dst, [32 * 32 * 2]);
-    LOCAL_ALIGNED_32(uint8_t, dst0, [32 * 32 * 2]);
-    LOCAL_ALIGNED_32(uint8_t, dst1, [32 * 32 * 2]);
-    LOCAL_ALIGNED_32(int16_t, coef, [32 * 32 * 2]);
-    LOCAL_ALIGNED_32(int16_t, subcoef0, [32 * 32 * 2]);
-    LOCAL_ALIGNED_32(int16_t, subcoef1, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, src, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, dst, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, dst0, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, dst1, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(int16_t, coef, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(int16_t, subcoef0, [32 * 32 * 2]);
+    LOCAL_ALIGNED_64(int16_t, subcoef1, [32 * 32 * 2]);
     declare_func_emms(AV_CPU_FLAG_MMX | AV_CPU_FLAG_MMXEXT, void, uint8_t *dst, ptrdiff_t stride, int16_t *block, int eob);
     VP9DSPContext dsp;
     int y, x, tx, txtp, bit_depth, sub;
@@ -449,7 +449,7 @@ static void randomize_loopfilter_buffers(int bidx, int lineoff, int str,
         randomize_loopfilter_buffers(bidx, lineoff, str, bit_depth, dir, \
                                      E, F, H, I, buf0, buf1)
 
-static void check_loopfilter(void)
+void checkasm_check_vp9_loopfilter(void)
 {
     LOCAL_ALIGNED_32(uint8_t, base0, [32 + 16 * 16 * 2]);
     LOCAL_ALIGNED_32(uint8_t, base1, [32 + 16 * 16 * 2]);
@@ -556,11 +556,11 @@ static void check_loopfilter(void)
         }                                                 \
     } while (0)
 
-static void check_mc(void)
+void checkasm_check_vp9_mc(void)
 {
-    LOCAL_ALIGNED_32(uint8_t, buf, [72 * 72 * 2]);
-    LOCAL_ALIGNED_32(uint8_t, dst0, [64 * 64 * 2]);
-    LOCAL_ALIGNED_32(uint8_t, dst1, [64 * 64 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, buf, [72 * 72 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, dst0, [64 * 64 * 2]);
+    LOCAL_ALIGNED_64(uint8_t, dst1, [64 * 64 * 2]);
     VP9DSPContext dsp;
     int op, hsize, bit_depth, filter, dx, dy;
     declare_func_emms(AV_CPU_FLAG_MMX | AV_CPU_FLAG_MMXEXT, void, uint8_t *dst, ptrdiff_t dst_stride,
@@ -626,8 +626,8 @@ static void check_mc(void)
 
 void checkasm_check_vp9dsp(void)
 {
-    check_ipred();
-    check_itxfm();
-    check_loopfilter();
-    check_mc();
+    checkasm_check_vp9_ipred();
+    checkasm_check_vp9_itxfm();
+    checkasm_check_vp9_loopfilter();
+    checkasm_check_vp9_mc();
 }

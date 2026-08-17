@@ -34,6 +34,35 @@ struct AVDeviceInfoList;
  */
 #define FF_INFMT_FLAG_INIT_CLEANUP                             (1 << 0)
 
+/*
+ * Prefer the codec framerate for avg_frame_rate computation.
+ */
+#define FF_INFMT_FLAG_PREFER_CODEC_FRAMERATE                   (1 << 1)
+
+/**
+ * Automatically parse ID3v2 metadata
+ */
+#define FF_INFMT_FLAG_ID3V2_AUTO                               (1 << 2)
+
+/**
+ * Input format stream state
+ * The stream states to be used for FFInputFormat::read_set_state
+ */
+enum FFInputFormatStreamState {
+     FF_INFMT_STATE_PLAY,
+     FF_INFMT_STATE_PAUSE,
+ };
+
+/**
+ * Command handling options
+ * Different options influencing the behaviour of
+ * the FFInputFormat::handle_command callback.
+ */
+enum FFInputFormatCommandOption {
+    FF_INFMT_COMMAND_SUBMIT,
+    FF_INFMT_COMMAND_GET_REPLY,
+};
+
 typedef struct FFInputFormat {
     /**
      * The public AVInputFormat. See avformat.h for it.
@@ -104,16 +133,40 @@ typedef struct FFInputFormat {
                               int64_t *pos, int64_t pos_limit);
 
     /**
-     * Start/resume playing - only meaningful if using a network-based format
+     * Change the stream state - only meaningful if using a network-based format
      * (RTSP).
      */
-    int (*read_play)(struct AVFormatContext *);
+    int (*read_set_state)(struct AVFormatContext *,
+                          enum FFInputFormatStreamState state);
 
     /**
-     * Pause playing - only meaningful if using a network-based format
-     * (RTSP).
+     * Handle demuxer commands
+     * This callback is used to either send a command to a demuxer
+     * (FF_INFMT_COMMAND_SUBMIT), or to retrieve the reply for
+     * a previously sent command (FF_INFMT_COMMAND_GET_REPLY).
+     *
+     * Demuxers implementing this must return AVERROR(ENOTSUP)
+     * if the provided \p id is not handled by the demuxer.
+     * Demuxers should return AVERROR(EAGAIN) if they can handle
+     * a specific command but are not able to at the moment.
+     * When a reply is requested that is not available yet, the
+     * demuxer should also return AVERROR(EAGAIN).
+     *
+     * Depending on \p opt, the \p data will be either a pointer
+     * to the command payload structure for the specified ID, or
+     * a pointer to the buffer for the command reply for the
+     * specified ID.
+     *
+     * When a command is submitted, before a previous reply
+     * was requested from the demuxer, the demuxer should discard
+     * the old reply.
+     *
+     * @see avformat_send_command()
+     * @see avformat_receive_command_reply()
      */
-    int (*read_pause)(struct AVFormatContext *);
+    int (*handle_command)(struct AVFormatContext *,
+                          enum FFInputFormatCommandOption opt,
+                          enum AVFormatCommandID id, void *data);
 
     /**
      * Seek to timestamp ts.
@@ -169,22 +222,6 @@ typedef struct FFStreamInfo {
  * (ignored streams or junk data). The framework will re-call the demuxer.
  */
 #define FFERROR_REDO FFERRTAG('R','E','D','O')
-
-#define RELATIVE_TS_BASE (INT64_MAX - (1LL << 48))
-
-static av_always_inline int is_relative(int64_t ts)
-{
-    return ts > (RELATIVE_TS_BASE - (1LL << 48));
-}
-
-/**
- * Wrap a given time stamp, if there is an indication for an overflow
- *
- * @param st stream
- * @param timestamp the time stamp to wrap
- * @return resulting time stamp
- */
-int64_t ff_wrap_timestamp(const AVStream *st, int64_t timestamp);
 
 /**
  * Read a transport packet from a media file.
@@ -271,7 +308,7 @@ void ff_rfps_calculate(AVFormatContext *ic);
  * belongs, from a timebase `tb_in` to a timebase `tb_out`.
  *
  * The upper (lower) bound of the output interval is rounded up (down) such that
- * the output interval always falls within the intput interval. The timestamp is
+ * the output interval always falls within the input interval. The timestamp is
  * rounded to the nearest integer and halfway cases away from zero, and can
  * therefore fall outside of the output interval.
  *

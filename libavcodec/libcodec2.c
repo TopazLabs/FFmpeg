@@ -104,13 +104,6 @@ static av_cold int libcodec2_init_encoder(AVCodecContext *avctx)
 {
     LibCodec2Context *c2 = avctx->priv_data;
 
-    //will need to be smarter once we get wideband support
-    if (avctx->sample_rate != 8000 ||
-        avctx->sample_fmt != AV_SAMPLE_FMT_S16) {
-        av_log(avctx, AV_LOG_ERROR, "only 8 kHz 16-bit mono allowed\n");
-        return AVERROR(EINVAL);
-    }
-
     avctx->extradata = av_mallocz(CODEC2_EXTRADATA_SIZE + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!avctx->extradata) {
         return AVERROR(ENOMEM);
@@ -182,9 +175,6 @@ const FFCodec ff_libcodec2_decoder = {
     .p.type                 = AVMEDIA_TYPE_AUDIO,
     .p.id                   = AV_CODEC_ID_CODEC2,
     .p.capabilities         = AV_CODEC_CAP_CHANNEL_CONF,
-    .p.supported_samplerates = (const int[]){ 8000, 0 },
-    .p.sample_fmts          = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
-    .p.ch_layouts           = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO, { 0 } },
     .caps_internal          = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size         = sizeof(LibCodec2Context),
     .init                   = libcodec2_init_decoder,
@@ -199,9 +189,9 @@ const FFCodec ff_libcodec2_encoder = {
     .p.id                   = AV_CODEC_ID_CODEC2,
     .p.capabilities         = AV_CODEC_CAP_DR1 |
                               AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
-    .p.supported_samplerates = (const int[]){ 8000, 0 },
-    .p.sample_fmts          = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE },
-    .p.ch_layouts           = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO, { 0 } },
+    CODEC_SAMPLERATES(8000),
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
+    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO),
     .p.priv_class           = &libcodec2_enc_class,
     .caps_internal          = FF_CODEC_CAP_NOT_INIT_THREADSAFE,
     .priv_data_size         = sizeof(LibCodec2Context),

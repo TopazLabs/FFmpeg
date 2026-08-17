@@ -60,7 +60,7 @@ static int query_formats(const AVFilterContext *ctx,
     AVFilterChannelLayouts *in_layout = NULL, *out_layout = NULL;
     int ret;
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, formats);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, formats);
     if (ret < 0)
         return ret;
 
@@ -171,14 +171,14 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_virtualbass = {
-    .name            = "virtualbass",
-    .description     = NULL_IF_CONFIG_SMALL("Audio Virtual Bass."),
+const FFFilter ff_af_virtualbass = {
+    .p.name          = "virtualbass",
+    .p.description   = NULL_IF_CONFIG_SMALL("Audio Virtual Bass."),
+    .p.priv_class    = &virtualbass_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size       = sizeof(AudioVirtualBassContext),
-    .priv_class      = &virtualbass_class,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC2(query_formats),
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,
 };

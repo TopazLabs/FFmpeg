@@ -158,7 +158,7 @@ You will need the following prerequisites:
 To set up a proper environment in MSYS2, you need to run @code{msys_shell.bat} from
 the Visual Studio or Intel Compiler command prompt.
 
-Place @code{yasm.exe} somewhere in your @code{PATH}.
+Place @code{nasm.exe} somewhere in your @code{PATH}.
 
 Next, make sure any other headers and libs you want to use, such as zlib, are
 located in a spot that the compiler can see. Do so by modifying the @code{LIB}
@@ -301,7 +301,7 @@ These library packages are only available from
 @uref{http://sourceware.org/cygwinports/, Cygwin Ports}:
 
 @example
-yasm, libSDL-devel, libgsm-devel, libmp3lame-devel,
+libSDL-devel, libgsm-devel, libmp3lame-devel,
 speex-devel, libtheora-devel, libxvidcore-devel
 @end example
 
@@ -329,5 +329,21 @@ and for a build with shared libraries
 @example
 ./configure --target-os=mingw32 --enable-shared --disable-static --extra-cflags=-mno-cygwin --extra-libs=-mno-cygwin
 @end example
+
+@section ARM64EC
+
+FFmpeg does not intend to support the Windows ARM64EC build configuration;
+patches for changing the individual libraries for the purposes of ARM64EC will
+not be accepted.
+
+It may still be possible to build FFmpeg in this build configuration;
+such a build may seem to work to some extent. Such a build may have some
+amounts of ABI inconsistencies though - which we are not willing to fix.
+
+(Changing aarch64 assembly code to strictly support ARM64EC would require
+ifdeffing/changing essentially all such assembly code, and would be a
+huge maintenance burden. Additionally, changing the library ABI
+surfaces to fix ABI inconsistencies could require extensive and intrusive
+changes.)
 
 @bye

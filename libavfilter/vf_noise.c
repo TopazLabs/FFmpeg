@@ -24,7 +24,6 @@
  * noise generator
  */
 
-#include "libavutil/emms.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
@@ -47,12 +46,8 @@ typedef struct ThreadData {
     {#name"_seed", "set component #"#x" noise seed", OFFSET(param.seed), AV_OPT_TYPE_INT, {.i64=-1}, -1, INT_MAX, FLAGS},        \
     {#name"_strength", "set component #"#x" strength", OFFSET(param.strength), AV_OPT_TYPE_INT, {.i64=0}, 0, 100, FLAGS},        \
     {#name"s",         "set component #"#x" strength", OFFSET(param.strength), AV_OPT_TYPE_INT, {.i64=0}, 0, 100, FLAGS},        \
-    {#name"_flags", "set component #"#x" flags", OFFSET(param.flags), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, 31, FLAGS, .unit = #name"_flags"}, \
-    {#name"f", "set component #"#x" flags", OFFSET(param.flags), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, 31, FLAGS, .unit = #name"_flags"},      \
-    {"a", "averaged noise", 0, AV_OPT_TYPE_CONST, {.i64=NOISE_AVERAGED}, 0, 0, FLAGS, .unit = #name"_flags"},                            \
-    {"p", "(semi)regular pattern", 0, AV_OPT_TYPE_CONST, {.i64=NOISE_PATTERN},  0, 0, FLAGS, .unit = #name"_flags"},                     \
-    {"t", "temporal noise", 0, AV_OPT_TYPE_CONST, {.i64=NOISE_TEMPORAL}, 0, 0, FLAGS, .unit = #name"_flags"},                            \
-    {"u", "uniform noise",  0, AV_OPT_TYPE_CONST, {.i64=NOISE_UNIFORM},  0, 0, FLAGS, .unit = #name"_flags"},
+    {#name"_flags", "set component #"#x" flags", OFFSET(param.flags), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, 31, FLAGS, .unit = "flags"}, \
+    {#name"f", "set component #"#x" flags", OFFSET(param.flags), AV_OPT_TYPE_FLAGS, {.i64=0}, 0, 31, FLAGS, .unit = "flags"},      \
 
 static const AVOption noise_options[] = {
     NOISE_PARAMS(all, 0, all)
@@ -60,6 +55,10 @@ static const AVOption noise_options[] = {
     NOISE_PARAMS(c1,  1, param[1])
     NOISE_PARAMS(c2,  2, param[2])
     NOISE_PARAMS(c3,  3, param[3])
+    {"a", "averaged noise", 0, AV_OPT_TYPE_CONST, {.i64=NOISE_AVERAGED}, 0, 0, FLAGS, .unit = "flags"},
+    {"p", "(semi)regular pattern", 0, AV_OPT_TYPE_CONST, {.i64=NOISE_PATTERN},  0, 0, FLAGS, .unit = "flags"},
+    {"t", "temporal noise", 0, AV_OPT_TYPE_CONST, {.i64=NOISE_TEMPORAL}, 0, 0, FLAGS, .unit = "flags"},
+    {"u", "uniform noise",  0, AV_OPT_TYPE_CONST, {.i64=NOISE_UNIFORM},  0, 0, FLAGS, .unit = "flags"},
     {NULL}
 };
 
@@ -131,7 +130,9 @@ static av_cold int init_noise(NoiseContext *n, int comp)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *formats = NULL;
     int fmt, ret;
@@ -143,7 +144,7 @@ static int query_formats(AVFilterContext *ctx)
                 return ret;
     }
 
-    return ff_set_common_formats(ctx, formats);
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out, formats);
 }
 
 static int config_input(AVFilterLink *inlink)
@@ -211,8 +212,8 @@ static void noise(uint8_t *dst, const uint8_t *src,
             int shift = p->rand_shift[ix];
 
             if (flags & NOISE_AVERAGED) {
-                n->line_noise_avg(dst + x, src + x, w, (const int8_t**)p->prev_shift[ix]);
-                p->prev_shift[ix][shift & 3] = noise + shift;
+                n->line_noise_avg(dst + x, src + x, w, p->prev_shift[ix]);
+                p->prev_shift[ix][shift % 3] = noise + shift;
             } else {
                 n->line_noise(dst + x, src + x, noise, w, shift);
             }
@@ -269,13 +270,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
                 fp->rand_shift[i] = av_lfg_get(&fp->lfg) & (MAX_SHIFT - 1);
             }
             fp->rand_shift_init = 1;
+            if (fp->flags & NOISE_AVERAGED && outlink->h > MAX_RES)
+                n->slice_threading_impossible = 1;
         }
     }
 
     td.in = inpicref; td.out = out;
     ff_filter_execute(ctx, filter_slice, &td, NULL,
-                      FFMIN(n->height[0], ff_filter_get_nb_threads(ctx)));
-    emms_c();
+                      n->slice_threading_impossible ? 1 :
+                          FFMIN(n->height[0], ff_filter_get_nb_threads(ctx)));
 
     if (inpicref != out)
         av_frame_free(&inpicref);
@@ -331,15 +334,15 @@ static const AVFilterPad noise_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_noise = {
-    .name          = "noise",
-    .description   = NULL_IF_CONFIG_SMALL("Add noise."),
+const FFFilter ff_vf_noise = {
+    .p.name        = "noise",
+    .p.description = NULL_IF_CONFIG_SMALL("Add noise."),
+    .p.priv_class  = &noise_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(NoiseContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(noise_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &noise_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
 };

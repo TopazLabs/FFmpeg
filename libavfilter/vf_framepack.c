@@ -45,7 +45,8 @@ typedef struct FramepackContext {
     int depth;
     const AVPixFmtDescriptor *pix_desc; ///< agreed pixel format
 
-    enum AVStereo3DType format;         ///< frame pack type output
+    /* enum AVStereo3DType */
+    int format;                         ///< frame pack type output
 
     AVFrame *input_views[2];            ///< input frames
 } FramepackContext;
@@ -454,11 +455,11 @@ static const AVFilterPad framepack_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_framepack = {
-    .name          = "framepack",
-    .description   = NULL_IF_CONFIG_SMALL("Generate a frame packed stereoscopic video."),
+const FFFilter ff_vf_framepack = {
+    .p.name        = "framepack",
+    .p.description = NULL_IF_CONFIG_SMALL("Generate a frame packed stereoscopic video."),
+    .p.priv_class  = &framepack_class,
     .priv_size     = sizeof(FramepackContext),
-    .priv_class    = &framepack_class,
     FILTER_INPUTS(framepack_inputs),
     FILTER_OUTPUTS(framepack_outputs),
     FILTER_PIXFMTS_ARRAY(formats_supported),

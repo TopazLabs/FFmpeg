@@ -337,7 +337,7 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
                         break;
                 }
                 if (i >= 0)
-                    ref->pic_id = pred;
+                    pic_id = pred;
                 break;
             }
             case 2: {
@@ -354,7 +354,6 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
                 ref = h->long_ref[long_idx];
                 assert(!(ref && !ref->reference));
                 if (ref && (ref->reference & pic_structure)) {
-                    ref->pic_id = pic_id;
                     assert(ref->long_ref);
                     i = 0;
                 } else {
@@ -371,12 +370,15 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
                        i < 0 ? "reference picture missing during reorder\n" :
                                "mismatching reference\n"
                       );
+                if (h->avctx->err_recognition & AV_EF_EXPLODE) {
+                    return AVERROR_INVALIDDATA;
+                }
                 memset(&sl->ref_list[list][index], 0, sizeof(sl->ref_list[0][0])); // FIXME
             } else {
                 for (i = index; i + 1 < sl->ref_count[list]; i++) {
                     if (sl->ref_list[list][i].parent &&
                         ref->long_ref == sl->ref_list[list][i].parent->long_ref &&
-                        ref->pic_id   == sl->ref_list[list][i].pic_id)
+                        pic_id        == sl->ref_list[list][i].pic_id)
                         break;
                 }
                 for (; i > index; i--) {
@@ -393,6 +395,10 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
         for (int index = 0; index < sl->ref_count[list]; index++) {
             if (   !sl->ref_list[list][index].parent
                 || (!FIELD_PICTURE(h) && (sl->ref_list[list][index].reference&3) != 3)) {
+                if (h->avctx->err_recognition & AV_EF_EXPLODE) {
+                    av_log(h->avctx, AV_LOG_ERROR, "Missing reference picture\n");
+                    return AVERROR_INVALIDDATA;
+                }
                 av_log(h->avctx, AV_LOG_ERROR, "Missing reference picture, default is %d\n", h->default_ref[list].poc);
 
                 for (int i = 0; i < FF_ARRAY_ELEMS(h->last_pocs); i++)
@@ -409,7 +415,7 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
                     if (h->default_ref[list2].parent && !h->default_ref[list2].parent->gray
                         && !(!FIELD_PICTURE(h) && (h->default_ref[list2].reference&3) != 3)) {
                         sl->ref_list[list][index] = h->default_ref[list2];
-                        av_log(h, AV_LOG_DEBUG, "replacement of gray gap frame\n");
+                        av_log(h->avctx, AV_LOG_DEBUG, "replacement of gray gap frame\n");
                         break;
                     }
                 }

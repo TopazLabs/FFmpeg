@@ -79,6 +79,8 @@ static const struct channel_name channel_names[] = {
     [AV_CHAN_SIDE_SURROUND_RIGHT  ] = { "SSR",       "side surround right"   },
     [AV_CHAN_TOP_SURROUND_LEFT    ] = { "TTL",       "top surround left"     },
     [AV_CHAN_TOP_SURROUND_RIGHT   ] = { "TTR",       "top surround right"    },
+    [AV_CHAN_BINAURAL_LEFT        ] = { "BIL",       "binaural left"         },
+    [AV_CHAN_BINAURAL_RIGHT       ] = { "BIR",       "binaural right"        },
 };
 
 void av_channel_name_bprint(AVBPrint *bp, enum AVChannel channel_id)
@@ -211,7 +213,8 @@ static const struct channel_layout_name channel_layout_map[] = {
     { "7.1",            AV_CHANNEL_LAYOUT_7POINT1             },
     { "7.1(wide)",      AV_CHANNEL_LAYOUT_7POINT1_WIDE_BACK   },
     { "7.1(wide-side)", AV_CHANNEL_LAYOUT_7POINT1_WIDE        },
-    { "5.1.2",          AV_CHANNEL_LAYOUT_5POINT1POINT2_BACK  },
+    { "5.1.2",          AV_CHANNEL_LAYOUT_5POINT1POINT2       },
+    { "5.1.2(back)",    AV_CHANNEL_LAYOUT_5POINT1POINT2_BACK  },
     { "octagonal",      AV_CHANNEL_LAYOUT_OCTAGONAL           },
     { "cube",           AV_CHANNEL_LAYOUT_CUBE                },
     { "5.1.4",          AV_CHANNEL_LAYOUT_5POINT1POINT4_BACK  },
@@ -219,7 +222,9 @@ static const struct channel_layout_name channel_layout_map[] = {
     { "7.1.4",          AV_CHANNEL_LAYOUT_7POINT1POINT4_BACK  },
     { "7.2.3",          AV_CHANNEL_LAYOUT_7POINT2POINT3       },
     { "9.1.4",          AV_CHANNEL_LAYOUT_9POINT1POINT4_BACK  },
+    { "9.1.6",          AV_CHANNEL_LAYOUT_9POINT1POINT6       },
     { "hexadecagonal",  AV_CHANNEL_LAYOUT_HEXADECAGONAL       },
+    { "binaural",       AV_CHANNEL_LAYOUT_BINAURAL            },
     { "downmix",        AV_CHANNEL_LAYOUT_STEREO_DOWNMIX,     },
     { "22.2",           AV_CHANNEL_LAYOUT_22POINT2,           },
 };
@@ -266,7 +271,7 @@ static int parse_channel_list(AVChannelLayout *ch_layout, const char *str)
 
     while (*str) {
         char *channel, *chname;
-        int ret = av_opt_get_key_value(&str, "@", "+", AV_OPT_FLAG_IMPLICIT_KEY, &channel, &chname);
+        ret = av_opt_get_key_value(&str, "@", "+", AV_OPT_FLAG_IMPLICIT_KEY, &channel, &chname);
         if (ret < 0) {
             av_freep(&map);
             return ret;
@@ -340,7 +345,7 @@ int av_channel_layout_from_string(AVChannelLayout *channel_layout,
         channel_layout->nb_channels = (order + 1) * (order + 1);
 
         if (*endptr) {
-            int ret = av_channel_layout_from_string(&extra, endptr + 1);
+            ret = av_channel_layout_from_string(&extra, endptr + 1);
             if (ret < 0)
                 return ret;
             if (extra.nb_channels >= INT_MAX - channel_layout->nb_channels) {
@@ -948,10 +953,10 @@ int av_channel_layout_retype(AVChannelLayout *channel_layout, enum AVChannelOrde
         if (channel_layout->order == AV_CHANNEL_ORDER_CUSTOM) {
             int64_t mask;
             int nb_channels = channel_layout->nb_channels;
-            int order = av_channel_layout_ambisonic_order(channel_layout);
-            if (order < 0)
+            int amb_order = av_channel_layout_ambisonic_order(channel_layout);
+            if (amb_order < 0)
                 return AVERROR(ENOSYS);
-            mask = masked_description(channel_layout, (order + 1) * (order + 1));
+            mask = masked_description(channel_layout, (amb_order + 1) * (amb_order + 1));
             if (mask < 0)
                 return AVERROR(ENOSYS);
             lossy = has_channel_names(channel_layout);

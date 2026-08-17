@@ -292,6 +292,7 @@ static const FFCodecDefault vaapi_encode_vp9_defaults[] = {
     { "g",              "250" },
     { "qmin",           "-1"  },
     { "qmax",           "-1"  },
+    { "refs",           "0"   },
     { NULL },
 };
 
@@ -318,10 +319,7 @@ const FFCodec ff_vp9_vaapi_encoder = {
                       FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_vp9_defaults,
     .color_ranges   = AVCOL_RANGE_MPEG, /* FIXME: implement tagging */
-    .p.pix_fmts = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_VAAPI,
-        AV_PIX_FMT_NONE,
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_VAAPI),
     .hw_configs     = ff_vaapi_encode_hw_configs,
     .p.wrapper_name = "vaapi",
 };

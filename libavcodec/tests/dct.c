@@ -37,7 +37,6 @@
 
 #include "libavutil/cpu.h"
 #include "libavutil/common.h"
-#include "libavutil/emms.h"
 #include "libavutil/internal.h"
 #include "libavutil/lfg.h"
 #include "libavutil/mem_internal.h"
@@ -52,6 +51,9 @@
 #include "libavcodec/faandct.h"
 #include "libavcodec/faanidct.h"
 #include "libavcodec/dctref.h"
+#if CONFIG_PRORES_DECODER
+#include "libavcodec/proresdsp.c"
+#endif
 
 struct algo {
     const char *name;
@@ -70,6 +72,7 @@ static const struct algo fdct_tab[] = {
 #endif /* CONFIG_FAANDCT */
 };
 
+#if CONFIG_PRORES_DECODER
 static void ff_prores_idct_wrap(int16_t *dst){
     LOCAL_ALIGNED(16, int16_t, qmat, [64]);
     int i;
@@ -77,11 +80,12 @@ static void ff_prores_idct_wrap(int16_t *dst){
     for(i=0; i<64; i++){
         qmat[i]=4;
     }
-    ff_prores_idct_10(dst, qmat);
+    prores_idct_10(dst, qmat);
     for(i=0; i<64; i++) {
          dst[i] -= 512;
     }
 }
+#endif
 
 static const struct algo idct_tab[] = {
     { "REF-DBL",     ff_ref_idct,          FF_IDCT_PERM_NONE },
@@ -89,7 +93,9 @@ static const struct algo idct_tab[] = {
     { "SIMPLE-C",    ff_simple_idct_int16_8bit,     FF_IDCT_PERM_NONE },
     { "SIMPLE-C10",  ff_simple_idct_int16_10bit,    FF_IDCT_PERM_NONE },
     { "SIMPLE-C12",  ff_simple_idct_int16_12bit,    FF_IDCT_PERM_NONE, 0, 1 },
+#if CONFIG_PRORES_DECODER
     { "PR-C",        ff_prores_idct_wrap,  FF_IDCT_PERM_NONE, 0, 1 },
+#endif
 #if CONFIG_FAANIDCT
     { "FAANI",       ff_faanidct,          FF_IDCT_PERM_NONE },
 #endif /* CONFIG_FAANIDCT */
@@ -205,7 +211,6 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed, c
         permute(block, block1, dct->perm_type);
 
         dct->func(block);
-        emms_c();
 
         if (!strcmp(dct->name, "IJG-AAN-INT")) {
             for (i = 0; i < 64; i++) {
@@ -280,7 +285,6 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed, c
             memcpy(block, block1, sizeof(block));
             dct->func(block);
         }
-        emms_c();
         it1 += NB_ITS_SPEED;
         ti1 = av_gettime_relative() - ti;
     } while (ti1 < 1000000);
@@ -442,7 +446,6 @@ static void idct248_error(const char *name,
                 block[i] = block1[i];
             idct248_put(img_dest, 8, block);
         }
-        emms_c();
         it1 += NB_ITS_SPEED;
         ti1 = av_gettime_relative() - ti;
     } while (ti1 < 1000000);

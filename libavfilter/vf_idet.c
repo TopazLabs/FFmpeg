@@ -22,8 +22,57 @@
 
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
+#include "libavutil/pixdesc.h"
+
 #include "filters.h"
-#include "vf_idet.h"
+#include "vf_idetdsp.h"
+
+typedef enum {
+    TFF,
+    BFF,
+    PROGRESSIVE,
+    UNDETERMINED,
+} Type;
+
+typedef enum {
+    REPEAT_NONE,
+    REPEAT_TOP,
+    REPEAT_BOTTOM,
+} RepeatedField;
+
+typedef struct IDETContext {
+    const AVClass *class;
+    IDETDSPContext dsp;
+
+    float interlace_threshold;
+    float progressive_threshold;
+    float repeat_threshold;
+    float half_life;
+    uint64_t decay_coefficient;
+
+    Type last_type;
+
+    uint64_t repeats[3];
+    uint64_t prestat[4];
+    uint64_t poststat[4];
+    uint64_t total_repeats[3];
+    uint64_t total_prestat[4];
+    uint64_t total_poststat[4];
+
+    #define HIST_SIZE 4
+    uint8_t history[HIST_SIZE];
+
+    AVFrame *cur;
+    AVFrame *next;
+    AVFrame *prev;
+
+    int interlaced_flag_accuracy;
+    int analyze_interlaced_flag;
+    int analyze_interlaced_flag_done;
+
+    const AVPixFmtDescriptor *csp;
+    int eof;
+} IDETContext;
 
 #define OFFSET(x) offsetof(IDETContext, x)
 #define FLAGS AV_OPT_FLAG_VIDEO_PARAM|AV_OPT_FLAG_FILTERING_PARAM
@@ -83,32 +132,6 @@ static const char *rep2str(RepeatedField repeated_field)
     return NULL;
 }
 
-int ff_idet_filter_line_c(const uint8_t *a, const uint8_t *b, const uint8_t *c, int w)
-{
-    int x;
-    int ret=0;
-
-    for(x=0; x<w; x++){
-        int v = (*a++ + *c++) - 2 * *b++;
-        ret += FFABS(v);
-    }
-
-    return ret;
-}
-
-int ff_idet_filter_line_c_16bit(const uint16_t *a, const uint16_t *b, const uint16_t *c, int w)
-{
-    int x;
-    int ret=0;
-
-    for(x=0; x<w; x++){
-        int v = (*a++ + *c++) - 2 * *b++;
-        ret += FFABS(v);
-    }
-
-    return ret;
-}
-
 static void filter(AVFilterContext *ctx)
 {
     IDETContext *idet = ctx->priv;
@@ -120,6 +143,7 @@ static void filter(AVFilterContext *ctx)
     RepeatedField repeat;
     int match = 0;
     AVDictionary **metadata = &idet->cur->metadata;
+    ff_idet_filter_func filter_line = idet->dsp.filter_line;
 
     for (i = 0; i < idet->csp->nb_components; i++) {
         int w = idet->cur->width;
@@ -135,10 +159,10 @@ static void filter(AVFilterContext *ctx)
             uint8_t *prev = &idet->prev->data[i][y*refs];
             uint8_t *cur  = &idet->cur ->data[i][y*refs];
             uint8_t *next = &idet->next->data[i][y*refs];
-            alpha[ y   &1] += idet->filter_line(cur-refs, prev, cur+refs, w);
-            alpha[(y^1)&1] += idet->filter_line(cur-refs, next, cur+refs, w);
-            delta          += idet->filter_line(cur-refs,  cur, cur+refs, w);
-            gamma[(y^1)&1] += idet->filter_line(cur     , prev, cur     , w);
+            alpha[ y   &1] += filter_line(cur-refs, prev, cur+refs, w);
+            alpha[(y^1)&1] += filter_line(cur-refs, next, cur+refs, w);
+            delta          += filter_line(cur-refs,  cur, cur+refs, w);
+            gamma[(y^1)&1] += filter_line(cur     , prev, cur     , w);
         }
     }
 
@@ -183,28 +207,11 @@ static void filter(AVFilterContext *ctx)
     }
 
     if      (idet->last_type == TFF){
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        idet->cur->top_field_first = 1;
-        idet->cur->interlaced_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         idet->cur->flags |= (AV_FRAME_FLAG_INTERLACED | AV_FRAME_FLAG_TOP_FIELD_FIRST);
     }else if(idet->last_type == BFF){
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        idet->cur->top_field_first = 0;
-        idet->cur->interlaced_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         idet->cur->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
         idet->cur->flags |= AV_FRAME_FLAG_INTERLACED;
     }else if(idet->last_type == PROGRESSIVE){
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        idet->cur->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         idet->cur->flags &= ~AV_FRAME_FLAG_INTERLACED;
     }
 
@@ -260,11 +267,6 @@ static int filter_frame(AVFilterLink *link, AVFrame *picref)
     }
     if (idet->analyze_interlaced_flag_done) {
         if ((picref->flags & AV_FRAME_FLAG_INTERLACED) && idet->interlaced_flag_accuracy < 0) {
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-            picref->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             picref->flags &= ~AV_FRAME_FLAG_INTERLACED;
         }
         return ff_filter_frame(ctx->outputs[0], picref);
@@ -281,6 +283,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
         av_frame_free(&idet->cur );
         av_frame_free(&idet->next);
+        idet->csp = NULL;
     }
 
     idet->prev = idet->cur;
@@ -294,22 +297,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
     if (!idet->prev)
         return 0;
 
-    if (!idet->csp)
+    if (!idet->csp) {
         idet->csp = av_pix_fmt_desc_get(link->format);
-    if (idet->csp->comp[0].depth > 8){
-        idet->filter_line = (ff_idet_filter_func)ff_idet_filter_line_c_16bit;
-#if ARCH_X86
-        ff_idet_init_x86(idet, 1);
-#endif
+        ff_idet_dsp_init(&idet->dsp, idet->csp->comp[0].depth);
     }
 
     if (idet->analyze_interlaced_flag) {
         if (idet->cur->flags & AV_FRAME_FLAG_INTERLACED) {
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-            idet->cur->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             idet->cur->flags &= ~AV_FRAME_FLAG_INTERLACED;
             filter(ctx);
             if (idet->last_type == PROGRESSIVE) {
@@ -323,11 +317,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 ff_filter_frame(ctx->outputs[0], av_frame_clone(idet->cur));
 
                 if ((idet->next->flags & AV_FRAME_FLAG_INTERLACED) && idet->interlaced_flag_accuracy < 0) {
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-                    idet->next->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
                     idet->next->flags &= ~AV_FRAME_FLAG_INTERLACED;
                 }
                 idet->analyze_interlaced_flag_done = 1;
@@ -440,11 +429,7 @@ static av_cold int init(AVFilterContext *ctx)
     else
         idet->decay_coefficient = PRECISION;
 
-    idet->filter_line = ff_idet_filter_line_c;
-
-#if ARCH_X86
-    ff_idet_init_x86(idet, 0);
-#endif
+    ff_idet_dsp_init(&idet->dsp, 8);
 
     return 0;
 }
@@ -465,15 +450,15 @@ static const AVFilterPad idet_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_idet = {
-    .name          = "idet",
-    .description   = NULL_IF_CONFIG_SMALL("Interlace detect Filter."),
+const FFFilter ff_vf_idet = {
+    .p.name        = "idet",
+    .p.description = NULL_IF_CONFIG_SMALL("Interlace detect Filter."),
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
+    .p.priv_class  = &idet_class,
     .priv_size     = sizeof(IDETContext),
     .init          = init,
     .uninit        = uninit,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(idet_inputs),
     FILTER_OUTPUTS(idet_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &idet_class,
 };

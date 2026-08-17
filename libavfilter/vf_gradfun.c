@@ -32,7 +32,6 @@
  * Dither it back to 8bit.
  */
 
-#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/common.h"
 #include "libavutil/mem.h"
@@ -119,7 +118,6 @@ static void filter(GradFunContext *ctx, uint8_t *dst, const uint8_t *src, int wi
         ctx->filter_line(dst + y * dst_linesize, src + y * src_linesize, dc - r / 2, width, thresh, dither[y & 7]);
         if (++y >= height) break;
     }
-    emms_c();
 }
 
 static av_cold int init(AVFilterContext *ctx)
@@ -132,7 +130,7 @@ static av_cold int init(AVFilterContext *ctx)
     s->blur_line   = ff_gradfun_blur_line_c;
     s->filter_line = ff_gradfun_filter_line_c;
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_gradfun_init_x86(s);
 #endif
 
@@ -237,15 +235,15 @@ static const AVFilterPad avfilter_vf_gradfun_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_gradfun = {
-    .name          = "gradfun",
-    .description   = NULL_IF_CONFIG_SMALL("Debands video quickly using gradients."),
+const FFFilter ff_vf_gradfun = {
+    .p.name        = "gradfun",
+    .p.description = NULL_IF_CONFIG_SMALL("Debands video quickly using gradients."),
+    .p.priv_class  = &gradfun_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size     = sizeof(GradFunContext),
-    .priv_class    = &gradfun_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_gradfun_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

@@ -593,6 +593,8 @@ typedef struct H266RawPPS {
     uint16_t sub_pic_id_val[VVC_MAX_SLICES];                ///< SubpicIdVal
     uint16_t col_width_val[VVC_MAX_TILE_COLUMNS];           ///< ColWidthVal
     uint16_t row_height_val[VVC_MAX_TILE_ROWS];             ///< RowHeightVal
+    uint16_t slice_top_left_tile_idx[VVC_MAX_SLICES];
+    uint16_t num_slices_in_tile[VVC_MAX_SLICES];
 } H266RawPPS;
 
 typedef struct H266RawAPS {
@@ -846,6 +848,11 @@ typedef struct H266RawSlice {
     size_t       header_size;
     size_t       data_size;
     int          data_bit_start;
+
+    H266RawSPS           *sps;     ///< RefStruct reference to referred-to SPS
+    H266RawPPS           *pps;     ///< RefStruct reference to referred-to PPS
+    H266RawPictureHeader *ph;
+    void                 *ph_ref;  ///< RefStruct reference backing referred-to PH above
 } H266RawSlice;
 
 typedef struct H266RawSEI {

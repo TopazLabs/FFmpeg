@@ -330,9 +330,11 @@ static int config_input_props(AVFilterLink *inlink)
     return set_params(ctx, s->params);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    Frei0rContext *s = ctx->priv;
+    const Frei0rContext *s = ctx->priv;
     AVFilterFormats *formats = NULL;
     int ret;
 
@@ -346,13 +348,13 @@ static int query_formats(AVFilterContext *ctx)
         static const enum AVPixelFormat pix_fmts[] = {
             AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_NONE
         };
-        formats = ff_make_format_list(pix_fmts);
+        formats = ff_make_pixel_format_list(pix_fmts);
     }
 
     if (!formats)
         return AVERROR(ENOMEM);
 
-    return ff_set_common_formats(ctx, formats);
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out, formats);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
@@ -373,11 +375,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         if (!in2)
             goto fail;
         av_frame_copy(in2, in);
+        if (av_frame_copy_props(in2, in) < 0) {
+            av_frame_free(&in2);
+            goto fail;
+        }
         av_frame_free(&in);
         in = in2;
     }
 
-    s->update(s->instance, in->pts * av_q2d(inlink->time_base) * 1000,
+    s->update(s->instance, in->pts * av_q2d(inlink->time_base),
                    (const uint32_t *)in->data[0],
                    (uint32_t *)out->data[0]);
 
@@ -423,18 +429,18 @@ static const AVFilterPad avfilter_vf_frei0r_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_frei0r = {
-    .name          = "frei0r",
-    .description   = NULL_IF_CONFIG_SMALL("Apply a frei0r effect."),
+const FFFilter ff_vf_frei0r = {
+    .p.name        = "frei0r",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply a frei0r effect."),
+    .p.priv_class  = &frei0r_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .init          = filter_init,
     .uninit        = uninit,
     .priv_size     = sizeof(Frei0rContext),
-    .priv_class    = &frei0r_class,
     FILTER_INPUTS(avfilter_vf_frei0r_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = process_command,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };
 
 static av_cold int source_init(AVFilterContext *ctx)
@@ -512,14 +518,14 @@ static const AVFilterPad avfilter_vsrc_frei0r_src_outputs[] = {
     },
 };
 
-const AVFilter ff_vsrc_frei0r_src = {
-    .name          = "frei0r_src",
-    .description   = NULL_IF_CONFIG_SMALL("Generate a frei0r source."),
+const FFFilter ff_vsrc_frei0r_src = {
+    .p.name        = "frei0r_src",
+    .p.description = NULL_IF_CONFIG_SMALL("Generate a frei0r source."),
+    .p.priv_class  = &frei0r_src_class,
+    .p.inputs      = NULL,
     .priv_size     = sizeof(Frei0rContext),
-    .priv_class    = &frei0r_src_class,
     .init          = source_init,
     .uninit        = uninit,
-    .inputs        = NULL,
     FILTER_OUTPUTS(avfilter_vsrc_frei0r_src_outputs),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };

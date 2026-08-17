@@ -31,7 +31,6 @@
 #include "config.h"
 #include "libavutil/attributes.h"
 #include "libavutil/common.h"
-#include "libavutil/emms.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/intreadwrite.h"
@@ -150,7 +149,6 @@ static int denoise_depth(HQDN3DContext *s,
     else
         denoise_temporal(src, dst, frame_ant,
                          w, h, sstride, dstride, temporal, depth);
-    emms_c();
     return 0;
 }
 
@@ -279,7 +277,7 @@ static int config_input(AVFilterLink *inlink)
 
     calc_coefs(ctx);
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_hqdn3d_init_x86(s);
 #endif
 
@@ -384,16 +382,16 @@ static const AVFilterPad avfilter_vf_hqdn3d_inputs[] = {
 };
 
 
-const AVFilter ff_vf_hqdn3d = {
-    .name          = "hqdn3d",
-    .description   = NULL_IF_CONFIG_SMALL("Apply a High Quality 3D Denoiser."),
+const FFFilter ff_vf_hqdn3d = {
+    .p.name        = "hqdn3d",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply a High Quality 3D Denoiser."),
+    .p.priv_class  = &hqdn3d_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(HQDN3DContext),
-    .priv_class    = &hqdn3d_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_hqdn3d_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

@@ -95,7 +95,7 @@ static int query_formats(const AVFilterContext *ctx,
 
     int ret;
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, formats);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, formats);
     if (ret < 0)
         return ret;
 
@@ -236,9 +236,9 @@ static const AVFilterPad earwax_inputs[] = {
     },
 };
 
-const AVFilter ff_af_earwax = {
-    .name           = "earwax",
-    .description    = NULL_IF_CONFIG_SMALL("Widen the stereo image."),
+const FFFilter ff_af_earwax = {
+    .p.name         = "earwax",
+    .p.description  = NULL_IF_CONFIG_SMALL("Widen the stereo image."),
     .priv_size      = sizeof(EarwaxContext),
     .uninit         = uninit,
     FILTER_INPUTS(earwax_inputs),

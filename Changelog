@@ -1,6 +1,75 @@
 Entries are sorted chronologically from oldest to youngest within each release,
 releases are sorted from youngest to oldest.
 
+
+version 8.1:
+- ffprobe -codec option
+- EXIF Metadata Parsing
+- gfxcapture: Windows.Graphics.Capture based window/monitor capture
+- hxvs demuxer for HXVS/HXVT IP camera format
+- MPEG-H 3D Audio decoding via mpeghdec
+- D3D12 H.264 encoder
+- drawvg filter via libcairo
+- ffmpeg CLI tiled HEIF support
+- D3D12 AV1 encoder
+- ProRes Vulkan hwaccel
+- DPX Vulkan hwaccel
+- Rockchip H.264/HEVC hardware encoder
+- Add vf_scale_d3d12 filter
+- JPEG-XS parser
+- JPEG-XS decoder and encoder through libsvtjpegxs
+- JPEG-XS raw bitstream muxer and demuxer
+- IAMF Projection mode Ambisonic Audio Elements muxing and demuxing
+- Add vf_mestimate_d3d12 filter
+- xHE-AAC Mps212 decoding support (experimental)
+- Remove the old HLS protocol handler
+- Vulkan compute codec optimizations
+- swscale Vulkan support
+- LCEVC metadata bitstream filter
+- Add vf_deinterlace_d3d12 filter
+- ffprobe: only show refs field in stream section when reading frames
+- ProRes Vulkan encoder
+- LCEVC parser
+- LCEVC enhancement layer exporting in MPEG-TS
+
+
+version 8.0:
+- Whisper filter
+- Drop support for OpenSSL < 1.1.0
+- Enable TLS peer certificate verification by default (on next major version bump)
+- Drop support for OpenSSL < 1.1.1
+- yasm support dropped, users need to use nasm
+- VVC VAAPI decoder
+- RealVideo 6.0 decoder
+- OpenMAX encoders deprecated
+- libx265 alpha layer encoding
+- ADPCM IMA Xbox decoder
+- Enhanced FLV v2: Multitrack audio/video, modern codec support
+- Animated JPEG XL encoding (via libjxl)
+- VVC in Matroska
+- CENC AV1 support in MP4 muxer
+- pngenc: set default prediction method to PAETH
+- APV decoder and APV raw bitstream muxing and demuxing
+- APV parser
+- APV encoding support through a libopenapv wrapper
+- VVC decoder supports all content of SCC (Screen Content Coding):
+  IBC (Inter Block Copy), Palette Mode and ACT (Adaptive Color Transform
+- G.728 decoder
+- pad_cuda filter
+- Sanyo LD-ADPCM decoder
+- APV in MP4/ISOBMFF muxing and demuxing
+- OpenHarmony hardware decoder/encoder
+- Colordetect filter
+- Add vf_scale_d3d11 filter
+- No longer disabling GCC autovectorization, on X86, ARM and AArch64
+- VP9 Vulkan hwaccel
+- AV1 Vulkan encoder
+- ProRes RAW decoder
+- ProRes RAW Vulkan hwaccel
+- ffprobe -codec option
+- HDR10+ metadata passthrough when decoding/encoding with libaom-av1
+
+
 version 7.1:
 - Raw Captions with Time (RCWT) closed caption demuxer
 - LC3/LC3plus decoding/encoding using external library liblc3
@@ -27,6 +96,20 @@ version 7.1:
 - LCEVC enhancement data exporting in H.26x and MP4/ISOBMFF
 - LCEVC filter
 - MV-HEVC decoding
+- minor stream specifier syntax changes:
+    - when matching by metadata (:m:<key>:<val>), the colon character
+      in keys or values now has to be backslash-escaped
+    - in optional maps (-map ....?) with a metadata-matching stream specifier,
+      the value has to be separated from the question mark by a colon, i.e.
+      -map ....:m:<key>:<val>:? (otherwise it would be ambiguous whether the
+      question mark is a part of <val> or not)
+    - multiple stream types in a single specifier (e.g. :s:s:0) now cause an
+      error, as such a specifier makes no sense
+- Mastering Display and Content Light Level metadata support in hevc_nvenc
+  and av1_nvenc encoders
+- libswresample now accepts custom order channel layouts as input, with some
+  constrains
+- FFV1 parser
 
 
 version 7.0:
@@ -115,6 +198,7 @@ version 6.1:
   variable-fields elements within the same parent element
 - ffprobe -output_format option added as an alias of -of
 
+# codespell:off
 
 version 6.0:
 - Radiance HDR image support

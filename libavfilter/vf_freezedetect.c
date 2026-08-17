@@ -103,7 +103,7 @@ static int config_input(AVFilterLink *inlink)
         s->height[plane] = inlink->h >> ((plane == 1 || plane == 2) ? pix_desc->log2_chroma_h : 0);
     }
 
-    s->sad = ff_scene_sad_get_fn(s->bitdepth == 8 ? 8 : 16);
+    s->sad = ff_scene_sad_get_fn(s->bitdepth);
     if (!s->sad)
         return AVERROR(EINVAL);
 
@@ -135,9 +135,9 @@ static int is_frozen(FreezeDetectContext *s, AVFrame *reference, AVFrame *frame)
     return (mafd <= s->noise);
 }
 
-static int set_meta(FreezeDetectContext *s, AVFrame *frame, const char *key, const char *value)
+static int set_meta(void *log_ctx, AVFrame *frame, const char *key, const char *value)
 {
-    av_log(s, AV_LOG_INFO, "%s: %s\n", key, value);
+    av_log(log_ctx, AV_LOG_INFO, "%s: %s\n", key, value);
     return av_dict_set(&frame->metadata, key, value, 0);
 }
 
@@ -170,10 +170,10 @@ static int activate(AVFilterContext *ctx)
             frozen = is_frozen(s, s->reference_frame, frame);
             if (duration >= s->duration) {
                 if (!s->frozen)
-                    set_meta(s, frame, "lavfi.freezedetect.freeze_start", av_ts2timestr(s->reference_frame->pts, &inlink->time_base));
+                    set_meta(ctx, frame, "lavfi.freezedetect.freeze_start", av_ts2timestr(s->reference_frame->pts, &inlink->time_base));
                 if (!frozen) {
-                    set_meta(s, frame, "lavfi.freezedetect.freeze_duration", av_ts2timestr(duration, &AV_TIME_BASE_Q));
-                    set_meta(s, frame, "lavfi.freezedetect.freeze_end", av_ts2timestr(frame->pts, &inlink->time_base));
+                    set_meta(ctx, frame, "lavfi.freezedetect.freeze_duration", av_ts2timestr(duration, &AV_TIME_BASE_Q));
+                    set_meta(ctx, frame, "lavfi.freezedetect.freeze_end", av_ts2timestr(frame->pts, &inlink->time_base));
                 }
                 s->frozen = frozen;
             }
@@ -205,13 +205,13 @@ static const AVFilterPad freezedetect_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_freezedetect = {
-    .name          = "freezedetect",
-    .description   = NULL_IF_CONFIG_SMALL("Detects frozen video input."),
+const FFFilter ff_vf_freezedetect = {
+    .p.name        = "freezedetect",
+    .p.description = NULL_IF_CONFIG_SMALL("Detects frozen video input."),
+    .p.priv_class  = &freezedetect_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(FreezeDetectContext),
-    .priv_class    = &freezedetect_class,
     .uninit        = uninit,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(freezedetect_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),

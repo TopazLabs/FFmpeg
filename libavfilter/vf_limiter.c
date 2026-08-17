@@ -140,7 +140,7 @@ static int config_input(AVFilterLink *inlink)
         s->dsp.limiter = limiter16;
     }
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_limiter_init_x86(&s->dsp, desc->comp[0].depth);
 #endif
 
@@ -230,15 +230,16 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_vf_limiter = {
-    .name          = "limiter",
-    .description   = NULL_IF_CONFIG_SMALL("Limit pixels components to the specified range."),
+const FFFilter ff_vf_limiter = {
+    .p.name        = "limiter",
+    .p.description = NULL_IF_CONFIG_SMALL("Limit pixels components to the specified range."),
+    .p.priv_class  = &limiter_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(LimiterContext),
-    .priv_class    = &limiter_class,
     .init          = init,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

@@ -28,7 +28,6 @@
 #ifndef AVCODEC_H264DEC_H
 #define AVCODEC_H264DEC_H
 
-#include "libavutil/buffer.h"
 #include "libavutil/mem_internal.h"
 
 #include "cabac.h"
@@ -41,7 +40,6 @@
 #include "h264dsp.h"
 #include "h264pred.h"
 #include "h264qpel.h"
-#include "h274.h"
 #include "mpegutils.h"
 #include "threadframe.h"
 #include "videodsp.h"
@@ -305,11 +303,11 @@ typedef struct H264SliceContext {
 
     DECLARE_ALIGNED(8, uint16_t, sub_mb_type)[4];
 
-    ///< as a DCT coefficient is int32_t in high depth, we need to reserve twice the space.
+    /// as a DCT coefficient is int32_t in high depth, we need to reserve twice the space.
     DECLARE_ALIGNED(16, int16_t, mb)[16 * 48 * 2];
     DECLARE_ALIGNED(16, int16_t, mb_luma_dc)[3][16 * 2];
-    ///< as mb is addressed by scantable[i] and scantable is uint8_t we can either
-    ///< check that i is not too large or ensure that there is some unused stuff after mb
+    /// as mb is addressed by scantable[i] and scantable is uint8_t we can either
+    /// check that i is not too large or ensure that there is some unused stuff after mb
     int16_t mb_padding[256 * 2];
 
     uint8_t (*mvd_table[2])[2];
@@ -344,7 +342,6 @@ typedef struct H264Context {
     H264DSPContext h264dsp;
     H264ChromaContext h264chroma;
     H264QpelContext h264qpel;
-    H274FilmGrainDatabase h274db;
 
     H264Picture DPB[H264_MAX_PICTURE_COUNT];
     H264Picture *cur_pic_ptr;
@@ -541,7 +538,7 @@ typedef struct H264Context {
      * all subsequently output fraames are also marked as recovered
      *
      * In effect, if you want all subsequent DECODED frames marked as recovered, set frame_recovered
-     * If you want all subsequent DISPAYED frames marked as recovered, set the frame->recovered
+     * If you want all subsequent DISPLAYED frames marked as recovered, set the frame->recovered
      */
     int frame_recovered;
 
@@ -570,11 +567,11 @@ typedef struct H264Context {
 
     H264SEIContext sei;
 
-    struct FFRefStructPool *qscale_table_pool;
-    struct FFRefStructPool *mb_type_pool;
-    struct FFRefStructPool *motion_val_pool;
-    struct FFRefStructPool *ref_index_pool;
-    struct FFRefStructPool *decode_error_flags_pool;
+    struct AVRefStructPool *qscale_table_pool;
+    struct AVRefStructPool *mb_type_pool;
+    struct AVRefStructPool *motion_val_pool;
+    struct AVRefStructPool *ref_index_pool;
+    struct AVRefStructPool *decode_error_flags_pool;
     int ref2frm[MAX_SLICES][2][64];     ///< reference to frame number lists, used in the loop filter, the first 2 are for -2,-1
 
     int non_gray;                       ///< Did we encounter a intra frame after a gray gap frame

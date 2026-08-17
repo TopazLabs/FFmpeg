@@ -95,7 +95,7 @@ static int query_formats(const AVFilterContext *ctx,
     };
     int ret;
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, formats);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, formats);
     if (ret < 0)
         return ret;
 
@@ -218,11 +218,11 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_haas = {
-    .name           = "haas",
-    .description    = NULL_IF_CONFIG_SMALL("Apply Haas Stereo Enhancer."),
+const FFFilter ff_af_haas = {
+    .p.name         = "haas",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply Haas Stereo Enhancer."),
+    .p.priv_class   = &haas_class,
     .priv_size      = sizeof(HaasContext),
-    .priv_class     = &haas_class,
     .uninit         = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),

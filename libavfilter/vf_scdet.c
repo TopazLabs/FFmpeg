@@ -91,7 +91,7 @@ static int config_input(AVFilterLink *inlink)
         s->height[plane] = inlink->h >> ((plane == 1 || plane == 2) ? desc->log2_chroma_h : 0);
     }
 
-    s->sad = ff_scene_sad_get_fn(s->bitdepth == 8 ? 8 : 16);
+    s->sad = ff_scene_sad_get_fn(s->bitdepth);
     if (!s->sad)
         return AVERROR(EINVAL);
 
@@ -164,7 +164,7 @@ static int activate(AVFilterContext *ctx)
         set_meta(s, frame, "lavfi.scd.score", buf);
 
         if (s->scene_score >= s->threshold) {
-            av_log(s, AV_LOG_INFO, "lavfi.scd.score: %.3f, lavfi.scd.time: %s\n",
+            av_log(ctx, AV_LOG_INFO, "lavfi.scd.score: %.3f, lavfi.scd.time: %s\n",
                     s->scene_score, av_ts2timestr(frame->pts, &inlink->time_base));
             set_meta(s, frame, "lavfi.scd.time",
                     av_ts2timestr(frame->pts, &inlink->time_base));
@@ -193,13 +193,13 @@ static const AVFilterPad scdet_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_scdet = {
-    .name          = "scdet",
-    .description   = NULL_IF_CONFIG_SMALL("Detect video scene change"),
+const FFFilter ff_vf_scdet = {
+    .p.name        = "scdet",
+    .p.description = NULL_IF_CONFIG_SMALL("Detect video scene change"),
+    .p.priv_class  = &scdet_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(SCDetContext),
-    .priv_class    = &scdet_class,
     .uninit        = uninit,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(scdet_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),

@@ -41,7 +41,7 @@
  * MODIFIED to calculate coeffs from currently selected color space.
  * MODIFIED core to be a macro where you specify the output format.
  * ADDED UYVY conversion which is never called due to some thing in swscale.
- * CORRECTED algorithim selection to be strict on input formats.
+ * CORRECTED algorithm selection to be strict on input formats.
  * ADDED runtime detection of AltiVec.
  *
  * ADDED altivec_yuv2packedX vertical scl + RGB converter
@@ -96,11 +96,41 @@
 #include "libswscale/swscale_internal.h"
 #include "libavutil/attributes.h"
 #include "libavutil/cpu.h"
+#include "libavutil/error.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
 #include "yuv2rgb_altivec.h"
 
 #if HAVE_ALTIVEC
+// util_altivec.h includes the system header altivec.h which redefines bool,
+// making it incompatible with stdbool.h. It therefore must not be included
+// before another one of our headers that may use bool.
+#include "libavutil/ppc/util_altivec.h"
+#include <assert.h>
+
+typedef struct SwsInternalAltivec {
+    SwsInternal c;
+
+    vector signed short   CY;
+    vector signed short   CRV;
+    vector signed short   CBU;
+    vector signed short   CGU;
+    vector signed short   CGV;
+    vector signed short   OY;
+    vector unsigned short CSHIFT;
+    vector signed short  *vYCoeffsBank, *vCCoeffsBank;
+} SwsInternalAltivec;
+// Check that the sizes of the types match.
+// Note that given that SwsInternal is always allocated via av_malloc,
+// every pointer to an SwsInternal is always sufficiently aligned.
+static_assert(sizeof(SwsInternalAltivec) <= sizeof(SwsInternal) + SWSINTERNAL_ADDITIONAL_ASM_SIZE,
+              "SWSINTERNAL_ADDITIONAL_ASM_SIZE needs to be increased");
+
+static inline SwsInternalAltivec *sws_internal_altivec(SwsInternal *c)
+{
+    return (SwsInternalAltivec*)c;
+}
 
 #undef PROFILE_THE_BEAST
 #undef INC_SCALING
@@ -252,30 +282,31 @@ static const vector unsigned char
                   (vector unsigned short)                               \
                       vec_max(y, ((vector signed short) { 0 })))
 
-static inline void cvtyuvtoRGB(SwsContext *c, vector signed short Y,
+static inline void cvtyuvtoRGB(SwsInternal *c, vector signed short Y,
                                vector signed short U, vector signed short V,
                                vector signed short *R, vector signed short *G,
                                vector signed short *B)
 {
+    SwsInternalAltivec *const a = sws_internal_altivec(c);
     vector signed short vx, ux, uvx;
 
-    Y = vec_mradds(Y, c->CY, c->OY);
+    Y = vec_mradds(Y, a->CY, a->OY);
     U = vec_sub(U, (vector signed short)
                        vec_splat((vector signed short) { 128 }, 0));
     V = vec_sub(V, (vector signed short)
                        vec_splat((vector signed short) { 128 }, 0));
 
-    // ux  = (CBU * (u << c->CSHIFT) + 0x4000) >> 15;
-    ux = vec_sl(U, c->CSHIFT);
-    *B = vec_mradds(ux, c->CBU, Y);
+    // ux  = (CBU * (u << a->CSHIFT) + 0x4000) >> 15;
+    ux = vec_sl(U, a->CSHIFT);
+    *B = vec_mradds(ux, a->CBU, Y);
 
-    // vx  = (CRV * (v << c->CSHIFT) + 0x4000) >> 15;
-    vx = vec_sl(V, c->CSHIFT);
-    *R = vec_mradds(vx, c->CRV, Y);
+    // vx  = (CRV * (v << a->CSHIFT) + 0x4000) >> 15;
+    vx = vec_sl(V, a->CSHIFT);
+    *R = vec_mradds(vx, a->CRV, Y);
 
     // uvx = ((CGU * u) + (CGV * v)) >> 15;
-    uvx = vec_mradds(U, c->CGU, Y);
-    *G  = vec_mradds(V, c->CGV, uvx);
+    uvx = vec_mradds(U, a->CGU, Y);
+    *G  = vec_mradds(V, a->CGV, uvx);
 }
 
 /*
@@ -284,7 +315,7 @@ static inline void cvtyuvtoRGB(SwsContext *c, vector signed short Y,
  * ------------------------------------------------------------------------------
  */
 
-#if !HAVE_VSX
+#if !HAVE_VEC_XL
 static inline vector unsigned char vec_xl(signed long long offset, const ubyte *addr)
 {
     const vector unsigned char *v_addr = (const vector unsigned char *) (addr + offset);
@@ -292,14 +323,15 @@ static inline vector unsigned char vec_xl(signed long long offset, const ubyte *
 
     return (vector unsigned char) vec_perm(v_addr[0], v_addr[1], align_perm);
 }
-#endif /* !HAVE_VSX */
+#endif /* !HAVE_VEC_XL */
 
 #define DEFCSP420_CVT(name, out_pixels)                                       \
-static int altivec_ ## name(SwsContext *c, const unsigned char **in,          \
-                            int *instrides, int srcSliceY, int srcSliceH,     \
-                            unsigned char **oplanes, int *outstrides)         \
+static int altivec_ ## name(SwsInternal *c, const unsigned char *const *in,   \
+                            const int *instrides, int srcSliceY, int srcSliceH,   \
+                            unsigned char *const *oplanes, const int *outstrides) \
 {                                                                             \
-    int w = c->srcW;                                                          \
+    SwsInternalAltivec *const a = sws_internal_altivec(c);                    \
+    int w = c->opts.src_w;                                                    \
     int h = srcSliceH;                                                        \
     int i, j;                                                                 \
     int instrides_scl[3];                                                     \
@@ -316,13 +348,13 @@ static int altivec_ ## name(SwsContext *c, const unsigned char **in,          \
     vector signed short R1, G1, B1;                                           \
     vector unsigned char R, G, B;                                             \
                                                                               \
-    vector signed short lCY       = c->CY;                                    \
-    vector signed short lOY       = c->OY;                                    \
-    vector signed short lCRV      = c->CRV;                                   \
-    vector signed short lCBU      = c->CBU;                                   \
-    vector signed short lCGU      = c->CGU;                                   \
-    vector signed short lCGV      = c->CGV;                                   \
-    vector unsigned short lCSHIFT = c->CSHIFT;                                \
+    vector signed short lCY       = a->CY;                                    \
+    vector signed short lOY       = a->OY;                                    \
+    vector signed short lCRV      = a->CRV;                                   \
+    vector signed short lCBU      = a->CBU;                                   \
+    vector signed short lCGU      = a->CGU;                                   \
+    vector signed short lCGV      = a->CGV;                                   \
+    vector unsigned short lCSHIFT = a->CSHIFT;                                \
                                                                               \
     const ubyte *y1i = in[0];                                                 \
     const ubyte *y2i = in[0] + instrides[0];                                  \
@@ -471,11 +503,11 @@ static const vector unsigned char
 /*
  * this is so I can play live CCIR raw video
  */
-static int altivec_uyvy_rgb32(SwsContext *c, const unsigned char **in,
-                              int *instrides, int srcSliceY, int srcSliceH,
-                              unsigned char **oplanes, int *outstrides)
+static int altivec_uyvy_rgb32(SwsInternal *c, const unsigned char *const *in,
+                              const int *instrides, int srcSliceY, int srcSliceH,
+                              unsigned char *const *oplanes, const int *outstrides)
 {
-    int w = c->srcW;
+    int w = c->opts.src_w;
     int h = srcSliceH;
     int i, j;
     vector unsigned char uyvy;
@@ -532,7 +564,7 @@ static int altivec_uyvy_rgb32(SwsContext *c, const unsigned char **in,
  *
  * So we just fall back to the C codes for this.
  */
-av_cold SwsFunc ff_yuv2rgb_init_ppc(SwsContext *c)
+av_cold SwsFunc ff_yuv2rgb_init_ppc(SwsInternal *c)
 {
 #if HAVE_ALTIVEC
     if (!(av_get_cpu_flags() & AV_CPU_FLAG_ALTIVEC))
@@ -545,20 +577,27 @@ av_cold SwsFunc ff_yuv2rgb_init_ppc(SwsContext *c)
      * boom with X11 bad match.
      *
      */
-    if ((c->srcW & 0xf) != 0)
+    if ((c->opts.src_w & 0xf) != 0)
         return NULL;
 
-    switch (c->srcFormat) {
+    switch (c->opts.src_format) {
     case AV_PIX_FMT_YUV410P:
     case AV_PIX_FMT_YUV420P:
     /*case IMGFMT_CLPL:        ??? */
     case AV_PIX_FMT_GRAY8:
     case AV_PIX_FMT_NV12:
     case AV_PIX_FMT_NV21:
-        if ((c->srcH & 0x1) != 0)
+        if ((c->opts.src_h & 0x1) != 0)
             return NULL;
 
-        switch (c->dstFormat) {
+/*
+ * The below accelerations for YUV2RGB are known broken.
+ * See: 'fate-checkasm-sw_yuv2rgb' with --enable-altivec
+ * They are disabled for the moment, until such time as
+ * they can be repaired.
+ */
+#if 0
+        switch (c->opts.dst_format) {
         case AV_PIX_FMT_RGB24:
             av_log(c, AV_LOG_WARNING, "ALTIVEC: Color Space RGB24\n");
             return altivec_yuv2_rgb24;
@@ -579,10 +618,11 @@ av_cold SwsFunc ff_yuv2rgb_init_ppc(SwsContext *c)
             return altivec_yuv2_bgra;
         default: return NULL;
         }
+#endif /* disabled YUV2RGB acceleration */
         break;
 
     case AV_PIX_FMT_UYVY422:
-        switch (c->dstFormat) {
+        switch (c->opts.dst_format) {
         case AV_PIX_FMT_BGR32:
             av_log(c, AV_LOG_WARNING, "ALTIVEC: Color Space UYVY -> RGB32\n");
             return altivec_uyvy_rgb32;
@@ -595,13 +635,15 @@ av_cold SwsFunc ff_yuv2rgb_init_ppc(SwsContext *c)
     return NULL;
 }
 
-av_cold void ff_yuv2rgb_init_tables_ppc(SwsContext *c,
+av_cold void ff_yuv2rgb_init_tables_ppc(SwsInternal *c,
                                         const int inv_table[4],
                                         int brightness,
                                         int contrast,
                                         int saturation)
 {
 #if HAVE_ALTIVEC
+    SwsInternalAltivec *const a = sws_internal_altivec(c);
+
     union {
         DECLARE_ALIGNED(16, signed short, tmp)[8];
         vector signed short vec;
@@ -617,20 +659,20 @@ av_cold void ff_yuv2rgb_init_tables_ppc(SwsContext *c,
     buf.tmp[4] = -((inv_table[2] >> 1) * (contrast >> 16) * (saturation >> 16));  // cgu
     buf.tmp[5] = -((inv_table[3] >> 1) * (contrast >> 16) * (saturation >> 16));  // cgv
 
-    c->CSHIFT = (vector unsigned short) vec_splat_u16(2);
-    c->CY     = vec_splat((vector signed short) buf.vec, 0);
-    c->OY     = vec_splat((vector signed short) buf.vec, 1);
-    c->CRV    = vec_splat((vector signed short) buf.vec, 2);
-    c->CBU    = vec_splat((vector signed short) buf.vec, 3);
-    c->CGU    = vec_splat((vector signed short) buf.vec, 4);
-    c->CGV    = vec_splat((vector signed short) buf.vec, 5);
+    a->CSHIFT = (vector unsigned short) vec_splat_u16(2);
+    a->CY     = vec_splat((vector signed short) buf.vec, 0);
+    a->OY     = vec_splat((vector signed short) buf.vec, 1);
+    a->CRV    = vec_splat((vector signed short) buf.vec, 2);
+    a->CBU    = vec_splat((vector signed short) buf.vec, 3);
+    a->CGU    = vec_splat((vector signed short) buf.vec, 4);
+    a->CGV    = vec_splat((vector signed short) buf.vec, 5);
     return;
 #endif /* HAVE_ALTIVEC */
 }
 
 #if HAVE_ALTIVEC
 
-static av_always_inline void yuv2packedX_altivec(SwsContext *c,
+static av_always_inline void yuv2packedX_altivec(SwsInternal *c,
                                                  const int16_t *lumFilter,
                                                  const int16_t **lumSrc,
                                                  int lumFilterSize,
@@ -643,6 +685,8 @@ static av_always_inline void yuv2packedX_altivec(SwsContext *c,
                                                  int dstW, int dstY,
                                                  enum AVPixelFormat target)
 {
+    SwsInternalAltivec *const a = sws_internal_altivec(c);
+
     int i, j;
     vector signed short X, X0, X1, Y0, U0, V0, Y1, U1, V1, U, V;
     vector signed short R0, G0, B0, R1, G1, B1;
@@ -656,8 +700,8 @@ static av_always_inline void yuv2packedX_altivec(SwsContext *c,
 
     vector signed short *YCoeffs, *CCoeffs;
 
-    YCoeffs = c->vYCoeffsBank + dstY * lumFilterSize;
-    CCoeffs = c->vCCoeffsBank + dstY * chrFilterSize;
+    YCoeffs = a->vYCoeffsBank + dstY * lumFilterSize;
+    CCoeffs = a->vCCoeffsBank + dstY * chrFilterSize;
 
     out = (vector unsigned char *) dest;
 
@@ -742,7 +786,7 @@ static av_always_inline void yuv2packedX_altivec(SwsContext *c,
             if (!printed_error_message) {
                 av_log(c, AV_LOG_ERROR,
                        "altivec_yuv2packedX doesn't support %s output\n",
-                       av_get_pix_fmt_name(c->dstFormat));
+                       av_get_pix_fmt_name(c->opts.dst_format));
                 printed_error_message = 1;
             }
             return;
@@ -830,7 +874,7 @@ static av_always_inline void yuv2packedX_altivec(SwsContext *c,
             /* Unreachable, I think. */
             av_log(c, AV_LOG_ERROR,
                    "altivec_yuv2packedX doesn't support %s output\n",
-                   av_get_pix_fmt_name(c->dstFormat));
+                   av_get_pix_fmt_name(c->opts.dst_format));
             return;
         }
 
@@ -839,7 +883,7 @@ static av_always_inline void yuv2packedX_altivec(SwsContext *c,
 }
 
 #define YUV2PACKEDX_WRAPPER(suffix, pixfmt)                             \
-void ff_yuv2 ## suffix ## _X_altivec(SwsContext *c,                     \
+void ff_yuv2 ## suffix ## _X_altivec(SwsInternal *c,                    \
                                      const int16_t *lumFilter,          \
                                      const int16_t **lumSrc,            \
                                      int lumFilterSize,                 \
@@ -863,4 +907,35 @@ YUV2PACKEDX_WRAPPER(rgba,  AV_PIX_FMT_RGBA);
 YUV2PACKEDX_WRAPPER(rgb24, AV_PIX_FMT_RGB24);
 YUV2PACKEDX_WRAPPER(bgr24, AV_PIX_FMT_BGR24);
 
+av_cold int ff_sws_init_altivec_bufs(SwsInternal *c)
+{
+    const SwsContext *const sws = &c->opts;
+    SwsInternalAltivec *const a = sws_internal_altivec(c);
+
+    a->vYCoeffsBank = av_malloc_array(sws->dst_h, c->vLumFilterSize * sizeof(*a->vYCoeffsBank));
+    a->vCCoeffsBank = av_malloc_array(c->chrDstH, c->vChrFilterSize * sizeof(*a->vCCoeffsBank));
+    if (!a->vYCoeffsBank || !a->vCCoeffsBank)
+        return AVERROR(ENOMEM);
+
+    for (int i = 0; i < c->vLumFilterSize * sws->dst_h; ++i) {
+        short *p = (short *)&a->vYCoeffsBank[i];
+        for (int j = 0; j < 8; ++j)
+            p[j] = c->vLumFilter[i];
+    }
+
+    for (int i = 0; i < c->vChrFilterSize * c->chrDstH; ++i) {
+        short *p = (short *)&a->vCCoeffsBank[i];
+        for (int j = 0; j < 8; ++j)
+            p[j] = c->vChrFilter[i];
+    }
+
+    return 0;
+}
+
+av_cold void ff_sws_free_altivec_bufs(SwsInternal *c)
+{
+    SwsInternalAltivec *const a = sws_internal_altivec(c);
+    av_freep(&a->vYCoeffsBank);
+    av_freep(&a->vCCoeffsBank);
+}
 #endif /* HAVE_ALTIVEC */

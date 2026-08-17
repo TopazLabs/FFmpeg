@@ -1636,12 +1636,12 @@ static int query_formats(const AVFilterContext *ctx,
     if (ret < 0)
         return ret;
 
-    in_formats = ff_make_format_list(sample_fmts_in);
+    in_formats = ff_make_sample_format_list(sample_fmts_in);
     ret = ff_formats_ref(in_formats, &cfg_in[0]->formats);
     if (ret < 0)
         return ret;
 
-    out_formats = ff_make_format_list(sample_fmts_out);
+    out_formats = ff_make_sample_format_list(sample_fmts_out);
     ret = ff_formats_ref(out_formats, &cfg_out[0]->formats);
     if (ret < 0)
         return ret;
@@ -1758,11 +1758,11 @@ static const AVFilterPad avfilter_af_hdcd_inputs[] = {
     },
 };
 
-const AVFilter ff_af_hdcd = {
-    .name          = "hdcd",
-    .description   = NULL_IF_CONFIG_SMALL("Apply High Definition Compatible Digital (HDCD) decoding."),
+const FFFilter ff_af_hdcd = {
+    .p.name        = "hdcd",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply High Definition Compatible Digital (HDCD) decoding."),
+    .p.priv_class  = &hdcd_class,
     .priv_size     = sizeof(HDCDContext),
-    .priv_class    = &hdcd_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_hdcd_inputs),

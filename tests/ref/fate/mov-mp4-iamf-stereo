@@ -52,7 +52,6 @@ DISPOSITION:still_image=0
 DISPOSITION:multilayer=0
 TAG:language=und
 TAG:handler_name=SoundHandler
-TAG:vendor_id=[0][0][0][0]
 [STREAM]
 index=0
 id=0x0
@@ -157,7 +156,7 @@ duration=0
 constant_subblock_duration=0
 [/PIECE]
 [PIECE]
-sound_system=0 channels
+sound_system=binaural
 integrated_loudness=0/256
 digital_peak=0/256
 true_peak=0/1
@@ -187,7 +186,6 @@ DISPOSITION:still_image=0
 DISPOSITION:multilayer=0
 TAG:language=und
 TAG:handler_name=SoundHandler
-TAG:vendor_id=[0][0][0][0]
 [STREAM]
 index=0
 id=0x0

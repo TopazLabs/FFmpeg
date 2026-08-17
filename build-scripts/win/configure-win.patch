@@ -1,8 +1,8 @@
 diff --git a/configure b/configure
-index eeec5dcd0a..01eea4a968 100755
+index 38082e62f9..d6b6c5a912 100755
 --- a/configure
 +++ b/configure
-@@ -6900,19 +6900,19 @@ enabled libvorbis         && require_pkg_config libvorbis vorbis vorbis/codec.h
+@@ -7183,19 +7183,19 @@ enabled whisper           && require_pkg_config whisper "whisper >= 1.7.5" whisp
  enabled libvpx            && {
      enabled libvpx_vp8_decoder && {
          check_pkg_config libvpx_vp8_decoder "vpx >= 1.4.0" "vpx/vpx_decoder.h vpx/vp8dx.h" vpx_codec_vp8_dx ||

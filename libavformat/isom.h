@@ -54,6 +54,12 @@ struct AVAESCTR;
  * Here we just use what is needed to read the chunks
  */
 
+typedef struct MOVTimeToSample {
+    unsigned int count;
+    unsigned int duration;
+    int offset;
+} MOVTimeToSample;
+
 typedef struct MOVStts {
     unsigned int count;
     unsigned int duration;
@@ -61,7 +67,7 @@ typedef struct MOVStts {
 
 typedef struct MOVCtts {
     unsigned int count;
-    int duration;
+    int offset;
 } MOVCtts;
 
 typedef struct MOVStsc {
@@ -173,7 +179,11 @@ typedef struct MOVStreamContext {
     int next_chunk;
     unsigned int chunk_count;
     int64_t *chunk_offsets;
+    unsigned int tts_count;
+    unsigned int tts_allocated_size;
+    MOVTimeToSample *tts_data;
     unsigned int stts_count;
+    unsigned int stts_allocated_size;
     MOVStts *stts_data;
     unsigned int sdtp_count;
     uint8_t *sdtp_data;
@@ -188,8 +198,8 @@ typedef struct MOVStreamContext {
     unsigned *stps_data;  ///< partial sync sample for mpeg-2 open gop
     MOVElst *elst_data;
     unsigned int elst_count;
-    int ctts_index;
-    int ctts_sample;
+    int tts_index;
+    int tts_sample;
     unsigned int sample_size; ///< may contain value calculated from stsd or value from stsz atom
     unsigned int stsz_sample_size; ///< always contains sample size from stsz atom
     unsigned int sample_count;
@@ -273,24 +283,38 @@ typedef struct MOVStreamContext {
     } cenc;
 
     struct IAMFDemuxContext *iamf;
+    int iamf_stream_offset;
 } MOVStreamContext;
+
+typedef struct HEIFItemRef {
+    uint32_t type;
+    int item_id;
+} HEIFItemRef;
 
 typedef struct HEIFItem {
     AVStream *st;
+    HEIFItemRef *iref_list;
+    int nb_iref_list;
     char *name;
     int item_id;
     int64_t extent_length;
     int64_t extent_offset;
     int width;
     int height;
+    int rotation;
+    int hflip;
+    int vflip;
     int type;
     int is_idat_relative;
+    uint8_t *icc_profile;
+    size_t icc_profile_size;
 } HEIFItem;
 
 typedef struct HEIFGrid {
     HEIFItem *item;
     HEIFItem **tile_item_list;
     int16_t *tile_id_list;
+    unsigned *tile_idx_list;
     int nb_tiles;
 } HEIFGrid;
 
@@ -346,8 +370,8 @@ typedef struct MOVContext {
     void *audible_iv;
     int audible_iv_size;
     struct AVAES *aes_decrypt;
-    uint8_t *decryption_key;
-    int decryption_key_len;
+    uint8_t *decryption_default_key;
+    int decryption_default_key_len;
     int enable_drefs;
     int32_t movie_display_matrix[3][3]; ///< display matrix from mvhd
     int have_read_mfra_size;
@@ -355,13 +379,13 @@ typedef struct MOVContext {
     uint32_t max_stts_delta;
     int primary_item_id;
     int cur_item_id;
-    HEIFItem *heif_item;
+    HEIFItem **heif_item;
     int nb_heif_item;
     HEIFGrid *heif_grid;
     int nb_heif_grid;
-    int thmb_item_id;
     int64_t idat_offset;
     int interleaved_read;
+    AVDictionary* decryption_keys;
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);

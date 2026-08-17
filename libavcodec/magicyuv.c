@@ -225,7 +225,8 @@ static int magy_decode_slice10(AVCodecContext *avctx, void *tdata,
                 s->llviddsp.add_left_pred_int16(dst, dst, max, width, 0);
                 dst += stride;
             }
-            lefttop = left = dst[0];
+            if (1 + interlaced < height)
+                lefttop = left = dst[0];
             for (k = 1 + interlaced; k < height; k++) {
                 magicyuv_median_pred16(dst, dst - fake_stride, dst, width, &left, &lefttop, max);
                 lefttop = left = dst[0];
@@ -348,7 +349,8 @@ static int magy_decode_slice(AVCodecContext *avctx, void *tdata,
                 s->llviddsp.add_left_pred(dst, dst, width, 0);
                 dst += stride;
             }
-            lefttop = left = dst[0];
+            if (1 + interlaced < height)
+                lefttop = left = dst[0];
             for (k = 1 + interlaced; k < height; k++) {
                 s->llviddsp.add_median_pred(dst, dst - fake_stride,
                                              dst, width, &left, &lefttop);
@@ -462,37 +464,22 @@ static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
         return AVERROR_PATCHWELCOME;
     }
 
-    s->hshift[1] =
-    s->vshift[1] =
-    s->hshift[2] =
-    s->vshift[2] = 0;
-    s->decorrelate = 0;
-    s->bps = 8;
-
     format = bytestream2_get_byteu(&gb);
     switch (format) {
     case 0x65:
         avctx->pix_fmt = AV_PIX_FMT_GBRP;
-        s->decorrelate = 1;
         break;
     case 0x66:
         avctx->pix_fmt = AV_PIX_FMT_GBRAP;
-        s->decorrelate = 1;
         break;
     case 0x67:
         avctx->pix_fmt = AV_PIX_FMT_YUV444P;
         break;
     case 0x68:
         avctx->pix_fmt = AV_PIX_FMT_YUV422P;
-        s->hshift[1] =
-        s->hshift[2] = 1;
         break;
     case 0x69:
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
-        s->hshift[1] =
-        s->vshift[1] =
-        s->hshift[2] =
-        s->vshift[2] = 1;
         break;
     case 0x6a:
         avctx->pix_fmt = AV_PIX_FMT_YUVA444P;
@@ -502,60 +489,44 @@ static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
         break;
     case 0x6c:
         avctx->pix_fmt = AV_PIX_FMT_YUV422P10;
-        s->hshift[1] =
-        s->hshift[2] = 1;
-        s->bps = 10;
         break;
     case 0x76:
         avctx->pix_fmt = AV_PIX_FMT_YUV444P10;
-        s->bps = 10;
         break;
     case 0x6d:
         avctx->pix_fmt = AV_PIX_FMT_GBRP10;
-        s->decorrelate = 1;
-        s->bps = 10;
         break;
     case 0x6e:
         avctx->pix_fmt = AV_PIX_FMT_GBRAP10;
-        s->decorrelate = 1;
-        s->bps = 10;
         break;
     case 0x6f:
         avctx->pix_fmt = AV_PIX_FMT_GBRP12;
-        s->decorrelate = 1;
-        s->bps = 12;
         break;
     case 0x70:
         avctx->pix_fmt = AV_PIX_FMT_GBRAP12;
-        s->decorrelate = 1;
-        s->bps = 12;
         break;
     case 0x71:
         avctx->pix_fmt = AV_PIX_FMT_GBRP14;
-        s->decorrelate = 1;
-        s->bps = 14;
         break;
     case 0x72:
         avctx->pix_fmt = AV_PIX_FMT_GBRAP14;
-        s->decorrelate = 1;
-        s->bps = 14;
         break;
     case 0x73:
         avctx->pix_fmt = AV_PIX_FMT_GRAY10;
-        s->bps = 10;
         break;
     case 0x7b:
         avctx->pix_fmt = AV_PIX_FMT_YUV420P10;
-        s->hshift[1] =
-        s->vshift[1] =
-        s->hshift[2] =
-        s->vshift[2] = 1;
-        s->bps = 10;
         break;
     default:
         avpriv_request_sample(avctx, "Format 0x%X", format);
         return AVERROR_PATCHWELCOME;
     }
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(avctx->pix_fmt);
+    av_assert1(desc);
+    int is_rgb = s->decorrelate = !!(desc->flags & AV_PIX_FMT_FLAG_RGB);
+    s->hshift[1] = s->hshift[2] = desc->log2_chroma_w;
+    s->vshift[1] = s->vshift[2] = desc->log2_chroma_h;
+    s->bps = desc->comp[0].depth;
     s->max = 1 << s->bps;
     s->magy_decode_slice = s->bps == 8 ? magy_decode_slice : magy_decode_slice10;
     s->planes = av_pix_fmt_count_planes(avctx->pix_fmt);
@@ -583,6 +554,13 @@ static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
                "invalid slice height: %d\n", s->slice_height);
         return AVERROR_INVALIDDATA;
     }
+    if (s->vshift[1] && (s->slice_height & ((1 << s->vshift[1]) - 1))) {
+        av_log(avctx, AV_LOG_ERROR,
+               "slice_height %d is not aligned to chroma vertical "
+               "subsampling (must be a multiple of %d)\n",
+               s->slice_height, 1 << s->vshift[1]);
+        return AVERROR_INVALIDDATA;
+    }
 
     bytestream2_skipu(&gb, 4);
 
@@ -593,11 +571,11 @@ static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
         return AVERROR_INVALIDDATA;
     }
 
+    if ((s->slice_height >> s->vshift[1]) <= s->interlaced) {
+        av_log(avctx, AV_LOG_ERROR, "impossible slice height\n");
+        return AVERROR_INVALIDDATA;
+    }
     if (s->interlaced) {
-        if ((s->slice_height >> s->vshift[1]) < 2) {
-            av_log(avctx, AV_LOG_ERROR, "impossible slice height\n");
-            return AVERROR_INVALIDDATA;
-        }
         if ((avctx->coded_height % s->slice_height) && ((avctx->coded_height % s->slice_height) >> s->vshift[1]) < 2) {
             av_log(avctx, AV_LOG_ERROR, "impossible height\n");
             return AVERROR_INVALIDDATA;
@@ -659,14 +637,7 @@ static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
     s->p = p;
     avctx->execute2(avctx, s->magy_decode_slice, NULL, NULL, s->nb_slices);
 
-    if (avctx->pix_fmt == AV_PIX_FMT_GBRP   ||
-        avctx->pix_fmt == AV_PIX_FMT_GBRAP  ||
-        avctx->pix_fmt == AV_PIX_FMT_GBRP10 ||
-        avctx->pix_fmt == AV_PIX_FMT_GBRAP10||
-        avctx->pix_fmt == AV_PIX_FMT_GBRAP12||
-        avctx->pix_fmt == AV_PIX_FMT_GBRAP14||
-        avctx->pix_fmt == AV_PIX_FMT_GBRP12||
-        avctx->pix_fmt == AV_PIX_FMT_GBRP14) {
+    if (is_rgb) {
         FFSWAP(uint8_t*, p->data[0], p->data[1]);
         FFSWAP(int, p->linesize[0], p->linesize[1]);
     } else {

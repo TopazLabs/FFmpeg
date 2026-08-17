@@ -53,6 +53,8 @@ static int nppsharpen_init(AVFilterContext* ctx)
 {
     NPPSharpenContext* s = ctx->priv;
 
+    av_log(ctx, AV_LOG_WARNING, "The libnpp based filters are deprecated.\n");
+
     s->own_frame = av_frame_alloc();
     if (!s->own_frame)
         goto fail;
@@ -256,16 +258,16 @@ static const AVFilterPad nppsharpen_outputs[] = {{
     .config_props = nppsharpen_config_props,
 }};
 
-const AVFilter ff_vf_sharpen_npp = {
-    .name = "sharpen_npp",
-    .description = NULL_IF_CONFIG_SMALL("NVIDIA Performance Primitives video "
-                                        "sharpening filter."),
+const FFFilter ff_vf_sharpen_npp = {
+    .p.name        = "sharpen_npp",
+    .p.description = NULL_IF_CONFIG_SMALL("NVIDIA Performance Primitives video "
+                                          "sharpening filter."),
+    .p.priv_class  = &nppsharpen_class,
 
     .init = nppsharpen_init,
     .uninit = nppsharpen_uninit,
 
     .priv_size = sizeof(NPPSharpenContext),
-    .priv_class = &nppsharpen_class,
 
     FILTER_INPUTS(nppsharpen_inputs),
     FILTER_OUTPUTS(nppsharpen_outputs),

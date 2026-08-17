@@ -113,7 +113,7 @@ static int query_formats(const AVFilterContext *ctx,
     if (ret < 0)
         return ret;
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -205,11 +205,11 @@ static const AVFilterPad bs2b_outputs[] = {
     },
 };
 
-const AVFilter ff_af_bs2b = {
-    .name           = "bs2b",
-    .description    = NULL_IF_CONFIG_SMALL("Bauer stereo-to-binaural filter."),
+const FFFilter ff_af_bs2b = {
+    .p.name         = "bs2b",
+    .p.description  = NULL_IF_CONFIG_SMALL("Bauer stereo-to-binaural filter."),
+    .p.priv_class   = &bs2b_class,
     .priv_size      = sizeof(Bs2bContext),
-    .priv_class     = &bs2b_class,
     .init           = init,
     .uninit         = uninit,
     FILTER_INPUTS(bs2b_inputs),

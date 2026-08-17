@@ -177,7 +177,7 @@ static int query_formats(AVFilterContext *ctx)
     }
 
     if (!ctx->inputs[0]->outcfg.formats)
-        if ((ret = ff_formats_ref(ff_make_format_list(levels_in_pix_fmts), &ctx->inputs[0]->outcfg.formats)) < 0)
+        if ((ret = ff_formats_ref(ff_make_pixel_format_list(levels_in_pix_fmts), &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
     avff = ctx->inputs[0]->incfg.formats;
     desc = av_pix_fmt_desc_get(avff->formats[0]);
@@ -208,7 +208,7 @@ static int query_formats(AVFilterContext *ctx)
         out_pix_fmts = levels_out_yuv12_pix_fmts;
     else
         return AVERROR(EAGAIN);
-    if ((ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &ctx->outputs[0]->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(ff_make_pixel_format_list(out_pix_fmts), &ctx->outputs[0]->incfg.formats)) < 0)
         return ret;
 
     return 0;
@@ -594,6 +594,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     }
 
     av_frame_copy_props(out, in);
+    out->sample_aspect_ratio = outlink->sample_aspect_ratio;
     av_frame_free(&in);
     s->x_pos++;
     if (s->x_pos >= s->width) {
@@ -636,14 +637,14 @@ static const AVFilterPad outputs[] = {
 
 #if CONFIG_HISTOGRAM_FILTER
 
-const AVFilter ff_vf_histogram = {
-    .name          = "histogram",
-    .description   = NULL_IF_CONFIG_SMALL("Compute and draw a histogram."),
+const FFFilter ff_vf_histogram = {
+    .p.name        = "histogram",
+    .p.description = NULL_IF_CONFIG_SMALL("Compute and draw a histogram."),
+    .p.priv_class  = &histogram_class,
     .priv_size     = sizeof(HistogramContext),
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &histogram_class,
 };
 
 #endif /* CONFIG_HISTOGRAM_FILTER */
@@ -678,15 +679,15 @@ static const AVOption thistogram_options[] = {
 
 AVFILTER_DEFINE_CLASS(thistogram);
 
-const AVFilter ff_vf_thistogram = {
-    .name          = "thistogram",
-    .description   = NULL_IF_CONFIG_SMALL("Compute and draw a temporal histogram."),
+const FFFilter ff_vf_thistogram = {
+    .p.name        = "thistogram",
+    .p.description = NULL_IF_CONFIG_SMALL("Compute and draw a temporal histogram."),
+    .p.priv_class  = &thistogram_class,
     .priv_size     = sizeof(HistogramContext),
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_QUERY_FUNC(query_formats),
     .uninit        = uninit,
-    .priv_class    = &thistogram_class,
 };
 
 #endif /* CONFIG_THISTOGRAM_FILTER */

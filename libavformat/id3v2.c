@@ -32,6 +32,7 @@
 #include <zlib.h>
 #endif
 
+#include "libavutil/attributes_internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/dict.h"
@@ -87,7 +88,7 @@ static const AVMetadataConv id3v2_2_metadata_conv[] = {
     { 0 }
 };
 
-const char ff_id3v2_tags[][4] = {
+attribute_nonstring const char ff_id3v2_tags[][4] = {
     "TALB", "TBPM", "TCOM", "TCON", "TCOP", "TDLY", "TENC", "TEXT",
     "TFLT", "TIT1", "TIT2", "TIT3", "TKEY", "TLAN", "TLEN", "TMED",
     "TOAL", "TOFN", "TOLY", "TOPE", "TOWN", "TPE1", "TPE2", "TPE3",
@@ -95,13 +96,13 @@ const char ff_id3v2_tags[][4] = {
     { 0 },
 };
 
-const char ff_id3v2_4_tags[][4] = {
+attribute_nonstring  const char ff_id3v2_4_tags[][4] = {
     "TDEN", "TDOR", "TDRC", "TDRL", "TDTG", "TIPL", "TMCL", "TMOO",
     "TPRO", "TSOA", "TSOP", "TSOT", "TSST",
     { 0 },
 };
 
-const char ff_id3v2_3_tags[][4] = {
+attribute_nonstring const char ff_id3v2_3_tags[][4] = {
     "TDAT", "TIME", "TORY", "TRDA", "TSIZ", "TYER",
     { 0 },
 };
@@ -137,6 +138,7 @@ const CodecMime ff_id3v2_mime_tags[] = {
     { "image/png",  AV_CODEC_ID_PNG   },
     { "image/tiff", AV_CODEC_ID_TIFF  },
     { "image/bmp",  AV_CODEC_ID_BMP   },
+    { "image/webp", AV_CODEC_ID_WEBP  },
     { "JPG",        AV_CODEC_ID_MJPEG }, /* ID3v2.2  */
     { "PNG",        AV_CODEC_ID_PNG   }, /* ID3v2.2  */
     { "",           AV_CODEC_ID_NONE  },
@@ -256,6 +258,9 @@ static int decode_str(AVFormatContext *s, AVIOContext *pb, int encoding,
         return ret;
     }
 
+    if (left == 0)
+        goto end;
+
     switch (encoding) {
     case ID3v2_ENCODING_ISO8859:
         while (left && ch) {
@@ -267,18 +272,21 @@ static int decode_str(AVFormatContext *s, AVIOContext *pb, int encoding,
 
     case ID3v2_ENCODING_UTF16BOM:
         if ((left -= 2) < 0) {
-            av_log(s, AV_LOG_ERROR, "Cannot read BOM value, input too short\n");
+            av_log(s, AV_LOG_ERROR, "Cannot read BOM value, input too short %d\n", left);
             ffio_free_dyn_buf(&dynbuf);
             *dst = NULL;
             return AVERROR_INVALIDDATA;
         }
-        switch (avio_rb16(pb)) {
+        uint16_t bom = avio_rb16(pb);
+        switch (bom) {
         case 0xfffe:
             get = avio_rl16;
         case 0xfeff:
             break;
+        case 0: // empty string without bom
+            goto end;
         default:
-            av_log(s, AV_LOG_ERROR, "Incorrect BOM value\n");
+            av_log(s, AV_LOG_ERROR, "Incorrect BOM value: 0x%x\n", bom);
             ffio_free_dyn_buf(&dynbuf);
             *dst = NULL;
             *maxread = left;
@@ -303,9 +311,10 @@ static int decode_str(AVFormatContext *s, AVIOContext *pb, int encoding,
         }
         break;
     default:
-        av_log(s, AV_LOG_WARNING, "Unknown encoding\n");
+        av_log(s, AV_LOG_WARNING, "Unknown encoding %d\n", encoding);
     }
 
+end:
     if (ch)
         avio_w8(dynbuf, 0);
 
@@ -478,7 +487,7 @@ static void read_geobtag(AVFormatContext *s, AVIOContext *pb, int taglen,
 
     new_extra = av_mallocz(sizeof(ID3v2ExtraMeta));
     if (!new_extra) {
-        av_log(s, AV_LOG_ERROR, "Failed to alloc %"SIZE_SPECIFIER" bytes\n",
+        av_log(s, AV_LOG_ERROR, "Failed to alloc %zu bytes\n",
                sizeof(ID3v2ExtraMeta));
         return;
     }
@@ -896,7 +905,7 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
         int tunsync         = 0;
         int tcomp           = 0;
         int tencr           = 0;
-        unsigned long av_unused dlen;
+        av_unused unsigned long dlen;
 
         if (isv34) {
             if (avio_read(pb, tag, 4) < 4)
@@ -989,16 +998,16 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
             if (unsync || tunsync) {
                 uint8_t *b = buffer;
                 uint8_t *t = buffer;
-                uint8_t *end = t + tlen;
 
                 if (avio_read(pb, buffer, tlen) != tlen) {
                     av_log(s, AV_LOG_ERROR, "Failed to read tag data\n");
                     goto seek;
                 }
 
-                while (t != end) {
+                const uint8_t *const buf_end = t + tlen;
+                while (t != buf_end) {
                     *b++ = *t++;
-                    if (t != end && t[-1] == 0xff && !t[0])
+                    if (t != buf_end && t[-1] == 0xff && !t[0])
                         t++;
                 }
 
@@ -1011,7 +1020,7 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
                 if (tcomp) {
                     int err;
 
-                    av_log(s, AV_LOG_DEBUG, "Compresssed frame %s tlen=%d dlen=%ld\n", tag, tlen, dlen);
+                    av_log(s, AV_LOG_DEBUG, "Compressed frame %s tlen=%d dlen=%ld\n", tag, tlen, dlen);
 
                     if (tlen <= 0)
                         goto seek;

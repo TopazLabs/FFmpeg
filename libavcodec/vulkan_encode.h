@@ -57,6 +57,10 @@ typedef struct FFVulkanEncodePicture {
     FFVkExecContext       *exec;
     AVBufferRef           *pkt_buf;
     int                    slices_offset;
+
+    int non_independent_frame;
+    char tail_data[16];
+    size_t tail_size;
 } FFVulkanEncodePicture;
 
 /**
@@ -188,10 +192,13 @@ typedef struct FFVulkanEncodeContext {
     VkVideoEncodeCapabilitiesKHR enc_caps;
     VkVideoEncodeUsageInfoKHR usage_info;
 
-    FFVkQueueFamilyCtx qf_enc;
+    AVVulkanDeviceQueueFamily *qf_enc;
     FFVkExecPool enc_pool;
 
     FFHWBaseEncodePicture *slots[32];
+
+    AVBufferRef *prev_buf_ref;
+    size_t prev_buf_size;
 } FFVulkanEncodeContext;
 
 #define VULKAN_ENCODE_COMMON_OPTIONS \

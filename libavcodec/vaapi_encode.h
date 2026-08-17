@@ -202,7 +202,7 @@ typedef struct VAAPIEncodeContext {
     AVVAAPIDeviceContext *hwctx;
 
     // Pool of (reusable) bitstream output buffers.
-    struct FFRefStructPool *output_buffer_pool;
+    struct AVRefStructPool *output_buffer_pool;
 
     // Global parameters which will be applied at the start of the
     // sequence (includes rate control parameters below).
@@ -260,6 +260,10 @@ typedef struct VAAPIEncodeContext {
      * This is a RefStruct reference.
      */
     VABufferID     *coded_buffer_ref;
+
+    // Surface alignment required by driver.
+    int             surface_alignment_width;
+    int             surface_alignment_height;
 } VAAPIEncodeContext;
 
 typedef struct VAAPIEncodeType {
@@ -356,7 +360,7 @@ int ff_vaapi_encode_close(AVCodecContext *avctx);
     { "max_frame_size", \
       "Maximum frame size (in bytes)",\
       OFFSET(common.max_frame_size), AV_OPT_TYPE_INT, \
-      { .i64 = 0 }, 0, INT_MAX, FLAGS }
+      { .i64 = 0 }, 0, INT_MAX / 8, FLAGS }
 
 #define VAAPI_ENCODE_RC_MODE(name, desc) \
     { #name, desc, 0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_ ## name }, \

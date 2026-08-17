@@ -29,6 +29,7 @@
 
 #include "config_components.h"
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
@@ -52,7 +53,7 @@
 #include "mpegutils.h"
 #include "profiles.h"
 #include "rectangle.h"
-#include "refstruct.h"
+#include "libavutil/refstruct.h"
 #include "thread.h"
 #include "threadframe.h"
 
@@ -156,10 +157,10 @@ void ff_h264_free_tables(H264Context *h)
     av_freep(&h->mb2b_xy);
     av_freep(&h->mb2br_xy);
 
-    ff_refstruct_pool_uninit(&h->qscale_table_pool);
-    ff_refstruct_pool_uninit(&h->mb_type_pool);
-    ff_refstruct_pool_uninit(&h->motion_val_pool);
-    ff_refstruct_pool_uninit(&h->ref_index_pool);
+    av_refstruct_pool_uninit(&h->qscale_table_pool);
+    av_refstruct_pool_uninit(&h->mb_type_pool);
+    av_refstruct_pool_uninit(&h->motion_val_pool);
+    av_refstruct_pool_uninit(&h->ref_index_pool);
 
 #if CONFIG_ERROR_RESILIENCE
     av_freep(&h->er.mb_index2xy);
@@ -219,8 +220,6 @@ int ff_h264_alloc_tables(H264Context *h)
         }
 
     if (CONFIG_ERROR_RESILIENCE) {
-        const int er_size = h->mb_height * h->mb_stride * (4*sizeof(int) + 1);
-        int mb_array_size = h->mb_height * h->mb_stride;
         int y_size  = (2 * h->mb_width + 1) * (2 * h->mb_height + 1);
         int yc_size = y_size + 2 * big_mb_num;
 
@@ -238,8 +237,6 @@ int ff_h264_alloc_tables(H264Context *h)
 
         // error resilience code looks cleaner with this
         if (!FF_ALLOCZ_TYPED_ARRAY(er->mb_index2xy,        h->mb_num + 1) ||
-            !FF_ALLOCZ_TYPED_ARRAY(er->error_status_table, mb_array_size) ||
-            !FF_ALLOCZ_TYPED_ARRAY(er->er_temp_buffer,     er_size)       ||
             !FF_ALLOCZ_TYPED_ARRAY(h->dc_val_base,         yc_size))
             return AVERROR(ENOMEM); // ff_h264_free_tables will clean up for us
 
@@ -254,6 +251,8 @@ int ff_h264_alloc_tables(H264Context *h)
         er->dc_val[2] = er->dc_val[1] + big_mb_num;
         for (int i = 0; i < yc_size; i++)
             h->dc_val_base[i] = 1024;
+
+        return ff_er_init(er);
     }
 
     return 0;
@@ -313,7 +312,7 @@ static int h264_init_context(AVCodecContext *avctx, H264Context *h)
     ff_h264_sei_uninit(&h->sei);
 
     if (avctx->active_thread_type & FF_THREAD_FRAME) {
-        h->decode_error_flags_pool = ff_refstruct_pool_alloc(sizeof(atomic_int), 0);
+        h->decode_error_flags_pool = av_refstruct_pool_alloc(sizeof(atomic_int), 0);
         if (!h->decode_error_flags_pool)
             return AVERROR(ENOMEM);
     }
@@ -364,7 +363,7 @@ static av_cold int h264_decode_end(AVCodecContext *avctx)
 
     h->cur_pic_ptr = NULL;
 
-    ff_refstruct_pool_uninit(&h->decode_error_flags_pool);
+    av_refstruct_pool_uninit(&h->decode_error_flags_pool);
 
     av_freep(&h->slice_ctx);
     h->nb_slice_ctx = 0;
@@ -396,12 +395,6 @@ static av_cold int h264_decode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "pthread_once has failed.");
         return AVERROR_UNKNOWN;
     }
-
-#if FF_API_TICKS_PER_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->ticks_per_frame = 2;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     if (!avctx->internal->is_copy) {
         if (avctx->extradata_size > 0 && avctx->extradata) {
@@ -480,7 +473,7 @@ void ff_h264_flush_change(H264Context *h)
     h->mmco_reset = 1;
 }
 
-static void h264_decode_flush(AVCodecContext *avctx)
+static av_cold void h264_decode_flush(AVCodecContext *avctx)
 {
     H264Context *h = avctx->priv_data;
     int i;
@@ -587,7 +580,8 @@ static void debug_green_metadata(const H264SEIGreenMetaData *gm, void *logctx)
     }
 }
 
-static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
+static int decode_nal_units(H264Context *h, AVBufferRef *buf_ref,
+                            const uint8_t *buf, int buf_size)
 {
     AVCodecContext *const avctx = h->avctx;
     int nals_needed = 0; ///< number of NALs that need decoding before the next frame thread starts
@@ -668,7 +662,8 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
                 }
 
                 if (h->avctx->hwaccel &&
-                    (ret = FF_HW_CALL(h->avctx, start_frame, buf, buf_size)) < 0)
+                    (ret = FF_HW_CALL(h->avctx, start_frame, buf_ref,
+                                      buf, buf_size)) < 0)
                     goto end;
             }
 
@@ -742,8 +737,10 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
                    nal->type, nal->size_bits);
         }
 
-        if (err < 0) {
+        if (err < 0 && (h->avctx->err_recognition & AV_EF_EXPLODE)) {
             av_log(h->avctx, AV_LOG_ERROR, "decode_slice_header error\n");
+            ret = err;
+            goto end;
         }
     }
 
@@ -756,7 +753,7 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
         if (h->cur_pic_ptr->decode_error_flags) {
             /* Frame-threading in use */
             atomic_int *decode_error = h->cur_pic_ptr->decode_error_flags;
-            /* Using atomics here is not supposed to provide syncronisation;
+            /* Using atomics here is not supposed to provide synchronisation;
              * they are merely used to allow to set decode_error from both
              * decoding threads in case of coded slices. */
             atomic_fetch_or_explicit(decode_error, FF_DECODE_ERROR_DECODE_SLICES,
@@ -823,19 +820,6 @@ end:
     }
 
     return (ret < 0) ? ret : buf_size;
-}
-
-/**
- * Return the number of bytes consumed for building the current frame.
- */
-static int get_consumed_bytes(int pos, int buf_size)
-{
-    if (pos == 0)
-        pos = 1;        // avoid infinite loops (I doubt that is needed but...)
-    if (pos + 10 > buf_size)
-        pos = buf_size; // oops ;)
-
-    return pos;
 }
 
 static int h264_export_enc_params(AVFrame *f, const H264Picture *p)
@@ -1064,7 +1048,7 @@ static int h264_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                                             avctx->err_recognition, avctx);
     }
 
-    buf_index = decode_nal_units(h, buf, buf_size);
+    buf_index = decode_nal_units(h, avpkt->buf, buf, buf_size);
     if (buf_index < 0)
         return AVERROR_INVALIDDATA;
 
@@ -1098,7 +1082,7 @@ static int h264_decode_frame(AVCodecContext *avctx, AVFrame *pict,
 
     ff_h264_unref_picture(&h->last_pic_for_ec);
 
-    return get_consumed_bytes(buf_index, buf_size);
+    return buf_size;
 }
 
 #define OFFSET(x) offsetof(H264Context, x)

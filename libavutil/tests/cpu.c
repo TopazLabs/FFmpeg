@@ -23,6 +23,12 @@
 #include "libavutil/cpu.h"
 #include "libavutil/avstring.h"
 
+#if ARCH_AARCH64
+#include "libavutil/aarch64/cpu.h"
+#elif ARCH_RISCV
+#include "libavutil/riscv/cpu.h"
+#endif
+
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -40,6 +46,12 @@ static const struct {
     { AV_CPU_FLAG_VFP,       "vfp"        },
     { AV_CPU_FLAG_DOTPROD,   "dotprod"    },
     { AV_CPU_FLAG_I8MM,      "i8mm"       },
+    { AV_CPU_FLAG_SVE,       "sve"        },
+    { AV_CPU_FLAG_SVE2,      "sve2"       },
+    { AV_CPU_FLAG_SME,       "sme"        },
+    { AV_CPU_FLAG_SME_I16I64, "sme_i16i64" },
+    { AV_CPU_FLAG_ARM_CRC,   "crc"        },
+    { AV_CPU_FLAG_SME2,      "sme2"       },
 #elif ARCH_ARM
     { AV_CPU_FLAG_ARMV5TE,   "armv5te"    },
     { AV_CPU_FLAG_ARMV6,     "armv6"      },
@@ -80,6 +92,7 @@ static const struct {
     { AV_CPU_FLAG_BMI1,      "bmi1"       },
     { AV_CPU_FLAG_BMI2,      "bmi2"       },
     { AV_CPU_FLAG_AESNI,     "aesni"      },
+    { AV_CPU_FLAG_CLMUL,     "clmul"      },
     { AV_CPU_FLAG_AVX512,    "avx512"     },
     { AV_CPU_FLAG_AVX512ICL, "avx512icl"  },
     { AV_CPU_FLAG_SLOW_GATHER, "slowgather" },
@@ -96,6 +109,8 @@ static const struct {
     { AV_CPU_FLAG_RVV_F64,   "zve64d"     },
     { AV_CPU_FLAG_RV_ZVBB,   "zvbb"       },
     { AV_CPU_FLAG_RV_MISALIGNED, "misaligned" },
+#elif ARCH_WASM
+    { AV_CPU_FLAG_SIMD128,   "simd128"    },
 #endif
     { 0 }
 };
@@ -161,6 +176,21 @@ int main(int argc, char **argv)
     print_cpu_flags(cpu_flags_raw, "raw");
     print_cpu_flags(cpu_flags_eff, "effective");
     printf("threads = %s (cpu_count = %d)\n", threads, cpu_count);
+#if ARCH_AARCH64 && HAVE_SVE
+    if (cpu_flags_raw & AV_CPU_FLAG_SVE)
+        printf("sve_vector_length = %d\n", 8 * ff_aarch64_sve_length());
+#endif
+#if ARCH_AARCH64 && HAVE_SME
+    if (cpu_flags_raw & AV_CPU_FLAG_SME)
+        printf("sme_vector_length = %d\n", 8 * ff_aarch64_sme_length());
+#endif
+#if ARCH_RISCV && HAVE_RVV
+    if (cpu_flags_raw & AV_CPU_FLAG_RVV_I32) {
+        size_t bytes = ff_get_rv_vlenb();
+
+        printf("rv_vlenb = %zu (%zu bits)\n", bytes, 8 * bytes);
+    }
+#endif
 
     return 0;
 }

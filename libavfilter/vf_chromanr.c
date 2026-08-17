@@ -80,6 +80,27 @@ static int distance ## _slice##name(AVFilterContext *ctx, void *arg,            
     ChromaNRContext *s = ctx->priv;                                                      \
     AVFrame *in = arg;                                                                   \
     AVFrame *out = s->out;                                                               \
+                                                                                         \
+    {                                                                                    \
+        const int h = s->planeheight[0];                                                 \
+        const int slice_start = (h * jobnr) / nb_jobs;                                   \
+        const int slice_end = (h * (jobnr+1)) / nb_jobs;                                 \
+                                                                                         \
+        av_image_copy_plane(out->data[0] + slice_start * out->linesize[0],               \
+                            out->linesize[0],                                            \
+                            in->data[0] + slice_start * in->linesize[0],                 \
+                            in->linesize[0],                                             \
+                            s->linesize[0], slice_end - slice_start);                    \
+                                                                                         \
+        if (s->nb_planes == 4) {                                                         \
+            av_image_copy_plane(out->data[3] + slice_start * out->linesize[3],           \
+                                out->linesize[3],                                        \
+                                in->data[3] + slice_start * in->linesize[3],             \
+                                in->linesize[3],                                         \
+                                s->linesize[3], slice_end - slice_start);                \
+        }                                                                                \
+    }                                                                                    \
+                                                                                         \
     const int in_ylinesize = in->linesize[0];                                            \
     const int in_ulinesize = in->linesize[1];                                            \
     const int in_vlinesize = in->linesize[2];                                            \
@@ -102,26 +123,6 @@ static int distance ## _slice##name(AVFilterContext *ctx, void *arg,            
     type *out_uptr = (type *)(out->data[1] + slice_start * out_ulinesize);               \
     type *out_vptr = (type *)(out->data[2] + slice_start * out_vlinesize);               \
                                                                                          \
-    {                                                                                    \
-        const int h = s->planeheight[0];                                                 \
-        const int slice_start = (h * jobnr) / nb_jobs;                                   \
-        const int slice_end = (h * (jobnr+1)) / nb_jobs;                                 \
-                                                                                         \
-        av_image_copy_plane(out->data[0] + slice_start * out->linesize[0],               \
-                            out->linesize[0],                                            \
-                            in->data[0] + slice_start * in->linesize[0],                 \
-                            in->linesize[0],                                             \
-                            s->linesize[0], slice_end - slice_start);                    \
-                                                                                         \
-        if (s->nb_planes == 4) {                                                         \
-            av_image_copy_plane(out->data[3] + slice_start * out->linesize[3],           \
-                                out->linesize[3],                                        \
-                                in->data[3] + slice_start * in->linesize[3],             \
-                                in->linesize[3],                                         \
-                                s->linesize[3], slice_end - slice_start);                \
-        }                                                                                \
-    }                                                                                    \
-                                                                                         \
     for (int y = slice_start; y < slice_end; y++) {                                      \
         const type *in_yptr = (const type *)(in->data[0] + y * chroma_h * in_ylinesize); \
         const type *in_uptr = (const type *)(in->data[1] + y * in_ulinesize);            \
@@ -140,14 +141,14 @@ static int distance ## _slice##name(AVFilterContext *ctx, void *arg,            
             int cn = 1;                                                                  \
                                                                                          \
             for (int yy = yystart; yy <= yystop; yy += steph) {                          \
-                const type *in_yptr = (const type *)(in->data[0] + yy * chroma_h * in_ylinesize); \
-                const type *in_uptr = (const type *)(in->data[1] + yy * in_ulinesize);            \
-                const type *in_vptr = (const type *)(in->data[2] + yy * in_vlinesize);            \
+                const type *in_y = (const type *)(in->data[0] + yy * chroma_h * in_ylinesize); \
+                const type *in_u = (const type *)(in->data[1] + yy * in_ulinesize);            \
+                const type *in_v = (const type *)(in->data[2] + yy * in_vlinesize);            \
                                                                                                   \
                 for (int xx = xxstart; xx <= xxstop; xx += stepw) {                    \
-                    const ctype Y = in_yptr[xx * chroma_w];                            \
-                    const ctype U = in_uptr[xx];                                       \
-                    const ctype V = in_vptr[xx];                                       \
+                    const ctype Y = in_y[xx * chroma_w];                               \
+                    const ctype U = in_u[xx];                                          \
+                    const ctype V = in_v[xx];                                          \
                     const ctype cyY = FFABS(cy - Y);                                   \
                     const ctype cuU = FFABS(cu - U);                                   \
                     const ctype cvV = FFABS(cv - V);                                   \
@@ -289,14 +290,14 @@ static const AVFilterPad inputs[] = {
 
 AVFILTER_DEFINE_CLASS(chromanr);
 
-const AVFilter ff_vf_chromanr = {
-    .name          = "chromanr",
-    .description   = NULL_IF_CONFIG_SMALL("Reduce chrominance noise."),
+const FFFilter ff_vf_chromanr = {
+    .p.name        = "chromanr",
+    .p.description = NULL_IF_CONFIG_SMALL("Reduce chrominance noise."),
+    .p.priv_class  = &chromanr_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(ChromaNRContext),
-    .priv_class    = &chromanr_class,
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

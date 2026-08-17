@@ -36,6 +36,7 @@
 #include <float.h>
 
 #include "libavutil/attributes.h"
+#include "libavutil/attributes_internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/error.h"
 #include "libavutil/intreadwrite.h"
@@ -46,6 +47,7 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "decode.h"
+#include "exif_internal.h"
 #include "faxcompr.h"
 #include "lzw.h"
 #include "tiff.h"
@@ -123,6 +125,8 @@ typedef struct TiffContext {
 
     int geotag_count;
     TiffGeoTag *geotags;
+
+    AVExifMetadata exif_meta;
 } TiffContext;
 
 static const float d65_white[3] = { 0.950456f, 1.f, 1.088754f };
@@ -272,9 +276,9 @@ static int add_metadata(int count, int type,
                         const char *name, const char *sep, TiffContext *s, AVFrame *frame)
 {
     switch(type) {
-    case TIFF_DOUBLE: return ff_tadd_doubles_metadata(count, name, sep, &s->gb, s->le, &frame->metadata);
-    case TIFF_SHORT : return ff_tadd_shorts_metadata(count, name, sep, &s->gb, s->le, 0, &frame->metadata);
-    case TIFF_STRING: return ff_tadd_string_metadata(count, name, &s->gb, s->le, &frame->metadata);
+    case AV_TIFF_DOUBLE: return ff_tadd_doubles_metadata(count, name, sep, &s->gb, s->le, &frame->metadata);
+    case AV_TIFF_SHORT : return ff_tadd_shorts_metadata(count, name, sep, &s->gb, s->le, 0, &frame->metadata);
+    case AV_TIFF_STRING: return ff_tadd_string_metadata(count, name, &s->gb, s->le, &frame->metadata);
     default         : return AVERROR_INVALIDDATA;
     };
 }
@@ -1270,12 +1274,12 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
     off = bytestream2_tell(&s->gb);
     if (count == 1) {
         switch (type) {
-        case TIFF_BYTE:
-        case TIFF_SHORT:
-        case TIFF_LONG:
+        case AV_TIFF_BYTE:
+        case AV_TIFF_SHORT:
+        case AV_TIFF_LONG:
             value = ff_tget(&s->gb, type, s->le);
             break;
-        case TIFF_RATIONAL:
+        case AV_TIFF_RATIONAL:
             value  = ff_tget_long(&s->gb, s->le);
             value2 = ff_tget_long(&s->gb, s->le);
             if (!value2) {
@@ -1284,7 +1288,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
             }
 
             break;
-        case TIFF_STRING:
+        case AV_TIFF_STRING:
             if (count <= 4) {
                 break;
             }
@@ -1319,9 +1323,9 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
             s->bpp = value;
         else {
             switch (type) {
-            case TIFF_BYTE:
-            case TIFF_SHORT:
-            case TIFF_LONG:
+            case AV_TIFF_BYTE:
+            case AV_TIFF_SHORT:
+            case AV_TIFF_LONG:
                 s->bpp = 0;
                 if (bytestream2_get_bytes_left(&s->gb) < type_sizes[type] * count)
                     return AVERROR_INVALIDDATA;
@@ -1388,7 +1392,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         }
         break;
     case TIFF_ROWSPERSTRIP:
-        if (!value || (type == TIFF_LONG && value == UINT_MAX))
+        if (!value || (type == AV_TIFF_LONG && value == UINT_MAX))
             value = s->height;
         s->rps = FFMIN(value, s->height);
         break;
@@ -1469,7 +1473,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
             return AVERROR_INVALIDDATA;
         s->black_level[0] = value / (float)value2;
         for (int i = 0; i < count && count > 1; i++) {
-            if (type == TIFF_RATIONAL) {
+            if (type == AV_TIFF_RATIONAL) {
                 value  = ff_tget_long(&s->gb, s->le);
                 value2 = ff_tget_long(&s->gb, s->le);
                 if (!value2) {
@@ -1478,7 +1482,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
                 }
 
                 s->black_level[i] = value / (float)value2;
-            } else if (type == TIFF_SRATIONAL) {
+            } else if (type == AV_TIFF_SRATIONAL) {
                 int value  = ff_tget_long(&s->gb, s->le);
                 int value2 = ff_tget_long(&s->gb, s->le);
                 if (!value2) {
@@ -1785,7 +1789,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         }
         break;
     case DNG_ANALOG_BALANCE:
-        if (type != TIFF_RATIONAL)
+        if (type != AV_TIFF_RATIONAL)
             break;
 
         for (int i = 0; i < 3; i++) {
@@ -1800,7 +1804,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         }
         break;
     case DNG_AS_SHOT_NEUTRAL:
-        if (type != TIFF_RATIONAL)
+        if (type != AV_TIFF_RATIONAL)
             break;
 
         for (int i = 0; i < 3; i++) {
@@ -1815,7 +1819,7 @@ static int tiff_decode_tag(TiffContext *s, AVFrame *frame)
         }
         break;
     case DNG_AS_SHOT_WHITE_XY:
-        if (type != TIFF_RATIONAL)
+        if (type != AV_TIFF_RATIONAL)
             break;
 
         for (int i = 0; i < 2; i++) {
@@ -1935,6 +1939,12 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     int retry_for_subifd, retry_for_page;
     int is_dng;
     int has_tile_bits, has_strip_bits;
+
+    av_exif_free(&s->exif_meta);
+    /* this will not parse the image data */
+    ret = av_exif_parse_buffer(avctx, avpkt->data, avpkt->size, &s->exif_meta, AV_EXIF_TIFF_HEADER);
+    if (ret < 0)
+        av_log(avctx, AV_LOG_ERROR, "could not parse EXIF data: %s\n", av_err2str(ret));
 
     bytestream2_init(&s->gb, avpkt->data, avpkt->size);
 
@@ -2401,6 +2411,10 @@ again:
         }
     }
 
+    ret = ff_decode_exif_attach_ifd(avctx, p, &s->exif_meta);
+    if (ret < 0)
+        av_log(avctx, AV_LOG_ERROR, "error attaching EXIF ifd: %s\n", av_err2str(ret));
+
     *got_frame = 1;
 
     return avpkt->size;
@@ -2409,7 +2423,6 @@ again:
 static av_cold int tiff_init(AVCodecContext *avctx)
 {
     TiffContext *s = avctx->priv_data;
-    const AVCodec *codec;
     int ret;
 
     s->width  = 0;
@@ -2429,17 +2442,15 @@ static av_cold int tiff_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
 
     /* Prepare everything needed for JPEG decoding */
-    codec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
-    if (!codec)
-        return AVERROR_BUG;
-    s->avctx_mjpeg = avcodec_alloc_context3(codec);
+    EXTERN const FFCodec ff_mjpeg_decoder;
+    s->avctx_mjpeg = avcodec_alloc_context3(&ff_mjpeg_decoder.p);
     if (!s->avctx_mjpeg)
         return AVERROR(ENOMEM);
     s->avctx_mjpeg->flags = avctx->flags;
     s->avctx_mjpeg->flags2 = avctx->flags2;
     s->avctx_mjpeg->idct_algo = avctx->idct_algo;
     s->avctx_mjpeg->max_pixels = avctx->max_pixels;
-    ret = avcodec_open2(s->avctx_mjpeg, codec, NULL);
+    ret = avcodec_open2(s->avctx_mjpeg, NULL, NULL);
     if (ret < 0) {
         return ret;
     }
@@ -2452,6 +2463,7 @@ static av_cold int tiff_end(AVCodecContext *avctx)
     TiffContext *const s = avctx->priv_data;
 
     free_geotags(s);
+    av_exif_free(&s->exif_meta);
 
     ff_lzw_decode_close(&s->lzw);
     av_freep(&s->deinvert_buf);

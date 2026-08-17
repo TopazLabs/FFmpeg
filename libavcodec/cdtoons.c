@@ -385,11 +385,6 @@ static int cdtoons_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
             }
             /* first palette entry indicates transparency */
             c->pal[0]                     = 0;
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-            c->frame->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         }
     }
 
@@ -425,7 +420,7 @@ static av_cold int cdtoons_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static void cdtoons_flush(AVCodecContext *avctx)
+static av_cold void cdtoons_flush(AVCodecContext *avctx)
 {
     CDToonsContext *c = avctx->priv_data;
 

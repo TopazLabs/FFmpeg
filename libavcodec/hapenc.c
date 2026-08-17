@@ -121,7 +121,7 @@ static int hap_compress_frame(AVCodecContext *avctx, uint8_t *dst)
         /* If there is no gain from snappy, just use the raw texture. */
         if (chunk->compressed_size >= chunk->uncompressed_size) {
             av_log(avctx, AV_LOG_VERBOSE,
-                   "Snappy buffer bigger than uncompressed (%"SIZE_SPECIFIER" >= %"SIZE_SPECIFIER" bytes).\n",
+                   "Snappy buffer bigger than uncompressed (%zu >= %zu bytes).\n",
                    chunk->compressed_size, chunk->uncompressed_size);
             memcpy(chunk_dst, chunk_src, chunk->uncompressed_size);
             chunk->compressor = HAP_COMP_NONE;
@@ -305,7 +305,7 @@ static av_cold int hap_init(AVCodecContext *avctx)
         }
         break;
     default:
-        av_log(avctx, AV_LOG_ERROR, "Invalid compresor %02X\n", ctx->opt_compressor);
+        av_log(avctx, AV_LOG_ERROR, "Invalid compressor %02X\n", ctx->opt_compressor);
         return AVERROR_INVALIDDATA;
     }
     if (corrected_chunk_count != ctx->opt_chunk_count) {
@@ -361,8 +361,6 @@ const FFCodec ff_hap_encoder = {
     .init           = hap_init,
     FF_CODEC_ENCODE_CB(hap_encode),
     .close          = hap_close,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_RGBA, AV_PIX_FMT_NONE,
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_RGBA),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

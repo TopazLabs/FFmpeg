@@ -85,6 +85,8 @@ static int npptranspose_init(AVFilterContext *ctx)
     NPPTransposeContext *s = ctx->priv;
     int i;
 
+    av_log(ctx, AV_LOG_WARNING, "The libnpp based filters are deprecated.\n");
+
     for (i = 0; i < FF_ARRAY_ELEMS(s->stages); i++) {
         s->stages[i].frame = av_frame_alloc();
         if (!s->stages[i].frame)
@@ -466,13 +468,13 @@ static const AVFilterPad npptranspose_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_transpose_npp = {
-    .name           = "transpose_npp",
-    .description    = NULL_IF_CONFIG_SMALL("NVIDIA Performance Primitives video transpose"),
+const FFFilter ff_vf_transpose_npp = {
+    .p.name         = "transpose_npp",
+    .p.description  = NULL_IF_CONFIG_SMALL("NVIDIA Performance Primitives video transpose"),
+    .p.priv_class   = &npptranspose_class,
     .init           = npptranspose_init,
     .uninit         = npptranspose_uninit,
     .priv_size      = sizeof(NPPTransposeContext),
-    .priv_class     = &npptranspose_class,
     FILTER_INPUTS(npptranspose_inputs),
     FILTER_OUTPUTS(npptranspose_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_CUDA),
