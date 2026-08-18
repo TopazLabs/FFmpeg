@@ -128,10 +128,9 @@ static int config_props(AVFilterLink *outlink) {
     return tvai->pFrameProcessor == NULL ? AVERROR(EINVAL) : 0;
 }
 
-static const enum AVPixelFormat pix_fmts[] = {
-    AV_PIX_FMT_RGB48,
-    AV_PIX_FMT_NONE
-};
+static int query_formats(const AVFilterContext *ctx, AVFilterFormatsConfig **cfg_in, AVFilterFormatsConfig **cfg_out) {
+    return ff_tvai_query_formats(ctx, cfg_in, cfg_out, AV_PIX_FMT_RGB48);
+}
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
@@ -192,7 +191,9 @@ const FFFilter ff_vf_tvai_up = {
     .uninit        = uninit,
     FILTER_INPUTS(tvai_up_inputs),
     FILTER_OUTPUTS(tvai_up_outputs),
-    FILTER_PIXFMTS_ARRAY(pix_fmts),
+    FILTER_QUERY_FUNC2(query_formats),
     .p.priv_class    = &tvai_up_class,
     .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    // Frames arriving on a device are taken there, and the output link is given frames of its own.
+    .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

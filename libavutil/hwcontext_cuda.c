@@ -61,6 +61,10 @@ static const enum AVPixelFormat supported_formats[] = {
     AV_PIX_FMT_0BGR32,
     AV_PIX_FMT_RGB32,
     AV_PIX_FMT_BGR32,
+    // Nothing on the device produces or consumes three channel RGB, but the Topaz filters exchange
+    // frames with the library in it, so a graph can upload them and keep them here across a filter.
+    AV_PIX_FMT_RGB24,
+    AV_PIX_FMT_RGB48,
 #if CONFIG_VULKAN
     AV_PIX_FMT_VULKAN,
 #endif

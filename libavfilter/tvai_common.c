@@ -1,5 +1,176 @@
 #include "tvai_common.h"
 #include <libavutil/mem.h>
+#include <stdlib.h>
+
+#if CONFIG_FFNVCODEC
+#include "libavutil/cuda_check.h"
+#include "libavutil/hwcontext.h"
+#include "libavutil/hwcontext_cuda_internal.h"
+#include "libavutil/pixdesc.h"
+
+// What a CUDA frame may hold for a tvai filter, and what the library calls it. The library converts
+// each of these to and from its own float frames on the device, so a frame in any of them never
+// comes across the bus; anything else would have to, which is what handing frames over on the device
+// is meant to avoid. NV12 and P010 are what nvdec hands out and nvenc takes, so a decode to encode
+// run needs no conversion filter at all.
+static const struct {
+    enum AVPixelFormat format;
+    TVAIPixelFormat pixelFormat;
+} tvai_device_formats[] = {
+    {AV_PIX_FMT_NV12, TVAIPixelFormatNV12},
+    {AV_PIX_FMT_P010, TVAIPixelFormatP010},
+    {AV_PIX_FMT_RGB48, TVAIPixelFormatRGB16},
+    {AV_PIX_FMT_RGB24, TVAIPixelFormatRGB8},
+};
+
+// What the graph says about a frame's colour, in the library's terms. Unspecified is passed on as
+// such rather than guessed at here, so that the guess a YUV frame needs lives in one place, beside
+// the conversion that depends on it.
+static TVAIColorMatrix tvai_color_matrix(enum AVColorSpace space) {
+    switch (space) {
+        case AVCOL_SPC_BT470BG:
+        case AVCOL_SPC_SMPTE170M:
+        case AVCOL_SPC_SMPTE240M:
+            return TVAIColorMatrixBT601;
+        case AVCOL_SPC_BT709:
+            return TVAIColorMatrixBT709;
+        case AVCOL_SPC_BT2020_NCL:
+        case AVCOL_SPC_BT2020_CL:
+            return TVAIColorMatrixBT2020;
+        default:
+            return TVAIColorMatrixUnspecified;
+    }
+}
+
+static TVAIColorRange tvai_color_range(enum AVColorRange range) {
+    switch (range) {
+        case AVCOL_RANGE_MPEG:
+            return TVAIColorRangeLimited;
+        case AVCOL_RANGE_JPEG:
+            return TVAIColorRangeFull;
+        default:
+            return TVAIColorRangeUnspecified;
+    }
+}
+
+// Describes one of the graph's frames to the library: where each of its planes is on the device, when
+// it belongs in the stream, and how to read its samples as colour.
+static void tvai_describe_device_frame(TVAIDeviceBuffer *pBuffer, const AVFrame *frame, enum AVColorSpace space,
+        enum AVColorRange range, long long pts, long long duration) {
+    int i;
+    memset(pBuffer, 0, sizeof(*pBuffer));
+    for (i = 0; i < TVAI_MAX_PLANES && i < AV_NUM_DATA_POINTERS; i++) {
+        pBuffer->pPlanes[i] = frame->data[i];
+        pBuffer->lineSizes[i] = (size_t)frame->linesize[i];
+    }
+    pBuffer->pts = pts;
+    pBuffer->duration = duration;
+    pBuffer->deviceIndex = -1;
+    pBuffer->colorMatrix = tvai_color_matrix(space);
+    pBuffer->colorRange = tvai_color_range(range);
+}
+
+// The GPU a frame is on, by the index the library knows it by. Its context is not the one the
+// library works in, so this asks the driver rather than assuming they agree.
+static int tvai_device_index(void *pLogCtx, const AVFrame *frame, int *pIndex) {
+    AVHWFramesContext *pFrames = (AVHWFramesContext*)frame->hw_frames_ctx->data;
+    AVCUDADeviceContext *pDevice = pFrames->device_ctx->hwctx;
+    CudaFunctions *cu = pDevice->internal->cuda_dl;
+    CUcontext dummy;
+    CUdevice device = 0;
+    int ret = FF_CUDA_CHECK_DL(pLogCtx, cu, cu->cuCtxPushCurrent(pDevice->cuda_ctx));
+    if (ret < 0)
+        return ret;
+    ret = FF_CUDA_CHECK_DL(pLogCtx, cu, cu->cuCtxGetDevice(&device));
+    FF_CUDA_CHECK_DL(pLogCtx, cu, cu->cuCtxPopCurrent(&dummy));
+    if (ret < 0)
+        return ret;
+    *pIndex = (int)device;
+    return 0;
+}
+
+// The library copies an incoming frame on a stream of its own, which is not ordered against the one
+// filters upstream leave their work on, so whatever is still writing the frame has to finish first.
+static int tvai_await_device_frame(void *pLogCtx, const AVFrame *frame) {
+    AVHWFramesContext *pFrames = (AVHWFramesContext*)frame->hw_frames_ctx->data;
+    AVCUDADeviceContext *pDevice = pFrames->device_ctx->hwctx;
+    CudaFunctions *cu = pDevice->internal->cuda_dl;
+    CUcontext dummy;
+    int ret = FF_CUDA_CHECK_DL(pLogCtx, cu, cu->cuCtxPushCurrent(pDevice->cuda_ctx));
+    if (ret < 0)
+        return ret;
+    ret = FF_CUDA_CHECK_DL(pLogCtx, cu, cu->cuStreamSynchronize(pDevice->stream));
+    FF_CUDA_CHECK_DL(pLogCtx, cu, cu->cuCtxPopCurrent(&dummy));
+    return ret;
+}
+
+// Points the output link at frames of its own to be filled in, and tells the library what the ones
+// coming in hold. The output frames match the input's format on the same device, at whatever size
+// the filter has settled on for its output.
+static int tvai_prepare_device_frames(AVFilterLink *pOutlink, VideoProcessorInfo *pInfo) {
+    AVFilterContext *pCtx = pOutlink->src;
+    FilterLink *fInlink = ff_filter_link(pCtx->inputs[0]);
+    FilterLink *fOutlink = ff_filter_link(pOutlink);
+    AVHWFramesContext *pInFrames, *pOutFrames;
+    size_t i;
+    int ret;
+
+    if (fInlink->hw_frames_ctx == NULL) {
+        av_log(pCtx, AV_LOG_ERROR, "No hardware frame context on the input\n");
+        return AVERROR(EINVAL);
+    }
+    pInFrames = (AVHWFramesContext*)fInlink->hw_frames_ctx->data;
+    for (i = 0; i < FF_ARRAY_ELEMS(tvai_device_formats); i++)
+        if (tvai_device_formats[i].format == pInFrames->sw_format)
+            break;
+    if (i == FF_ARRAY_ELEMS(tvai_device_formats)) {
+        av_log(pCtx, AV_LOG_ERROR, "Cannot take frames holding %s on a device, convert them to %s first\n",
+               av_get_pix_fmt_name(pInFrames->sw_format), av_get_pix_fmt_name(tvai_device_formats[0].format));
+        return AVERROR(ENOSYS);
+    }
+    pInfo->basic.pixelFormat = tvai_device_formats[i].pixelFormat;
+
+    fOutlink->hw_frames_ctx = av_hwframe_ctx_alloc(pInFrames->device_ref);
+    if (fOutlink->hw_frames_ctx == NULL)
+        return AVERROR(ENOMEM);
+    pOutFrames = (AVHWFramesContext*)fOutlink->hw_frames_ctx->data;
+    pOutFrames->format = AV_PIX_FMT_CUDA;
+    pOutFrames->sw_format = pInFrames->sw_format;
+    pOutFrames->width = pOutlink->w;
+    pOutFrames->height = pOutlink->h;
+    // Interpolation answers one frame with several, and each is held until the graph has taken it,
+    // so the pool has to be deeper than the one frame at a time an upscale needs.
+    pOutFrames->initial_pool_size = 8;
+    ret = ff_filter_init_hw_frames(pCtx, pOutlink, 10);
+    if (ret < 0)
+        return ret;
+    return av_hwframe_ctx_init(fOutlink->hw_frames_ctx);
+}
+#endif
+
+int ff_tvai_device_frames(void) {
+#if CONFIG_FFNVCODEC
+    const char *asked = getenv("TVAI_USE_GPU");
+    // A frame that is already on a device stays there, which is what a decoder and encoder on the
+    // same GPU want. TVAI_USE_GPU=0 is the way back to host frames.
+    return asked == NULL || strcmp(asked, "0") != 0;
+#else
+    return 0;
+#endif
+}
+
+int ff_tvai_query_formats(const AVFilterContext *ctx, AVFilterFormatsConfig **cfg_in,
+        AVFilterFormatsConfig **cfg_out, enum AVPixelFormat format) {
+    // CUDA first, so a graph whose frames are on a device keeps them there rather than settling on
+    // the host format both ends can also reach. The host format stays in the list, which is what a
+    // graph with no device in it negotiates, there being no way to reach CUDA from one.
+    int formats[3] = {AV_PIX_FMT_NONE, AV_PIX_FMT_NONE, AV_PIX_FMT_NONE};
+    int count = 0;
+    if (ff_tvai_device_frames())
+        formats[count++] = AV_PIX_FMT_CUDA;
+    formats[count] = format;
+    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, formats);
+}
 
 int ff_tvai_checkDevice(char* deviceString, DeviceSetting* pDevice, AVFilterContext* ctx) {
   if(tvai_set_device_settings(deviceString, pDevice)) {
@@ -84,15 +255,56 @@ int ff_tvai_prepareProcessorInfo(char *deviceString, VideoProcessorInfo* pProces
   pOutlink->time_base = pInlink->time_base;
   fOutlink->frame_rate = fInlink->frame_rate;
   pOutlink->sample_aspect_ratio = pInlink->sample_aspect_ratio;
+#if CONFIG_FFNVCODEC
+  if(pInlink->format == AV_PIX_FMT_CUDA && tvai_prepare_device_frames(pOutlink, pProcessorInfo) < 0)
+    return 1;
+#endif
   return 0;
 }
 
 int ff_tvai_process(void *pFrameProcessor, AVFrame* frame) {
+    return ff_tvai_process_timed(pFrameProcessor, frame, frame->pts, frame->duration);
+}
+
+int ff_tvai_process_timed(void *pFrameProcessor, AVFrame* frame, long long pts, long long duration) {
     TVAIBuffer iBuffer;
-    ff_tvai_prepareBufferInput(&iBuffer, frame);
-    if(pFrameProcessor == NULL || tvai_process(pFrameProcessor, &iBuffer)) 
+    if(pFrameProcessor == NULL)
         return 1;
-    return 0;
+#if CONFIG_FFNVCODEC
+    if(frame->format == AV_PIX_FMT_CUDA) {
+        TVAIDeviceBuffer dBuffer;
+        tvai_describe_device_frame(&dBuffer, frame, frame->colorspace, frame->color_range, pts, duration);
+        if(tvai_device_index(NULL, frame, &dBuffer.deviceIndex) < 0 || tvai_await_device_frame(NULL, frame) < 0)
+            return 1;
+        return tvai_process_device_frame(pFrameProcessor, &dBuffer) != 0;
+    }
+#endif
+    ff_tvai_prepareBufferInput(&iBuffer, frame);
+    iBuffer.pts = pts;
+    iBuffer.duration = duration;
+    return tvai_process(pFrameProcessor, &iBuffer) != 0;
+}
+
+// Fills a frame the graph has handed out, from the device when that is where it lives. Nothing is
+// queued against a frame straight out of the pool, so there is nothing to wait for on the way out;
+// the library leaves the pixels in place before it returns.
+static int ff_tvai_output_into(void *pProcessor, AVFilterLink *outlink, AVFrame *out, TVAIBuffer *pBuffer) {
+#if CONFIG_FFNVCODEC
+    if(out->format == AV_PIX_FMT_CUDA) {
+        TVAIDeviceBuffer dBuffer;
+        // A frame straight out of the pool carries no properties yet, av_frame_copy_props running
+        // once it is filled, so the colour it should be written in comes from the link instead.
+        tvai_describe_device_frame(&dBuffer, out, outlink->colorspace, outlink->color_range, 0, 0);
+        if(tvai_device_index(outlink->src, out, &dBuffer.deviceIndex) < 0 ||
+                tvai_output_device_frame(pProcessor, &dBuffer))
+            return 1;
+        pBuffer->pts = dBuffer.pts;
+        pBuffer->duration = dBuffer.duration;
+        pBuffer->frameNo = dBuffer.frameNo;
+        return 0;
+    }
+#endif
+    return tvai_output_frame(pProcessor, pBuffer) != 0;
 }
 
 int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame) {
@@ -100,7 +312,7 @@ int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame) 
     for(i=0;i<n;i++) {
         TVAIBuffer oBuffer;
         AVFrame *out = ff_tvai_prepareBufferOutput(outlink, &oBuffer);
-        if(out != NULL && tvai_output_frame(pProcessor, &oBuffer) == 0) {
+        if(out != NULL && ff_tvai_output_into(pProcessor, outlink, out, &oBuffer) == 0) {
             av_frame_copy_props(out, frame);
             out->duration = oBuffer.duration;
             out->pts = oBuffer.pts;
