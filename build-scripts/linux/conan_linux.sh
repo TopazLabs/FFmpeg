@@ -2,7 +2,7 @@
 
 rm -rf ./conan
 
-TENSORRT_RTX=${1:-True}
+TENSORRT_RTX=${1:-False}
 
 if [ "$TENSORRT_RTX" = "True" ]; then
     echo "Building with TensorRT RTX"
