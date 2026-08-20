@@ -14,6 +14,11 @@ else
     VCINSTALLDIR_UNIX=$(cygpath -u "$VCINSTALLDIR")
     export PATH="${VCINSTALLDIR_UNIX}/Tools/MSVC/${VCToolsVersion}/bin/Hostx64/x64/":$PATH
     export PATH="${VCINSTALLDIR_UNIX}/../MSBuild/Current/Bin":$PATH
+    # Visual Studio's optional "C++ Clang tools" component: clang is needed to
+    # compile the CUDA filter kernels (.cu -> PTX) via ffmpeg's cuda_llvm path.
+    if [[ -d "${VCINSTALLDIR_UNIX}/Tools/Llvm/x64/bin" ]]; then
+        export PATH="${VCINSTALLDIR_UNIX}/Tools/Llvm/x64/bin":$PATH
+    fi
 fi
 
 if [[ -z "$WindowsSdkVerBinPath" ]]; then
