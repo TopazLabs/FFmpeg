@@ -17,19 +17,30 @@ steps:
       Write-Host "expected clang: $clang"
 
       if (-not (Test-Path $clang)) {
-        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-        if (-not (Test-Path $installer)) { throw "vs_installer.exe not found" }
+        $installerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+        Write-Host "Installer dir contents:"
+        Get-ChildItem $installerDir | Select-Object -ExpandProperty Name
 
-        Get-Process vs_installer, vs_installershell, setup -ErrorAction SilentlyContinue |
+        $setup = Join-Path $installerDir "setup.exe"
+        if (-not (Test-Path $setup)) { $setup = Join-Path $installerDir "vs_installer.exe" }
+        if (-not (Test-Path $setup)) { throw "neither setup.exe nor vs_installer.exe found" }
+
+        Get-Process vs_installer, vs_installershell -ErrorAction SilentlyContinue |
           Stop-Process -Force -ErrorAction SilentlyContinue
 
-        $argList = "modify --installPath `"$installPath`" --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --quiet --norestart --wait"
-        Write-Host "Running: $installer $argList"
-        $proc = Start-Process -FilePath $installer -ArgumentList $argList -Wait -PassThru -NoNewWindow
-        Write-Host "vs_installer exit code: $($proc.ExitCode)"
-        # 0 = ok, 3010 = success reboot required, 1641 = reboot started
+        # Pass args as an array so the install path is one argument (no nested quotes).
+        $setupArgs = @(
+          "modify",
+          "--installPath", $installPath,
+          "--add", "Microsoft.VisualStudio.Component.VC.Llvm.Clang",
+          "--add", "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset",
+          "--quiet", "--norestart", "--wait"
+        )
+        Write-Host "Running: $setup $($setupArgs -join ' ')"
+        $proc = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru -NoNewWindow
+        Write-Host "installer exit code: $($proc.ExitCode)"
         if (@(0, 3010, 1641) -notcontains $proc.ExitCode) {
-          throw "vs_installer failed with exit code $($proc.ExitCode)"
+          throw "VS installer failed with exit code $($proc.ExitCode)"
         }
       } else {
         Write-Host "clang already present; skipping VS installer"
