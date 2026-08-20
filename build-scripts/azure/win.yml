@@ -28,17 +28,19 @@ steps:
         Get-Process vs_installer, vs_installershell -ErrorAction SilentlyContinue |
           Stop-Process -Force -ErrorAction SilentlyContinue
 
-        # Pass args as an array so the install path is one argument (no nested quotes).
+        # setup.exe does not accept --wait (that flag is only on the bootstrapper).
         $setupArgs = @(
           "modify",
           "--installPath", $installPath,
           "--add", "Microsoft.VisualStudio.Component.VC.Llvm.Clang",
           "--add", "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset",
-          "--quiet", "--norestart", "--wait"
+          "--quiet", "--norestart", "--force", "--noUpdateInstaller"
         )
         Write-Host "Running: $setup $($setupArgs -join ' ')"
         $proc = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru -NoNewWindow
         Write-Host "installer exit code: $($proc.ExitCode)"
+        Get-Process setup, vs_installer, vs_installershell -ErrorAction SilentlyContinue |
+          Wait-Process -Timeout 1500 -ErrorAction SilentlyContinue
         if (@(0, 3010, 1641) -notcontains $proc.ExitCode) {
           throw "VS installer failed with exit code $($proc.ExitCode)"
         }
