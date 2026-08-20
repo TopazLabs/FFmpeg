@@ -32,13 +32,34 @@ steps:
         # saw --installPath C:\Program. Call operator passes one argv per bound param.
         Write-Host "Invoking setup.exe with installPath='$installPath'"
         & $setup modify --installPath $installPath --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --quiet --norestart --force --noUpdateInstaller
-        $code = $LASTEXITCODE
-        Write-Host "setup.exe LASTEXITCODE=$code"
-        Get-Process setup, vs_installer, vs_installershell -ErrorAction SilentlyContinue |
-          Wait-Process -Timeout 1500 -ErrorAction SilentlyContinue
-        if (@(0, 3010, 1641) -notcontains $code) {
-          throw "VS installer failed with exit code $code"
+        Write-Host "setup.exe LASTEXITCODE=$LASTEXITCODE"
+
+        # setup.exe often returns immediately after launching a worker. Poll for clang.
+        $deadline = (Get-Date).AddMinutes(20)
+        $grace = (Get-Date).AddSeconds(45)
+        $names = @("setup", "vs_installer", "vs_installershell", "vs_installer.windows", "VSInstallerElevationService")
+        while (-not (Test-Path $clang) -and (Get-Date) -lt $deadline) {
+          $procs = Get-Process $names -ErrorAction SilentlyContinue
+          if ($procs) {
+            Write-Host ("installer still running: " + (($procs | ForEach-Object { "$($_.Name):$($_.Id)" }) -join ", "))
+          } else {
+            Write-Host "no installer processes; clang not present yet"
+            if ((Get-Date) -gt $grace) {
+              Write-Host "installer gone and clang still missing; stopping poll"
+              break
+            }
+          }
+          Start-Sleep -Seconds 10
         }
+
+        Write-Host "===== latest dd_setup logs ====="
+        Get-ChildItem $env:TEMP, "$env:TEMP\.." -Filter "dd_setup*.log" -ErrorAction SilentlyContinue |
+          Sort-Object LastWriteTime -Descending |
+          Select-Object -First 2 |
+          ForEach-Object {
+            Write-Host "--- $($_.FullName) ---"
+            Get-Content $_.FullName -Tail 40
+          }
       } else {
         Write-Host "clang already present; skipping VS installer"
       }
