@@ -1,72 +1,79 @@
 steps:
   # Temporary probe: find clang/LLVM on Medusa, then fail so the rest of the
   # job (conan + ffmpeg) does not run. Remove after the probe build.
-  - script: |
-      echo ===== agent =====
-      echo AGENT_NAME=%AGENT_NAME%
-      echo AGENT_MACHINENAME=%AGENT_MACHINENAME%
-      echo AGENT_OS=%AGENT_OS%
-      echo AGENT_OSARCHITECTURE=%AGENT_OSARCHITECTURE%
-      echo COMPUTERNAME=%COMPUTERNAME%
-      echo PATH (truncated)=%PATH:~0,500%
+  - powershell: |
+      Write-Host "===== agent ====="
+      Write-Host "AGENT_NAME=$env:AGENT_NAME"
+      Write-Host "AGENT_MACHINENAME=$env:AGENT_MACHINENAME"
+      Write-Host "AGENT_OS=$env:AGENT_OS"
+      Write-Host "AGENT_OSARCHITECTURE=$env:AGENT_OSARCHITECTURE"
+      Write-Host "COMPUTERNAME=$env:COMPUTERNAME"
 
-      echo.
-      echo ===== vswhere =====
-      set "VSWHERE=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-      if exist "%VSWHERE%" (
-        echo vswhere found: %VSWHERE%
-        "%VSWHERE%" -latest -property installationPath
-        echo --- productId / catalog ---
-        "%VSWHERE%" -latest -property displayName
-        "%VSWHERE%" -latest -property catalog_productLineVersion
-        echo --- requires VC.Llvm.Clang? ---
-        "%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
-        if errorlevel 1 echo vswhere: VC.Llvm.Clang component NOT installed
-        echo --- vswhere -find clang.exe ---
-        "%VSWHERE%" -latest -find **\clang.exe
-      ) else (
-        echo vswhere NOT found
+      Write-Host ""
+      Write-Host "===== vswhere ====="
+      $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+      if (Test-Path $vswhere) {
+        Write-Host "vswhere found: $vswhere"
+        Write-Host "installationPath:"
+        & $vswhere -latest -property installationPath
+        Write-Host "displayName:"
+        & $vswhere -latest -property displayName
+        Write-Host "catalog_productLineVersion:"
+        & $vswhere -latest -property catalog_productLineVersion
+        Write-Host "--- requires VC.Llvm.Clang? ---"
+        $clangVs = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+        if ($clangVs) { Write-Host "VC.Llvm.Clang installed at: $clangVs" } else { Write-Host "VC.Llvm.Clang component NOT installed" }
+        Write-Host "--- vswhere -find clang.exe ---"
+        & $vswhere -latest -find "**\clang.exe"
+      } else {
+        Write-Host "vswhere NOT found at $vswhere"
+      }
+
+      Write-Host ""
+      Write-Host "===== known clang/LLVM paths ====="
+      $candidates = @(
+        "$env:ProgramFiles\LLVM\bin\clang.exe",
+        "${env:ProgramFiles(x86)}\LLVM\bin\clang.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin\clang.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe",
+        "$env:ProgramFiles\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\clang.exe"
       )
+      foreach ($p in $candidates) {
+        if (Test-Path $p) { Write-Host "FOUND $p" } else { Write-Host "MISSING $p" }
+      }
 
-      echo.
-      echo ===== known clang/LLVM paths =====
-      for %%P in (
-        "C:\Program Files\LLVM\bin\clang.exe"
-        "C:\Program Files (x86)\LLVM\bin\clang.exe"
-        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
-        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin\clang.exe"
-        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe"
-        "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\clang.exe"
-      ) do (
-        if exist %%P (echo FOUND %%~P) else (echo MISSING %%~P)
-      )
+      Write-Host ""
+      Write-Host "===== Get-Command clang / clang-cl / llvm ====="
+      foreach ($cmd in @("clang", "clang.exe", "clang-cl", "llvm-config")) {
+        $g = Get-Command $cmd -ErrorAction SilentlyContinue
+        if ($g) { Write-Host "PATH has ${cmd}: $($g.Source)" } else { Write-Host "PATH missing: $cmd" }
+      }
 
-      echo.
-      echo ===== where clang / clang-cl / llvm =====
-      where clang 2>nul || echo where: clang not on PATH
-      where clang.exe 2>nul || echo where: clang.exe not on PATH
-      where clang-cl 2>nul || echo where: clang-cl not on PATH
-      where llvm-config 2>nul || echo where: llvm-config not on PATH
+      Write-Host ""
+      Write-Host "===== search VS 2022 for clang.exe (depth-limited) ====="
+      $vsRoot = "$env:ProgramFiles\Microsoft Visual Studio\2022"
+      if (Test-Path $vsRoot) {
+        Get-ChildItem $vsRoot -Recurse -Filter clang.exe -ErrorAction SilentlyContinue |
+          Select-Object -ExpandProperty FullName
+        Get-ChildItem $vsRoot -Recurse -Directory -Filter Llvm -ErrorAction SilentlyContinue |
+          Select-Object -ExpandProperty FullName
+      } else {
+        Write-Host "VS 2022 folder not at $vsRoot"
+      }
 
-      echo.
-      echo ===== dir VS Llvm folders if VS exists =====
-      if exist "C:\Program Files\Microsoft Visual Studio\2022" (
-        dir /b /s "C:\Program Files\Microsoft Visual Studio\2022\*clang.exe" 2>nul
-        dir /b /ad "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Tools\Llvm" 2>nul
-      ) else (
-        echo VS 2022 folder not at default path
-      )
-      if exist "C:\Program Files\LLVM" (
-        echo LLVM folder listing:
-        dir /b "C:\Program Files\LLVM"
-        dir /b "C:\Program Files\LLVM\bin" 2>nul
-      ) else (
-        echo C:\Program Files\LLVM does not exist
-      )
+      $llvmDir = "$env:ProgramFiles\LLVM"
+      if (Test-Path $llvmDir) {
+        Write-Host "LLVM folder listing:"
+        Get-ChildItem $llvmDir | Select-Object -ExpandProperty Name
+        if (Test-Path "$llvmDir\bin") { Get-ChildItem "$llvmDir\bin" | Select-Object -ExpandProperty Name }
+      } else {
+        Write-Host "$llvmDir does not exist"
+      }
 
-      echo.
-      echo ===== probe done; failing to skip remaining pipeline steps =====
-      exit /b 1
+      Write-Host ""
+      Write-Host "===== probe done; failing to skip remaining pipeline steps ====="
+      exit 1
     displayName: Probe LLVM/clang on Medusa (then exit)
 
   - checkout: self
