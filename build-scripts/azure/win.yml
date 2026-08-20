@@ -28,21 +28,16 @@ steps:
         Get-Process vs_installer, vs_installershell -ErrorAction SilentlyContinue |
           Stop-Process -Force -ErrorAction SilentlyContinue
 
-        # setup.exe does not accept --wait (that flag is only on the bootstrapper).
-        $setupArgs = @(
-          "modify",
-          "--installPath", $installPath,
-          "--add", "Microsoft.VisualStudio.Component.VC.Llvm.Clang",
-          "--add", "Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset",
-          "--quiet", "--norestart", "--force", "--noUpdateInstaller"
-        )
-        Write-Host "Running: $setup $($setupArgs -join ' ')"
-        $proc = Start-Process -FilePath $setup -ArgumentList $setupArgs -Wait -PassThru -NoNewWindow
-        Write-Host "installer exit code: $($proc.ExitCode)"
+        # Start-Process ArgumentList does not quote paths with spaces, so setup.exe
+        # saw --installPath C:\Program. Call operator passes one argv per bound param.
+        Write-Host "Invoking setup.exe with installPath='$installPath'"
+        & $setup modify --installPath $installPath --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --quiet --norestart --force --noUpdateInstaller
+        $code = $LASTEXITCODE
+        Write-Host "setup.exe LASTEXITCODE=$code"
         Get-Process setup, vs_installer, vs_installershell -ErrorAction SilentlyContinue |
           Wait-Process -Timeout 1500 -ErrorAction SilentlyContinue
-        if (@(0, 3010, 1641) -notcontains $proc.ExitCode) {
-          throw "VS installer failed with exit code $($proc.ExitCode)"
+        if (@(0, 3010, 1641) -notcontains $code) {
+          throw "VS installer failed with exit code $code"
         }
       } else {
         Write-Host "clang already present; skipping VS installer"
