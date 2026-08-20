@@ -20,6 +20,10 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
 
+        if self.settings.os == "Linux":
+            self.options["videoai"].tensorrt_rtx = True
+            self.options["videoai"].with_cuda = True
+
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.tool_requires("nasm/2.16.01")
