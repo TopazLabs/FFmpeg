@@ -1,80 +1,58 @@
 steps:
-  # Temporary probe: find clang/LLVM on Medusa, then fail so the rest of the
-  # job (conan + ffmpeg) does not run. Remove after the probe build.
+  # Temporary: install VS "C++ Clang tools for Windows" on Medusa, then
+  # verify clang.exe exists. Remaining FFmpeg steps are skipped until this
+  # install is confirmed.
   - powershell: |
-      Write-Host "===== agent ====="
-      Write-Host "AGENT_NAME=$env:AGENT_NAME"
-      Write-Host "AGENT_MACHINENAME=$env:AGENT_MACHINENAME"
-      Write-Host "AGENT_OS=$env:AGENT_OS"
-      Write-Host "AGENT_OSARCHITECTURE=$env:AGENT_OSARCHITECTURE"
-      Write-Host "COMPUTERNAME=$env:COMPUTERNAME"
-
-      Write-Host ""
-      Write-Host "===== vswhere ====="
       $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-      if (Test-Path $vswhere) {
-        Write-Host "vswhere found: $vswhere"
-        Write-Host "installationPath:"
-        & $vswhere -latest -property installationPath
-        Write-Host "displayName:"
-        & $vswhere -latest -property displayName
-        Write-Host "catalog_productLineVersion:"
-        & $vswhere -latest -property catalog_productLineVersion
-        Write-Host "--- requires VC.Llvm.Clang? ---"
-        $clangVs = & $vswhere -latest -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
-        if ($clangVs) { Write-Host "VC.Llvm.Clang installed at: $clangVs" } else { Write-Host "VC.Llvm.Clang component NOT installed" }
-        Write-Host "--- vswhere -find clang.exe ---"
-        & $vswhere -latest -find "**\clang.exe"
+      if (-not (Test-Path $vswhere)) { throw "vswhere.exe not found" }
+
+      $installPath = (& $vswhere -latest -property installationPath).Trim()
+      if (-not $installPath) { throw "vswhere did not return an install path" }
+      $clang = Join-Path $installPath "VC\Tools\Llvm\x64\bin\clang.exe"
+
+      Write-Host "whoami: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+      $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+      Write-Host "IsAdmin: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+      Write-Host "VS installPath: $installPath"
+      Write-Host "expected clang: $clang"
+
+      if (-not (Test-Path $clang)) {
+        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+        if (-not (Test-Path $installer)) { throw "vs_installer.exe not found" }
+
+        Get-Process vs_installer, vs_installershell, setup -ErrorAction SilentlyContinue |
+          Stop-Process -Force -ErrorAction SilentlyContinue
+
+        $argList = "modify --installPath `"$installPath`" --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset --quiet --norestart --wait"
+        Write-Host "Running: $installer $argList"
+        $proc = Start-Process -FilePath $installer -ArgumentList $argList -Wait -PassThru -NoNewWindow
+        Write-Host "vs_installer exit code: $($proc.ExitCode)"
+        # 0 = ok, 3010 = success reboot required, 1641 = reboot started
+        if (@(0, 3010, 1641) -notcontains $proc.ExitCode) {
+          throw "vs_installer failed with exit code $($proc.ExitCode)"
+        }
       } else {
-        Write-Host "vswhere NOT found at $vswhere"
+        Write-Host "clang already present; skipping VS installer"
       }
 
-      Write-Host ""
-      Write-Host "===== known clang/LLVM paths ====="
-      $candidates = @(
-        "$env:ProgramFiles\LLVM\bin\clang.exe",
-        "${env:ProgramFiles(x86)}\LLVM\bin\clang.exe",
-        "$env:ProgramFiles\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe",
-        "$env:ProgramFiles\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin\clang.exe",
-        "$env:ProgramFiles\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe",
-        "$env:ProgramFiles\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\clang.exe"
-      )
-      foreach ($p in $candidates) {
-        if (Test-Path $p) { Write-Host "FOUND $p" } else { Write-Host "MISSING $p" }
+      if (-not (Test-Path $clang)) {
+        throw "clang.exe still missing after install: $clang"
       }
 
-      Write-Host ""
-      Write-Host "===== Get-Command clang / clang-cl / llvm ====="
-      foreach ($cmd in @("clang", "clang.exe", "clang-cl", "llvm-config")) {
-        $g = Get-Command $cmd -ErrorAction SilentlyContinue
-        if ($g) { Write-Host "PATH has ${cmd}: $($g.Source)" } else { Write-Host "PATH missing: $cmd" }
+      Write-Host "===== clang --version ====="
+      & $clang --version
+      Write-Host "===== clang -print-targets ====="
+      $targets = & $clang -print-targets 2>&1 | Out-String
+      Write-Host $targets
+      if ($targets -notmatch "nvptx") {
+        throw "clang is present but NVPTX target is missing (needed for cuda_llvm)"
       }
+      Write-Host "VS Clang tools + NVPTX OK"
 
-      Write-Host ""
-      Write-Host "===== search VS 2022 for clang.exe (depth-limited) ====="
-      $vsRoot = "$env:ProgramFiles\Microsoft Visual Studio\2022"
-      if (Test-Path $vsRoot) {
-        Get-ChildItem $vsRoot -Recurse -Filter clang.exe -ErrorAction SilentlyContinue |
-          Select-Object -ExpandProperty FullName
-        Get-ChildItem $vsRoot -Recurse -Directory -Filter Llvm -ErrorAction SilentlyContinue |
-          Select-Object -ExpandProperty FullName
-      } else {
-        Write-Host "VS 2022 folder not at $vsRoot"
-      }
-
-      $llvmDir = "$env:ProgramFiles\LLVM"
-      if (Test-Path $llvmDir) {
-        Write-Host "LLVM folder listing:"
-        Get-ChildItem $llvmDir | Select-Object -ExpandProperty Name
-        if (Test-Path "$llvmDir\bin") { Get-ChildItem "$llvmDir\bin" | Select-Object -ExpandProperty Name }
-      } else {
-        Write-Host "$llvmDir does not exist"
-      }
-
-      Write-Host ""
-      Write-Host "===== probe done; failing to skip remaining pipeline steps ====="
+      Write-Host "===== install probe done; skipping remaining pipeline steps ====="
       exit 1
-    displayName: Probe LLVM/clang on Medusa (then exit)
+    displayName: Install VS C++ Clang tools (then exit)
+    timeoutInMinutes: 30
 
   - checkout: self
   - checkout: topaz-conan-dev
