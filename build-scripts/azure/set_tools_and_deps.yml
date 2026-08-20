@@ -54,6 +54,19 @@ steps:
         sudo apt -y update
         sudo apt -y install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
       displayName: Install APT packages
+  
+    - script: |
+        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        rm -f cuda-keyring_1.1-1_all.deb
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends cuda-nvcc-12-9 cuda-cudart-dev-12-9
+        sudo ln -sfn /usr/local/cuda-12.9 /usr/local/cuda
+        echo "##vso[task.prependpath]/usr/local/cuda-12.9/bin"
+        echo "##vso[task.setvariable variable=CUDA_HOME]/usr/local/cuda-12.9"
+        echo "##vso[task.setvariable variable=CUDAToolkit_ROOT]/usr/local/cuda-12.9"
+        /usr/local/cuda-12.9/bin/nvcc --version
+      displayName: Install CUDA 12.9 Toolkit
 
 #Install Dependencies
   - task: Cache@2
