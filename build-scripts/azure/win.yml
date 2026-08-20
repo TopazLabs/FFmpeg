@@ -1,4 +1,74 @@
 steps:
+  # Temporary probe: find clang/LLVM on Medusa, then fail so the rest of the
+  # job (conan + ffmpeg) does not run. Remove after the probe build.
+  - script: |
+      echo ===== agent =====
+      echo AGENT_NAME=%AGENT_NAME%
+      echo AGENT_MACHINENAME=%AGENT_MACHINENAME%
+      echo AGENT_OS=%AGENT_OS%
+      echo AGENT_OSARCHITECTURE=%AGENT_OSARCHITECTURE%
+      echo COMPUTERNAME=%COMPUTERNAME%
+      echo PATH (truncated)=%PATH:~0,500%
+
+      echo.
+      echo ===== vswhere =====
+      set "VSWHERE=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+      if exist "%VSWHERE%" (
+        echo vswhere found: %VSWHERE%
+        "%VSWHERE%" -latest -property installationPath
+        echo --- productId / catalog ---
+        "%VSWHERE%" -latest -property displayName
+        "%VSWHERE%" -latest -property catalog_productLineVersion
+        echo --- requires VC.Llvm.Clang? ---
+        "%VSWHERE%" -latest -requires Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+        if errorlevel 1 echo vswhere: VC.Llvm.Clang component NOT installed
+        echo --- vswhere -find clang.exe ---
+        "%VSWHERE%" -latest -find **\clang.exe
+      ) else (
+        echo vswhere NOT found
+      )
+
+      echo.
+      echo ===== known clang/LLVM paths =====
+      for %%P in (
+        "C:\Program Files\LLVM\bin\clang.exe"
+        "C:\Program Files (x86)\LLVM\bin\clang.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin\clang.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin\clang.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\clang.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin\clang.exe"
+      ) do (
+        if exist %%P (echo FOUND %%~P) else (echo MISSING %%~P)
+      )
+
+      echo.
+      echo ===== where clang / clang-cl / llvm =====
+      where clang 2>nul || echo where: clang not on PATH
+      where clang.exe 2>nul || echo where: clang.exe not on PATH
+      where clang-cl 2>nul || echo where: clang-cl not on PATH
+      where llvm-config 2>nul || echo where: llvm-config not on PATH
+
+      echo.
+      echo ===== dir VS Llvm folders if VS exists =====
+      if exist "C:\Program Files\Microsoft Visual Studio\2022" (
+        dir /b /s "C:\Program Files\Microsoft Visual Studio\2022\*clang.exe" 2>nul
+        dir /b /ad "C:\Program Files\Microsoft Visual Studio\2022\*\VC\Tools\Llvm" 2>nul
+      ) else (
+        echo VS 2022 folder not at default path
+      )
+      if exist "C:\Program Files\LLVM" (
+        echo LLVM folder listing:
+        dir /b "C:\Program Files\LLVM"
+        dir /b "C:\Program Files\LLVM\bin" 2>nul
+      ) else (
+        echo C:\Program Files\LLVM does not exist
+      )
+
+      echo.
+      echo ===== probe done; failing to skip remaining pipeline steps =====
+      exit /b 1
+    displayName: Probe LLVM/clang on Medusa (then exit)
+
   - checkout: self
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
