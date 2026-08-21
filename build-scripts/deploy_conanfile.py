@@ -5,8 +5,14 @@ import os
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
     settings = "os", "build_type", "arch"
-    options = {"tensorrt_rtx": [True, False]}
-    default_options = {"tensorrt_rtx": True}
+    options = {
+        "tensorrt_rtx": [True, False],
+        "with_cuda": [True, False]
+    }
+    default_options = {
+        "tensorrt_rtx": True,
+        "with_cuda": True
+    }
 
     def config_options(self):
         # tensorrt_rtx only applies on Windows/Linux; omit from package id elsewhere

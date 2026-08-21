@@ -62,3 +62,5 @@ builds-arm/
 builds-x86/
 conan_arm/
 conan_x64/
+
+*/temp
