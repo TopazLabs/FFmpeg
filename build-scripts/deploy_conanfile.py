@@ -31,6 +31,7 @@ class conanRecipe(ConanFile):
 
         if self.settings.os == "Windows" or self.settings.os == "Linux":
             self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
+            self.options["videoai"].with_cuda = self.options.with_cuda
 
     def requirements(self):
         self.requires("videoai/2.0.39-evan+1", package_id_mode="minor_mode")
