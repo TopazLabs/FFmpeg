@@ -10,4 +10,4 @@ else
     echo "Building with TensorRT Enterprise"
 fi
 
-conan install ./build-scripts/conanfile.py -u -pr:b ./build-scripts/linux/profile_ubuntu22.04 -pr:h ./build-scripts/linux/profile_ubuntu22.04 -of ./conan -o &:tensorrt_rtx=$TENSORRT_RTX
+conan install ./build-scripts/conanfile.py -u -pr:b ./build-scripts/linux/profile_ubuntu22.04 -pr:h ./build-scripts/linux/profile_ubuntu22.04 -of ./conan -o "&:tensorrt_rtx=$TENSORRT_RTX"
