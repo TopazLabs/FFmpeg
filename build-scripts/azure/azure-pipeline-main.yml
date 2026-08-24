@@ -98,7 +98,18 @@ stages:
       steps:
         - template: ubuntu.yml
           parameters:
-            tensorrt_rtx: ${{ parameters.linux_tensorrt_rtx }}
+            tensorrt_rtx: False
+
+  - ${{ if eq(parameters.linux_tensorrt_rtx, true) }}:
+    - job: Ubuntu22_04
+      workspace:
+        clean: all
+      pool:
+        name: UbuntuVMSS
+      steps:
+        - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: True
 
   - ${{ if eq(parameters.mac, true) }}:
     - job: Mac
