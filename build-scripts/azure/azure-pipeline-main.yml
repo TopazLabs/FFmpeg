@@ -101,7 +101,7 @@ stages:
             tensorrt_rtx: False
 
   - ${{ if eq(parameters.linux_tensorrt_rtx, true) }}:
-    - job: Ubuntu22_04
+    - job: Ubuntu22_04_TensorRT_RTX
       workspace:
         clean: all
       pool:
