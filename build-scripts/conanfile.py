@@ -9,6 +9,12 @@ class conanRecipe(ConanFile):
     name = "FFmpeg"
     # version
     settings = "os", "build_type", "arch"
+    options = {
+        "tensorrt_rtx": [True, False],
+    }
+    default_options = {
+        "tensorrt_rtx": True,
+    }
 
     def configure(self):
         self.options["zimg"].shared = True
@@ -21,7 +27,7 @@ class conanRecipe(ConanFile):
             self.options["libaom-av1"].shared = True
 
         if self.settings.os == "Linux":
-            self.options["videoai"].tensorrt_rtx = False
+            self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
             self.options["videoai"].with_cuda = True
 
     def build_requirements(self):
