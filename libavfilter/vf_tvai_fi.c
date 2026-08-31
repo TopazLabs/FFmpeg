@@ -29,6 +29,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/avutil.h"
+#include "libavutil/parseutils.h"
 #include "avfilter.h"
 #include "formats.h"
 #include "avfilter_internal.h"
@@ -42,12 +43,18 @@ typedef struct  {
     double rdt;
     int timebaseUpdated;
     void* pFrameProcessor;
+    char *fps;
     AVRational frame_rate;
     AVFrame* previousFrame;
     AVDictionary *parameters;
     DictionaryItem *pModelParameters;
     int modelParametersCount;
     char *deviceString;    
+    /* SDK page-locked buffer pools: in_pool serves the input pad's
+     * get_buffer hook (upstream hwdownload DMAs straight into it), out_pool
+     * backs the output frames so downstream hwupload DMAs directly too. */
+    TVAIInPool in_pool;
+    AVBufferPool *out_pool;
 } TVAIFIContext;
 
 #define OFFSET(x) offsetof(TVAIFIContext, x)
@@ -62,7 +69,7 @@ static const AVOption tvai_fi_options[] = {
     { "vram", "Max memory usage", DEVICE_OFFSET(maxMemory), AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 1, .flags = FLAGS, "vram"},
     { "slowmo",  "Slowmo factor of the input video",  OFFSET(slowmo),  AV_OPT_TYPE_DOUBLE, {.dbl=1.0}, 0.1, 16, FLAGS, "slowmo" },
     { "rdt",  "Replace duplicate threshold. (0 or below means do not remove, high value will detect more duplicates)",  OFFSET(rdt),  AV_OPT_TYPE_DOUBLE, {.dbl=0.01}, -0.01, 0.2, FLAGS, "rdt" },
-    { "fps", "output's frame rate, same as input frame rate if value is invalid", OFFSET(frame_rate), AV_OPT_TYPE_VIDEO_RATE, {.str = "0"}, 0, INT_MAX, FLAGS },
+    { "fps", "output's frame rate, same as input frame rate if value is invalid or 0", OFFSET(fps), AV_OPT_TYPE_STRING, {.str = "0"}, .flags = FLAGS },
     { "parameters", TVAI_FRAME_INTERPOLATION_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
     { NULL }
 };
@@ -71,6 +78,14 @@ AVFILTER_DEFINE_CLASS(tvai_fi);
 
 static av_cold int init(AVFilterContext *ctx) {
     TVAIFIContext *tvai = ctx->priv;
+    tvai->frame_rate = (AVRational){0, 1};
+    if (tvai->fps && tvai->fps[0] && strcmp(tvai->fps, "0")) {
+        int ret = av_parse_video_rate(&tvai->frame_rate, tvai->fps);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Unable to parse fps value \"%s\" as video rate\n", tvai->fps);
+            return ret;
+        }
+    }
     av_log(ctx, AV_LOG_DEBUG, "Init with params: %s %d %d %lf %d/%d = %lf\n", tvai->basicInfo.modelName, tvai->basicInfo.device.index, tvai->basicInfo.device.extraThreadCount, tvai->slowmo, tvai->frame_rate.num, tvai->frame_rate.den, av_q2d(tvai->frame_rate));
     tvai->previousFrame = NULL;
     return 0;
@@ -124,8 +139,15 @@ static int config_props(AVFilterLink *outlink) {
 
 static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_RGB48,
+    AV_PIX_FMT_RGBF32,
+    AV_PIX_FMT_RGBAF32,
     AV_PIX_FMT_NONE
 };
+
+static AVFrame *get_in_buffer(AVFilterLink *inlink, int w, int h) {
+    TVAIFIContext *tvai = inlink->dst->priv;
+    return ff_tvai_get_in_buffer(&tvai->in_pool, inlink, w, h);
+}
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
@@ -149,7 +171,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in);
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, &tvai->out_pool);
 }
 
 static int request_frame(AVFilterLink *outlink) {
@@ -157,7 +179,7 @@ static int request_frame(AVFilterLink *outlink) {
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
         TVAIFIContext *tvai = ctx->priv;
-        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame);
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame, &tvai->out_pool);
         if(r)
             return r;
     }
@@ -168,6 +190,9 @@ static av_cold void uninit(AVFilterContext *ctx) {
     TVAIFIContext *tvai = ctx->priv;
     if(tvai->pFrameProcessor)
       tvai_destroy(tvai->pFrameProcessor);
+    av_frame_free(&tvai->previousFrame);
+    ff_tvai_in_pool_uninit(&tvai->in_pool);
+    av_buffer_pool_uninit(&tvai->out_pool);
 }
 
 static const AVFilterPad tvai_fi_inputs[] = {
@@ -175,6 +200,7 @@ static const AVFilterPad tvai_fi_inputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
+        .get_buffer.video = get_in_buffer,
     },
 };
 

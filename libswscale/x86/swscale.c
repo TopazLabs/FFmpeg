@@ -29,6 +29,8 @@
 #include "libavutil/cpu.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
+#include "input_rgb48.h"
+#include "output_rgbf32.h"
 
 const DECLARE_ALIGNED(8, uint64_t, ff_dither4)[2] = {
     0x0103010301030103LL,
@@ -683,6 +685,26 @@ switch(c->dstBpc){ \
             case_rgb(abgr,  ABGR,  avx2);
             case_rgb(argb,  ARGB,  avx2);
             }
+#if HAVE_AVX2
+        if (c->opts.dst_format == AV_PIX_FMT_RGBF32LE)
+            c->yuv2packed1 = (c->opts.flags & SWS_FULL_CHR_H_INT)
+                                 ? ff_yuv2rgbf32le_full_1_avx2
+                                 : ff_yuv2rgbf32le_1_avx2;
+        switch (c->opts.src_format) {
+        case AV_PIX_FMT_RGB48LE:
+            c->lumToYV12 = ff_rgb48LEToY_avx2;
+            c->chrToYV12 = c->chrSrcHSubSample ? ff_rgb48LEToUV_half_avx2
+                                               : ff_rgb48LEToUV_avx2;
+            break;
+        case AV_PIX_FMT_BGR48LE:
+            c->lumToYV12 = ff_bgr48LEToY_avx2;
+            c->chrToYV12 = c->chrSrcHSubSample ? ff_bgr48LEToUV_half_avx2
+                                               : ff_bgr48LEToUV_avx2;
+            break;
+        default:
+            break;
+        }
+#endif
         if (!(c->opts.flags & SWS_ACCURATE_RND)) // FIXME
         switch (c->opts.dst_format) {
         case AV_PIX_FMT_NV12:

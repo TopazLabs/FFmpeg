@@ -1652,6 +1652,329 @@ YUV2PACKED16WRAPPER(yuv2, rgba64_full, bgrx64be_full, AV_PIX_FMT_BGRA64, BE, 0, 
 YUV2PACKED16WRAPPER(yuv2, rgba64_full, bgrx64le_full, AV_PIX_FMT_BGRA64, LE, 0, 1)
 
 /*
+ * Packed float RGB (AV_PIX_FMT_RGBF32LE) writers. Same 30-bit integer math as
+ * the rgba64 templates above; like yuv2gbrpf32_full_X_c the result is
+ * quantized to 16-bit precision and scaled to [0,1] on the final store.
+ */
+static av_always_inline void
+yuv2rgbf32_write(float *dest, int Y, int R, int G, int B)
+{
+    dest[0] = (1.0f / 65535.0f) * (float)av_clip_uintp2(((int)(R + Y) >> 14) + (1 << 15), 16);
+    dest[1] = (1.0f / 65535.0f) * (float)av_clip_uintp2(((int)(G + Y) >> 14) + (1 << 15), 16);
+    dest[2] = (1.0f / 65535.0f) * (float)av_clip_uintp2(((int)(B + Y) >> 14) + (1 << 15), 16);
+}
+
+static void
+yuv2rgbf32le_full_X_c(SwsInternal *c, const int16_t *lumFilter,
+                      const int16_t **_lumSrc, int lumFilterSize,
+                      const int16_t *chrFilter, const int16_t **_chrUSrc,
+                      const int16_t **_chrVSrc, int chrFilterSize,
+                      const int16_t **_alpSrc, uint8_t *_dest, int dstW, int y)
+{
+    const int32_t **lumSrc  = (const int32_t **) _lumSrc,
+                  **chrUSrc = (const int32_t **) _chrUSrc,
+                  **chrVSrc = (const int32_t **) _chrVSrc;
+    float *dest = (float *) _dest;
+    int i;
+
+    for (i = 0; i < dstW; i++) {
+        int j;
+        int Y = -0x40000000;
+        int U = -(128 << 23);
+        int V = -(128 << 23);
+        int R, G, B;
+
+        for (j = 0; j < lumFilterSize; j++)
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
+
+        for (j = 0; j < chrFilterSize; j++) {
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
+        }
+
+        Y >>= 14;
+        Y += 0x10000;
+        U >>= 14;
+        V >>= 14;
+
+        Y -= c->yuv2rgb_y_offset;
+        Y *= c->yuv2rgb_y_coeff;
+        Y += (1 << 13) - (1 << 29);
+
+        R = V * c->yuv2rgb_v2r_coeff;
+        G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+        B =                            U * c->yuv2rgb_u2b_coeff;
+
+        yuv2rgbf32_write(dest, Y, R, G, B);
+        dest += 3;
+    }
+}
+
+static void
+yuv2rgbf32le_full_2_c(SwsInternal *c, const int16_t *_buf[2],
+                      const int16_t *_ubuf[2], const int16_t *_vbuf[2],
+                      const int16_t *_abuf[2], uint8_t *_dest, int dstW,
+                      int yalpha_param, int uvalpha_param, int y)
+{
+    const int32_t **buf  = (const int32_t **) _buf,
+                  **ubuf = (const int32_t **) _ubuf,
+                  **vbuf = (const int32_t **) _vbuf;
+    unsigned  yalpha =  yalpha_param;
+    unsigned uvalpha = uvalpha_param;
+    const int32_t *buf0  = buf[0],  *buf1  = buf[1],
+                  *ubuf0 = ubuf[0], *ubuf1 = ubuf[1],
+                  *vbuf0 = vbuf[0], *vbuf1 = vbuf[1];
+    unsigned  yalpha1 = 4096 - yalpha;
+    unsigned uvalpha1 = 4096 - uvalpha;
+    float *dest = (float *) _dest;
+    int i;
+
+    av_assert2(yalpha  <= 4096U);
+    av_assert2(uvalpha <= 4096U);
+
+    for (i = 0; i < dstW; i++) {
+        SUINT Y = (int)(buf0[i]  * yalpha1  + buf1[i]  * yalpha)  >> 14;
+        int U   = (int)(ubuf0[i] * uvalpha1 + ubuf1[i] * uvalpha - (128 << 23)) >> 14;
+        int V   = (int)(vbuf0[i] * uvalpha1 + vbuf1[i] * uvalpha - (128 << 23)) >> 14;
+        int R, G, B;
+
+        Y -= c->yuv2rgb_y_offset;
+        Y *= c->yuv2rgb_y_coeff;
+        Y += (1 << 13) - (1 << 29);
+
+        R = V * c->yuv2rgb_v2r_coeff;
+        G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+        B =                            U * c->yuv2rgb_u2b_coeff;
+
+        yuv2rgbf32_write(dest, Y, R, G, B);
+        dest += 3;
+    }
+}
+
+static void
+yuv2rgbf32le_full_1_c(SwsInternal *c, const int16_t *_buf0,
+                      const int16_t *_ubuf[2], const int16_t *_vbuf[2],
+                      const int16_t *_abuf0, uint8_t *_dest, int dstW,
+                      int uvalpha, int y)
+{
+    const int32_t  *buf0 = (const int32_t *)  _buf0,
+                  **ubuf = (const int32_t **) _ubuf,
+                  **vbuf = (const int32_t **) _vbuf;
+    const int32_t *ubuf0 = ubuf[0], *vbuf0 = vbuf[0];
+    float *dest = (float *) _dest;
+    int i;
+
+    if (uvalpha == 0) {
+        for (i = 0; i < dstW; i++) {
+            SUINT Y = (buf0[i]) >> 2;
+            SUINT U = (ubuf0[i] - (128 << 11)) >> 2;
+            SUINT V = (vbuf0[i] - (128 << 11)) >> 2;
+            int R, G, B;
+
+            Y -= c->yuv2rgb_y_offset;
+            Y *= c->yuv2rgb_y_coeff;
+            Y += (1 << 13) - (1 << 29);
+
+            R = V * c->yuv2rgb_v2r_coeff;
+            G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+            B =                            U * c->yuv2rgb_u2b_coeff;
+
+            yuv2rgbf32_write(dest, Y, R, G, B);
+            dest += 3;
+        }
+    } else {
+        const int32_t *ubuf1 = ubuf[1], *vbuf1 = vbuf[1];
+        unsigned uvalpha1 = 4096 - uvalpha;
+        av_assert2(uvalpha <= 4096U);
+
+        for (i = 0; i < dstW; i++) {
+            SUINT Y = (buf0[i]) >> 2;
+            SUINT U = (ubuf0[i] * uvalpha1 + ubuf1[i] * uvalpha - (128 << 23)) >> 14;
+            SUINT V = (vbuf0[i] * uvalpha1 + vbuf1[i] * uvalpha - (128 << 23)) >> 14;
+            int R, G, B;
+
+            Y -= c->yuv2rgb_y_offset;
+            Y *= c->yuv2rgb_y_coeff;
+            Y += (1 << 13) - (1 << 29);
+
+            R = V * c->yuv2rgb_v2r_coeff;
+            G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+            B =                            U * c->yuv2rgb_u2b_coeff;
+
+            yuv2rgbf32_write(dest, Y, R, G, B);
+            dest += 3;
+        }
+    }
+}
+
+static void
+yuv2rgbf32le_X_c(SwsInternal *c, const int16_t *lumFilter,
+                 const int16_t **_lumSrc, int lumFilterSize,
+                 const int16_t *chrFilter, const int16_t **_chrUSrc,
+                 const int16_t **_chrVSrc, int chrFilterSize,
+                 const int16_t **_alpSrc, uint8_t *_dest, int dstW, int y)
+{
+    const int32_t **lumSrc  = (const int32_t **) _lumSrc,
+                  **chrUSrc = (const int32_t **) _chrUSrc,
+                  **chrVSrc = (const int32_t **) _chrVSrc;
+    float *dest = (float *) _dest;
+    int i;
+
+    for (i = 0; i < ((dstW + 1) >> 1); i++) {
+        int j;
+        unsigned Y1 = -0x40000000;
+        unsigned Y2 = -0x40000000;
+        int U = -(128 << 23);
+        int V = -(128 << 23);
+        int R, G, B;
+
+        for (j = 0; j < lumFilterSize; j++) {
+            Y1 += lumSrc[j][i * 2]     * (unsigned)lumFilter[j];
+            Y2 += lumSrc[j][i * 2 + 1] * (unsigned)lumFilter[j];
+        }
+
+        for (j = 0; j < chrFilterSize; j++) {
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
+        }
+
+        Y1 = (int)Y1 >> 14;
+        Y1 += 0x10000;
+        Y2 = (int)Y2 >> 14;
+        Y2 += 0x10000;
+        U  = (int)U >> 14;
+        V  = (int)V >> 14;
+
+        Y1 -= c->yuv2rgb_y_offset;
+        Y2 -= c->yuv2rgb_y_offset;
+        Y1 *= c->yuv2rgb_y_coeff;
+        Y2 *= c->yuv2rgb_y_coeff;
+        Y1 += (1 << 13) - (1 << 29);
+        Y2 += (1 << 13) - (1 << 29);
+
+        R = V * c->yuv2rgb_v2r_coeff;
+        G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+        B =                            U * c->yuv2rgb_u2b_coeff;
+
+        yuv2rgbf32_write(dest,     Y1, R, G, B);
+        yuv2rgbf32_write(dest + 3, Y2, R, G, B);
+        dest += 6;
+    }
+}
+
+static void
+yuv2rgbf32le_2_c(SwsInternal *c, const int16_t *_buf[2],
+                 const int16_t *_ubuf[2], const int16_t *_vbuf[2],
+                 const int16_t *_abuf[2], uint8_t *_dest, int dstW,
+                 int yalpha_param, int uvalpha_param, int y)
+{
+    const int32_t **buf  = (const int32_t **) _buf,
+                  **ubuf = (const int32_t **) _ubuf,
+                  **vbuf = (const int32_t **) _vbuf;
+    unsigned  yalpha =  yalpha_param;
+    unsigned uvalpha = uvalpha_param;
+    const int32_t *buf0  = buf[0],  *buf1  = buf[1],
+                  *ubuf0 = ubuf[0], *ubuf1 = ubuf[1],
+                  *vbuf0 = vbuf[0], *vbuf1 = vbuf[1];
+    unsigned  yalpha1 = 4096 - yalpha;
+    unsigned uvalpha1 = 4096 - uvalpha;
+    float *dest = (float *) _dest;
+    int i;
+
+    av_assert2(yalpha  <= 4096U);
+    av_assert2(uvalpha <= 4096U);
+
+    for (i = 0; i < ((dstW + 1) >> 1); i++) {
+        unsigned Y1 = (int)(buf0[i * 2]     * yalpha1  + buf1[i * 2]     * yalpha) >> 14;
+        unsigned Y2 = (int)(buf0[i * 2 + 1] * yalpha1  + buf1[i * 2 + 1] * yalpha) >> 14;
+        int U  = (int)(ubuf0[i] * uvalpha1 + ubuf1[i] * uvalpha - (128 << 23)) >> 14;
+        int V  = (int)(vbuf0[i] * uvalpha1 + vbuf1[i] * uvalpha - (128 << 23)) >> 14;
+        int R, G, B;
+
+        Y1 -= c->yuv2rgb_y_offset;
+        Y2 -= c->yuv2rgb_y_offset;
+        Y1 *= c->yuv2rgb_y_coeff;
+        Y2 *= c->yuv2rgb_y_coeff;
+        Y1 += (1 << 13) - (1 << 29);
+        Y2 += (1 << 13) - (1 << 29);
+
+        R = V * c->yuv2rgb_v2r_coeff;
+        G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+        B =                            U * c->yuv2rgb_u2b_coeff;
+
+        yuv2rgbf32_write(dest,     Y1, R, G, B);
+        yuv2rgbf32_write(dest + 3, Y2, R, G, B);
+        dest += 6;
+    }
+}
+
+static void
+yuv2rgbf32le_1_c(SwsInternal *c, const int16_t *_buf0,
+                 const int16_t *_ubuf[2], const int16_t *_vbuf[2],
+                 const int16_t *_abuf0, uint8_t *_dest, int dstW,
+                 int uvalpha, int y)
+{
+    const int32_t  *buf0 = (const int32_t *)  _buf0,
+                  **ubuf = (const int32_t **) _ubuf,
+                  **vbuf = (const int32_t **) _vbuf;
+    const int32_t *ubuf0 = ubuf[0], *vbuf0 = vbuf[0];
+    float *dest = (float *) _dest;
+    int i;
+
+    if (uvalpha == 0) {
+        for (i = 0; i < ((dstW + 1) >> 1); i++) {
+            SUINT Y1 = (buf0[i * 2]    ) >> 2;
+            SUINT Y2 = (buf0[i * 2 + 1]) >> 2;
+            SUINT U  = (ubuf0[i] - (128 << 11)) >> 2;
+            SUINT V  = (vbuf0[i] - (128 << 11)) >> 2;
+            int R, G, B;
+
+            Y1 -= c->yuv2rgb_y_offset;
+            Y2 -= c->yuv2rgb_y_offset;
+            Y1 *= c->yuv2rgb_y_coeff;
+            Y2 *= c->yuv2rgb_y_coeff;
+            Y1 += (1 << 13) - (1 << 29);
+            Y2 += (1 << 13) - (1 << 29);
+
+            R = V * c->yuv2rgb_v2r_coeff;
+            G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+            B =                            U * c->yuv2rgb_u2b_coeff;
+
+            yuv2rgbf32_write(dest,     Y1, R, G, B);
+            yuv2rgbf32_write(dest + 3, Y2, R, G, B);
+            dest += 6;
+        }
+    } else {
+        const int32_t *ubuf1 = ubuf[1], *vbuf1 = vbuf[1];
+        unsigned uvalpha1 = 4096 - uvalpha;
+        av_assert2(uvalpha <= 4096U);
+
+        for (i = 0; i < ((dstW + 1) >> 1); i++) {
+            SUINT Y1 = (buf0[i * 2]    ) >> 2;
+            SUINT Y2 = (buf0[i * 2 + 1]) >> 2;
+            SUINT U = (ubuf0[i] * uvalpha1 + ubuf1[i] * uvalpha - (128 << 23)) >> 14;
+            SUINT V = (vbuf0[i] * uvalpha1 + vbuf1[i] * uvalpha - (128 << 23)) >> 14;
+            int R, G, B;
+
+            Y1 -= c->yuv2rgb_y_offset;
+            Y2 -= c->yuv2rgb_y_offset;
+            Y1 *= c->yuv2rgb_y_coeff;
+            Y2 *= c->yuv2rgb_y_coeff;
+            Y1 += (1 << 13) - (1 << 29);
+            Y2 += (1 << 13) - (1 << 29);
+
+            R = V * c->yuv2rgb_v2r_coeff;
+            G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
+            B =                            U * c->yuv2rgb_u2b_coeff;
+
+            yuv2rgbf32_write(dest,     Y1, R, G, B);
+            yuv2rgbf32_write(dest + 3, Y2, R, G, B);
+            dest += 6;
+        }
+    }
+}
+
+/*
  * Write out 2 RGB pixels in the target pixel format. This function takes a
  * R/G/B LUT as generated by ff_yuv2rgb_c_init_tables(), which takes care of
  * things like endianness conversion and shifting. The caller takes care of
@@ -3515,6 +3838,11 @@ av_cold void ff_sws_init_output_funcs(SwsInternal *c,
             *yuv2packed2 = yuv2rgb48le_full_2_c;
             *yuv2packed1 = yuv2rgb48le_full_1_c;
             break;
+        case AV_PIX_FMT_RGBF32LE:
+            *yuv2packedX = yuv2rgbf32le_full_X_c;
+            *yuv2packed2 = yuv2rgbf32le_full_2_c;
+            *yuv2packed1 = yuv2rgbf32le_full_1_c;
+            break;
         case AV_PIX_FMT_BGR48LE:
             *yuv2packedX = yuv2bgr48le_full_X_c;
             *yuv2packed2 = yuv2bgr48le_full_2_c;
@@ -3662,6 +3990,11 @@ av_cold void ff_sws_init_output_funcs(SwsInternal *c,
             *yuv2packed1 = yuv2rgb48le_1_c;
             *yuv2packed2 = yuv2rgb48le_2_c;
             *yuv2packedX = yuv2rgb48le_X_c;
+            break;
+        case AV_PIX_FMT_RGBF32LE:
+            *yuv2packed1 = yuv2rgbf32le_1_c;
+            *yuv2packed2 = yuv2rgbf32le_2_c;
+            *yuv2packedX = yuv2rgbf32le_X_c;
             break;
         case AV_PIX_FMT_RGB48BE:
             *yuv2packed1 = yuv2rgb48be_1_c;

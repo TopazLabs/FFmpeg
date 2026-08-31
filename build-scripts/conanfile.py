@@ -16,7 +16,7 @@ class conanRecipe(ConanFile):
             self.options["libvpx"].shared = True
         if self.settings.os == "Macos":
             self.options["openssl"].shared = False
-        
+
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
 
@@ -28,7 +28,7 @@ class conanRecipe(ConanFile):
 
     # windows libaom-av1 build different recipe revision id for some reason...
     def requirements(self):
-        self.requires("videoai/[~2.0.0]")
+        self.requires("videoai/2.0.39-vaio+5")
         self.requires("libvpx/1.14.1")
         self.requires("dav1d/1.5.3")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
@@ -51,16 +51,56 @@ class conanRecipe(ConanFile):
                     # Copy all the libraries to lib3rdparty
                     # Cannot only grab specific types, because for some reason
                     # tensorflow-gpu has c++ headers with no extension
-                    copy(self, "*", src=dep.package_folder, dst=os.path.join("lib3rdparty", str(dep.ref).split('/')[0]))
+                    copy(
+                        self,
+                        "*",
+                        src=dep.package_folder,
+                        dst=os.path.join("lib3rdparty", str(dep.ref).split("/")[0]),
+                    )
                     # Copy DLLs and Crashpad executables to bin folder
-                    copy(self, "*.xml", src=os.path.join(dep.package_folder, "bin"), dst="bin")
-                    copy(self, "*.dll", src=os.path.join(dep.package_folder, "bin"), dst="bin")
+                    copy(
+                        self,
+                        "*.xml",
+                        src=os.path.join(dep.package_folder, "bin"),
+                        dst="bin",
+                    )
+                    copy(
+                        self,
+                        "*.dll",
+                        src=os.path.join(dep.package_folder, "bin"),
+                        dst="bin",
+                    )
                     # Copy DLLs and other things from older pre-builts that use binr/bind
-                    copy(self, "*", dst="bin", src=os.path.join(dep.package_folder, "binr"))
+                    copy(
+                        self,
+                        "*",
+                        dst="bin",
+                        src=os.path.join(dep.package_folder, "binr"),
+                    )
 
                 if self.settings.os == "Macos":
-                    copy(self, "*", src=os.path.join(dep.package_folder, "include"), dst="include")
-                    copy(self, "*", src=os.path.join(dep.package_folder, "lib"), dst="lib")
+                    copy(
+                        self,
+                        "*",
+                        src=os.path.join(dep.package_folder, "include"),
+                        dst="include",
+                    )
+                    copy(
+                        self,
+                        "*",
+                        src=os.path.join(dep.package_folder, "lib"),
+                        dst="lib",
+                    )
                 if self.settings.os == "Linux":
-                    copy(self, "*", src=os.path.join(dep.package_folder, "include"), dst="include")
-                    copy(self, "*", src=os.path.join(dep.package_folder, "lib"), dst="lib")
+                    copy(
+                        self,
+                        "*",
+                        src=os.path.join(dep.package_folder, "include"),
+                        dst="include",
+                    )
+                    copy(
+                        self,
+                        "*",
+                        src=os.path.join(dep.package_folder, "lib"),
+                        dst="lib",
+                    )
