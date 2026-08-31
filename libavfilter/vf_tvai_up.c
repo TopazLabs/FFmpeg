@@ -51,8 +51,8 @@ typedef struct TVAIUpContext {
      * downstream hwupload DMA directly instead of staging through pageable
      * memory. in_pool serves the input pad's get_buffer hook (i.e. the
      * upstream filter's output allocation), out_pool the output frames. */
-    AVBufferPool *in_pool, *out_pool;
-    int in_pool_w, in_pool_h, in_pool_fmt;
+    TVAIInPool in_pool;
+    AVBufferPool *out_pool;
 } TVAIUpContext;
 
 #define OFFSET(x) offsetof(TVAIUpContext, x)
@@ -142,19 +142,8 @@ static const enum AVPixelFormat pix_fmts[] = {
 };
 
 static AVFrame *get_in_buffer(AVFilterLink *inlink, int w, int h) {
-    AVFilterContext *ctx = inlink->dst;
-    TVAIUpContext *tvai = ctx->priv;
-    AVFrame *frame;
-    if (tvai->in_pool && (w != tvai->in_pool_w || h != tvai->in_pool_h ||
-                          inlink->format != tvai->in_pool_fmt))
-        av_buffer_pool_uninit(&tvai->in_pool);
-    tvai->in_pool_w   = w;
-    tvai->in_pool_h   = h;
-    tvai->in_pool_fmt = inlink->format;
-    frame = ff_tvai_pool_frame(&tvai->in_pool, inlink, inlink->format, w, h);
-    if (!frame)
-        frame = ff_default_get_video_buffer(inlink, w, h);
-    return frame;
+    TVAIUpContext *tvai = inlink->dst->priv;
+    return ff_tvai_get_in_buffer(&tvai->in_pool, inlink, w, h);
 }
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
@@ -190,7 +179,7 @@ static av_cold void uninit(AVFilterContext *ctx) {
     if(tvai->pFrameProcessor)
         tvai_destroy(tvai->pFrameProcessor);
     av_frame_free(&tvai->previousFrame);
-    av_buffer_pool_uninit(&tvai->in_pool);
+    ff_tvai_in_pool_uninit(&tvai->in_pool);
     av_buffer_pool_uninit(&tvai->out_pool);
 }
 

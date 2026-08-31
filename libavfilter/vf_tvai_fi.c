@@ -50,6 +50,11 @@ typedef struct  {
     DictionaryItem *pModelParameters;
     int modelParametersCount;
     char *deviceString;    
+    /* SDK page-locked buffer pools: in_pool serves the input pad's
+     * get_buffer hook (upstream hwdownload DMAs straight into it), out_pool
+     * backs the output frames so downstream hwupload DMAs directly too. */
+    TVAIInPool in_pool;
+    AVBufferPool *out_pool;
 } TVAIFIContext;
 
 #define OFFSET(x) offsetof(TVAIFIContext, x)
@@ -139,6 +144,11 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_NONE
 };
 
+static AVFrame *get_in_buffer(AVFilterLink *inlink, int w, int h) {
+    TVAIFIContext *tvai = inlink->dst->priv;
+    return ff_tvai_get_in_buffer(&tvai->in_pool, inlink, w, h);
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAIFIContext *tvai = ctx->priv;
@@ -161,7 +171,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, NULL);
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, &tvai->out_pool);
 }
 
 static int request_frame(AVFilterLink *outlink) {
@@ -169,7 +179,7 @@ static int request_frame(AVFilterLink *outlink) {
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
         TVAIFIContext *tvai = ctx->priv;
-        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame, NULL);
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame, &tvai->out_pool);
         if(r)
             return r;
     }
@@ -180,6 +190,9 @@ static av_cold void uninit(AVFilterContext *ctx) {
     TVAIFIContext *tvai = ctx->priv;
     if(tvai->pFrameProcessor)
       tvai_destroy(tvai->pFrameProcessor);
+    av_frame_free(&tvai->previousFrame);
+    ff_tvai_in_pool_uninit(&tvai->in_pool);
+    av_buffer_pool_uninit(&tvai->out_pool);
 }
 
 static const AVFilterPad tvai_fi_inputs[] = {
@@ -187,6 +200,7 @@ static const AVFilterPad tvai_fi_inputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
+        .get_buffer.video = get_in_buffer,
     },
 };
 

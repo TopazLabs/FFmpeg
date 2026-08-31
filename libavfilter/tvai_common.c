@@ -139,6 +139,23 @@ fail:
   return NULL;
 }
 
+AVFrame *ff_tvai_get_in_buffer(TVAIInPool *p, AVFilterLink *inlink, int w, int h) {
+  AVFrame *frame;
+  if (p->pool && (w != p->w || h != p->h || inlink->format != p->fmt))
+      av_buffer_pool_uninit(&p->pool);
+  p->w   = w;
+  p->h   = h;
+  p->fmt = inlink->format;
+  frame = ff_tvai_pool_frame(&p->pool, inlink, inlink->format, w, h);
+  if (!frame)
+      frame = ff_default_get_video_buffer(inlink, w, h);
+  return frame;
+}
+
+void ff_tvai_in_pool_uninit(TVAIInPool *p) {
+  av_buffer_pool_uninit(&p->pool);
+}
+
 AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer, AVBufferPool **pPool) {
   AVFrame* out = NULL;
   if (pPool)

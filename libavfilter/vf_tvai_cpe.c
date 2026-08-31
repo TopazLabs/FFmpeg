@@ -46,6 +46,10 @@ typedef struct TVAICPEContext {
     DictionaryItem *pModelParameters;
     int modelParametersCount;
     char *deviceString;
+    /* SDK page-locked input buffer pool served through the input pad's
+     * get_buffer hook (upstream hwdownload DMAs straight into it). Frames
+     * are passed through, so there is no output pool. */
+    TVAIInPool in_pool;
 } TVAICPEContext;
 
 #define OFFSET(x) offsetof(TVAICPEContext, x)
@@ -98,6 +102,11 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_NONE
 };
 
+static AVFrame *get_in_buffer(AVFilterLink *inlink, int w, int h) {
+    TVAICPEContext *tvai = inlink->dst->priv;
+    return ff_tvai_get_in_buffer(&tvai->in_pool, inlink, w, h);
+}
+
 static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     AVFilterContext *ctx = inlink->dst;
     TVAICPEContext *tvai = ctx->priv;
@@ -131,6 +140,7 @@ static av_cold void uninit(AVFilterContext *ctx) {
     av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s\n", tvai->basicInfo.modelName);
     if(tvai->pFrameProcessor)
         tvai_destroy(tvai->pFrameProcessor);
+    ff_tvai_in_pool_uninit(&tvai->in_pool);
 }
 
 static const AVFilterPad tvai_cpe_inputs[] = {
@@ -138,6 +148,7 @@ static const AVFilterPad tvai_cpe_inputs[] = {
         .name         = "default",
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
+        .get_buffer.video = get_in_buffer,
     },
 };
 

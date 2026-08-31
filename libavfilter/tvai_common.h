@@ -32,6 +32,17 @@ AVFrame* ff_tvai_prepareBufferOutput(AVFilterLink *outlink, TVAIBuffer* oBuffer,
  * ff_default_get_video_buffer does. */
 AVFrame* ff_tvai_pool_frame(AVBufferPool **pPool, AVFilterLink *link, int format, int w, int h);
 
+/* Pool of SDK page-locked input buffers, served through an input pad's
+ * get_buffer.video hook so the upstream filter (typically hwdownload)
+ * writes straight into DMA-capable memory. The pool is recreated when the
+ * requested geometry/format changes; falls back to default allocation. */
+typedef struct TVAIInPool {
+    AVBufferPool *pool;
+    int w, h, fmt;
+} TVAIInPool;
+AVFrame *ff_tvai_get_in_buffer(TVAIInPool *p, AVFilterLink *inlink, int w, int h);
+void ff_tvai_in_pool_uninit(TVAIInPool *p);
+
 int ff_tvai_add_output(void *pProcessor, AVFilterLink *outlink, AVFrame* frame, AVBufferPool **pPool);
 int ff_tvai_process(void *pFrameProcessor, AVFrame* frame);
 void ff_tvai_ignore_output(void *pProcessor);
