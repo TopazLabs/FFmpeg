@@ -565,6 +565,7 @@ OBJS-$(CONFIG_V360_FILTER)                   += vf_v360.o
 OBJS-$(CONFIG_VAGUEDENOISER_FILTER)          += vf_vaguedenoiser.o
 OBJS-$(CONFIG_VARBLUR_FILTER)                += vf_varblur.o framesync.o
 OBJS-$(CONFIG_TVAI_UP_FILTER)                += vf_tvai_up.o tvai_common.o
+OBJS-$(CONFIG_TVAI_GRAIN_FILTER)             += vf_tvai_grain.o tvai_common.o
 OBJS-$(CONFIG_TVAI_FI_FILTER)                += vf_tvai_fi.o tvai_common.o
 OBJS-$(CONFIG_TVAI_PE_FILTER)                += vf_tvai_pe.o tvai_common.o
 OBJS-$(CONFIG_TVAI_CPE_FILTER)               += vf_tvai_cpe.o tvai_common.o

@@ -529,6 +529,7 @@ extern const FFFilter ff_vf_v360;
 extern const FFFilter ff_vf_vaguedenoiser;
 extern const FFFilter ff_vf_varblur;
 extern const FFFilter ff_vf_tvai_up;
+extern const FFFilter ff_vf_tvai_grain;
 extern const FFFilter ff_vf_tvai_fi;
 extern const FFFilter ff_vf_tvai_pe;
 extern const FFFilter ff_vf_tvai_cpe;
