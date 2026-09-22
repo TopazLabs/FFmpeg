@@ -40,7 +40,7 @@ typedef struct TVAIUpContext {
     BasicProcessorInfo basicInfo;
     int estimateFrameCount, count, estimating, w, h, canKeepColor;
     double preBlur, noise, details, halo, blur, compression;
-    double prenoise, grain, grainSize, blend;
+    double prenoise, blend;
     void* pFrameProcessor;
     AVFrame* previousFrame;
     AVDictionary *parameters;
@@ -77,8 +77,6 @@ static const AVOption tvai_up_options[] = {
     { "blur",  "Additional sharpening of the video. Use this if the input video looks too soft. \nThe value set should be relative to the amount of softness in the input video - if the input video is already sharp, higher values will introduce more artifacts.",  OFFSET(blur),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, -1.0, 1.0, FLAGS, "blur" },
     { "compression",  "Reduces compression artifacts from codec encoding, such as blockiness or mosquito noise. Higher values are best for low bitrate videos.\nNote that the value should be relative to the amount of compression artifacts in the input video - higher values on a video with few compression artifacts will introduce more artifacts into the output.",  OFFSET(compression),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, -1.0, 1.0, FLAGS, "compression" },
     { "prenoise",  "The amount of noise to add to the input before processing",  OFFSET(prenoise),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 0.1, FLAGS, "prenoise" },
-    { "grain",  "The amount of grain to add to the output",  OFFSET(grain),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 1.0, FLAGS, "grain" },
-    { "gsize",  "The size of grain to be added",  OFFSET(grainSize),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 5.0, FLAGS, "gsize" },
     { "kcolor",  "Run extra color correction if required by model",  OFFSET(canKeepColor),  AV_OPT_TYPE_INT, {.i64=1}, 0, 1, FLAGS, "kcolor" },
     { "blend",  "The amount of input to be blended with output",  OFFSET(blend),  AV_OPT_TYPE_DOUBLE, {.dbl=0}, 0.0, 1.0, FLAGS, "blend" },
     { "parameters", TVAI_UPSCALE_PARAMETER_MESSAGE, OFFSET(parameters), AV_OPT_TYPE_DICT, {.str=""}, .flags = FLAGS, "parameters" },
@@ -107,8 +105,6 @@ static int config_props(AVFilterLink *outlink) {
     av_dict_set_float(&tvai->parameters, "blur", tvai->blur, 0);
     av_dict_set_float(&tvai->parameters, "compression", tvai->compression, 0);
     av_dict_set_float(&tvai->parameters, "prenoise", tvai->prenoise, 0);
-    av_dict_set_float(&tvai->parameters, "grain", tvai->grain, 0);
-    av_dict_set_float(&tvai->parameters, "grainSize", tvai->grainSize, 0);
     av_dict_set_float(&tvai->parameters, "blend", tvai->blend, 0);
     
     av_dict_set_int(&tvai->parameters, "canKeepColor", tvai->canKeepColor, 0);

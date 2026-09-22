@@ -112,8 +112,8 @@ static int config_props(AVFilterLink *outlink) {
     info.basic.preflight = 0;
     info.basic.timebase = av_q2d(pInlink->time_base);
     info.basic.framerate = av_q2d(fInlink->frame_rate);
-    info.outputWidth = outlink->w = pInlink->w*info.basic.scale;
-    info.outputHeight = outlink->h = pInlink->h*info.basic.scale;
+    info.outputWidth = outlink->w = pInlink->w;
+    info.outputHeight = outlink->h = pInlink->h;
     info.basic.pParameters = tvai->modelParameters;
     info.basic.parameterCount = tvai->modelParameterCount;
     outlink->time_base = pInlink->time_base;
@@ -144,7 +144,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in) {
     if(tvai->previousFrame)
         av_frame_free(&tvai->previousFrame);
     tvai->previousFrame = in;
-    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in);
+    return ff_tvai_add_output(tvai->pFrameProcessor, outlink, in, NULL);
 }
 
 static int request_frame(AVFilterLink *outlink) {
@@ -152,7 +152,7 @@ static int request_frame(AVFilterLink *outlink) {
     TVAIGrainContext *tvai = ctx->priv;
     int ret = ff_request_frame(ctx->inputs[0]);
     if (ret == AVERROR_EOF) {
-        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame);
+        int r = ff_tvai_postflight(outlink, tvai->pFrameProcessor, tvai->previousFrame, NULL);
         if(r)
             return r;
     }
@@ -164,6 +164,8 @@ static av_cold void uninit(AVFilterContext *ctx) {
     av_log(ctx, AV_LOG_DEBUG, "Uninit called for %s %d\n", tvai->basicInfo.modelName, tvai->pFrameProcessor == NULL);
     if(tvai->pFrameProcessor)
         tvai_destroy(tvai->pFrameProcessor);
+    if (tvai->previousFrame) 
+        av_frame_free(&tvai->previousFrame);
 }
 
 static const AVFilterPad tvai_grain_inputs[] = {
