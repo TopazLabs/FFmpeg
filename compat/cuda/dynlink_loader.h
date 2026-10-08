@@ -22,7 +22,34 @@
 #include "libavutil/log.h"
 #include "compat/w32dlfcn.h"
 
+#if defined(_WIN32) && (defined(_M_ARM64) || defined(__aarch64__))
+#include <string.h>
+
+/*
+ * On Windows on Arm the NVIDIA driver ships the native ARM64 NVENC/NVDEC
+ * libraries as nvEncodeAPIa64.dll and nvcuvida64.dll, while nvEncodeAPI64.dll
+ * and nvcuvid.dll are the x64 builds used under emulation. Prefer the native
+ * ones and fall back to the name requested by ffnvcodec.
+ */
+static inline void *ffnv_win_arm64_dlopen(const char *path)
+{
+    const char *native = NULL;
+    void *lib;
+
+    if (!strcmp(path, "nvEncodeAPI64.dll") || !strcmp(path, "nvEncodeAPI.dll"))
+        native = "nvEncodeAPIa64.dll";
+    else if (!strcmp(path, "nvcuvid.dll"))
+        native = "nvcuvida64.dll";
+
+    if (native && (lib = dlopen(native, RTLD_LAZY)))
+        return lib;
+    return dlopen(path, RTLD_LAZY);
+}
+
+#define FFNV_LOAD_FUNC(path) ffnv_win_arm64_dlopen(path)
+#else
 #define FFNV_LOAD_FUNC(path) dlopen((path), RTLD_LAZY)
+#endif
 #define FFNV_SYM_FUNC(lib, sym) dlsym((lib), (sym))
 #define FFNV_FREE_FUNC(lib) dlclose(lib)
 #define FFNV_LOG_FUNC(logctx, msg, ...) av_log(logctx, AV_LOG_ERROR, msg,  __VA_ARGS__)

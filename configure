@@ -7821,6 +7821,9 @@ elif enabled_any aarch64 ppc64 && ! enabled bigendian; then
     case $target_os in
         linux)
             ;;
+        mingw32*|mingw64*|win32|win64)
+            enabled aarch64 || disable ffnvcodec cuvid nvdec nvenc
+            ;;
         *)
             disable ffnvcodec cuvid nvdec nvenc
             ;;
