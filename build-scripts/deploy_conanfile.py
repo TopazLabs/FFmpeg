@@ -5,6 +5,13 @@ import os
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
     settings = "os", "build_type", "arch"
+    options = {"tensorrt_rtx": [True, False]}
+    default_options = {"tensorrt_rtx": True}
+
+    def config_options(self):
+        # tensorrt_rtx only applies on Windows/Linux; omit from package id elsewhere
+        if self.settings.os not in ("Windows", "Linux"):
+            del self.options.tensorrt_rtx
 
     def configure(self):
         self.options["zimg"].shared = True
@@ -16,8 +23,11 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
 
+        if self.settings.os == "Windows" or self.settings.os == "Linux":
+            self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
+
     def requirements(self):
-        self.requires("videoai/2.0.39-n1x+1")
+        self.requires("videoai/2.0.39-n1x+1", package_id_mode="minor_mode")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.requires("zimg/3.0.5@josh/oiio3")
         else:
@@ -26,14 +36,10 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Macos" or self.settings.os == "Linux":
             self.requires("libvpx/1.14.1") #libvpx is static on Windows
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
-        elif self.settings.os == "Windows" and self.settings.arch == "x86_64":
-            if self.settings.arch == "x86_64":
-                self.requires("libaom-av1/3.5.0#041e72afabd2cb62567a667c7f9ed08a")
-            else:
-                self.requires("libaom-av1/3.8.0")
-            
-    def package_id(self):
-        self.info.requires["videoai"].minor_mode()
+        elif self.settings.arch == "armv8":
+            self.requires("libaom-av1/3.8.0")
+        else:
+            self.requires("libaom-av1/3.5.0#041e72afabd2cb62567a667c7f9ed08a")
 
     def package(self):
 

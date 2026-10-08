@@ -208,6 +208,14 @@ Vulkan configuration using a list of @var{key}=@var{value} pairs separated by
 Use HW accelerated decoding. Enable this option will enable vulkan renderer
 automatically.
 
+@item -video_bg @var{pattern}
+Set the video background pattern used for transparent videos. For solid color
+patterns you can use the color name or color code as specified in the
+@ref{color syntax,,Color section in the ffmpeg-utils(1) manual,ffmpeg-utils}.
+You can also use the special @code{tiles} keyword for a checker board style
+pattern. This is also the default. The @code{none} pattern does rendering
+without alpha blending effectively ignoring alpha channel.
+
 @end table
 
 @section While playing
@@ -251,15 +259,13 @@ Pause if the stream is not already paused, step to the next video
 frame, and pause.
 
 @item left/right
-Seek backward/forward 10 seconds.
+Seek backward/forward by 10 seconds or a custom interval if -seek_interval is set.
 
 @item down/up
 Seek backward/forward 1 minute.
 
 @item page down/page up
-Seek to the previous/next chapter.
-or if there are no chapters
-Seek backward/forward 10 minutes.
+Seek to previous/next chapter or backward/forward 10 minutes if no chapters.
 
 @item right mouse click
 Seek to percentage in file corresponding to fraction of width.

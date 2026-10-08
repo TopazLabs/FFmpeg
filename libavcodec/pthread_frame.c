@@ -115,10 +115,6 @@ typedef struct PerThreadContext {
     int hwaccel_threadsafe;
 
     atomic_int debug_threads;       ///< Set if the FF_DEBUG_THREADS option is set.
-
-    /// The following two fields have the same semantics as the DecodeContext field
-    int intra_only_flag;
-    enum AVPictureType initial_pict_type;
 } PerThreadContext;
 
 /**
@@ -380,6 +376,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
         dst->bits_per_raw_sample = src->bits_per_raw_sample;
         dst->color_primaries     = src->color_primaries;
 
+        dst->alpha_mode  = src->alpha_mode;
+
         dst->color_trc   = src->color_trc;
         dst->colorspace  = src->colorspace;
         dst->color_range = src->color_range;
@@ -405,7 +403,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         dst->hwaccel_flags = src->hwaccel_flags;
 
         av_refstruct_replace(&dst->internal->pool, src->internal->pool);
-        ff_decode_internal_sync(dst, src);
     }
 
     if (for_user) {
@@ -562,7 +559,7 @@ static int submit_packet(PerThreadContext *p, AVCodecContext *user_avctx,
     return 0;
 }
 
-int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame)
+int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame, unsigned flags)
 {
     FrameThreadContext *fctx = avctx->internal->thread_ctx;
     int ret = 0;
@@ -574,6 +571,10 @@ int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     /* submit packets to threads while there are no buffered results to return */
     while (!fctx->df.nb_f && !fctx->result) {
         PerThreadContext *p;
+
+        if (fctx->next_decoding != fctx->next_finished &&
+            (flags & AV_CODEC_RECEIVE_FRAME_FLAG_SYNCHRONOUS))
+            goto wait_for_result;
 
         /* get a packet to be submitted to the next thread */
         av_packet_unref(fctx->next_pkt);
@@ -591,6 +592,7 @@ int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             !avctx->internal->draining)
             continue;
 
+    wait_for_result:
         p                   = &fctx->threads[fctx->next_finished];
         fctx->next_finished = (fctx->next_finished + 1) % avctx->thread_count;
 
@@ -819,13 +821,6 @@ static av_cold int init_thread(PerThreadContext *p, int *threads_to_free,
 {
     AVCodecContext *copy;
     int err;
-
-    p->initial_pict_type = AV_PICTURE_TYPE_NONE;
-    if (avctx->codec_descriptor->props & AV_CODEC_PROP_INTRA_ONLY) {
-        p->intra_only_flag = AV_FRAME_FLAG_KEY;
-        if (avctx->codec_type == AVMEDIA_TYPE_VIDEO)
-            p->initial_pict_type = AV_PICTURE_TYPE_I;
-    }
 
     atomic_init(&p->state, STATE_INPUT_READY);
 

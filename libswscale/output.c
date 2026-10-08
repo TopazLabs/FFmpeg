@@ -473,8 +473,10 @@ static void yuv2planeX_8_c(const int16_t *filter, int filterSize,
     for (i=0; i<dstW; i++) {
         int val = dither[(i + offset) & 7] << 12;
         int j;
-        for (j=0; j<filterSize; j++)
-            val += src[j][i] * filter[j];
+        for (j=0; j<filterSize; j++) {
+            val += (unsigned)(src[j][i] * filter[j]);
+
+        }
 
         dest[i]= av_clip_uint8(val>>19);
     }
@@ -503,8 +505,8 @@ static void yuv2nv12cX_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
             int v = chrDither[(i + 3) & 7] << 12;
             int j;
             for (j=0; j<chrFilterSize; j++) {
-                u += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-                v += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+                u += chrUSrc[j][i] * (unsigned)chrFilter[j];
+                v += chrVSrc[j][i] * (unsigned)chrFilter[j];
             }
 
             dest[2*i]= av_clip_uint8(u>>19);
@@ -516,8 +518,8 @@ static void yuv2nv12cX_c(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
             int v = chrDither[(i + 3) & 7] << 12;
             int j;
             for (j=0; j<chrFilterSize; j++) {
-                u += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-                v += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+                u += chrUSrc[j][i] * (unsigned)chrFilter[j];
+                v += chrVSrc[j][i] * (unsigned)chrFilter[j];
             }
 
             dest[2*i]= av_clip_uint8(v>>19);
@@ -577,8 +579,8 @@ static void yuv2p01xcX_c(int big_endian, const uint8_t *chrDither,
         int v = 1 << (shift - 1);
 
         for (j = 0; j < chrFilterSize; j++) {
-            u += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            v += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            u += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            v += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
 
         output_pixel(&dest[2*i]  , u);
@@ -678,8 +680,8 @@ yuv2mono_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int Y2 = 1 << 18;
 
         for (j = 0; j < lumFilterSize; j++) {
-            Y1 += (unsigned)(lumSrc[j][i]   * lumFilter[j]);
-            Y2 += (unsigned)(lumSrc[j][i+1] * lumFilter[j]);
+            Y1 += lumSrc[j][i]   * (unsigned)lumFilter[j];
+            Y2 += lumSrc[j][i+1] * (unsigned)lumFilter[j];
         }
         Y1 >>= 19;
         Y2 >>= 19;
@@ -896,12 +898,12 @@ yuv2422_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int V  = 1 << 18;
 
         for (j = 0; j < lumFilterSize; j++) {
-            Y1 += (unsigned)(lumSrc[j][i * 2]     * lumFilter[j]);
-            Y2 += (unsigned)(lumSrc[j][i * 2 + 1] * lumFilter[j]);
+            Y1 += lumSrc[j][i * 2]     * (unsigned)lumFilter[j];
+            Y2 += lumSrc[j][i * 2 + 1] * (unsigned)lumFilter[j];
         }
         for (j = 0; j < chrFilterSize; j++) {
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
         Y1 >>= 19;
         Y2 >>= 19;
@@ -1028,7 +1030,7 @@ yuv2ya16_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int A = 0xffff;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         Y >>= 15;
         Y += (1<<3) + 0x8000;
@@ -1037,7 +1039,7 @@ yuv2ya16_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         if (hasAlpha) {
             A = -0x40000000 + (1<<14);
             for (j = 0; j < lumFilterSize; j++)
-                A += (unsigned)(alpSrc[j][i] * lumFilter[j]);
+                A += alpSrc[j][i] * (unsigned)lumFilter[j];
 
             A >>= 15;
             A += 0x8000;
@@ -1126,8 +1128,8 @@ yuv2rgba64_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int j;
         unsigned Y1 = -0x40000000;
         unsigned Y2 = -0x40000000;
-        int U  = -(128 << 23); // 19
-        int V  = -(128 << 23);
+        unsigned U  = -(128 << 23); // 19
+        unsigned V  = -(128 << 23);
         int R, G, B;
 
         for (j = 0; j < lumFilterSize; j++) {
@@ -1157,8 +1159,8 @@ yuv2rgba64_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         Y1 += 0x10000;
         Y2 = (int)Y2 >> 14;
         Y2 += 0x10000;
-        U  >>= 14;
-        V  >>= 14;
+        U  = (int)U >> 14;
+        V  = (int)V >> 14;
 
         // 8 bits: 27 -> 17 bits, 16 bits: 31 - 14 = 17 bits
         Y1 -= c->yuv2rgb_y_offset;
@@ -1270,7 +1272,7 @@ yuv2rgba64_1_c_template(SwsInternal *c, const int32_t *buf0,
 {
     const int32_t *ubuf0 = ubuf[0], *vbuf0 = vbuf[0];
     int i;
-    int A1 = 0xffff<<14, A2= 0xffff<<14;
+    SUINT A1 = 0xffff<<14, A2= 0xffff<<14;
 
     if (uvalpha == 0) {
         for (i = 0; i < ((dstW + 1) >> 1); i++) {
@@ -1288,8 +1290,8 @@ yuv2rgba64_1_c_template(SwsInternal *c, const int32_t *buf0,
             Y2 += (1 << 13) - (1 << 29);
 
             if (hasAlpha) {
-                A1 = abuf0[i * 2    ] * (1 << 11);
-                A2 = abuf0[i * 2 + 1] * (1 << 11);
+                A1 = abuf0[i * 2    ] * (SUINT)(1 << 11);
+                A2 = abuf0[i * 2 + 1] * (SUINT)(1 << 11);
 
                 A1 += 1 << 13;
                 A2 += 1 << 13;
@@ -1416,9 +1418,9 @@ yuv2rgba64_full_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         Y += (1 << 13) - (1<<29); // 21
         // 8bit: 17 + 13bit = 30bit, 16bit: 17 + 13bit = 30bit
 
-        R = V * c->yuv2rgb_v2r_coeff;
-        G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
-        B =                            U * c->yuv2rgb_u2b_coeff;
+        R = (unsigned)V * c->yuv2rgb_v2r_coeff;
+        G = (unsigned)V * c->yuv2rgb_v2g_coeff + (unsigned)U * c->yuv2rgb_u2g_coeff;
+        B =                                      (unsigned)U * c->yuv2rgb_u2b_coeff;
 
         // 8bit: 30 - 22 = 8bit, 16bit: 30bit - 14 = 16bit
         output_pixel(&dest[0], av_clip_uintp2(((int)(R_B + (unsigned)Y)>>14) + (1<<15), 16));
@@ -1457,9 +1459,9 @@ yuv2rgba64_full_2_c_template(SwsInternal *c, const int32_t *buf[2],
     av_assert2(uvalpha <= 4096U);
 
     for (i = 0; i < dstW; i++) {
-        int Y  = (int)(buf0[i]     * yalpha1  + buf1[i]     * yalpha) >> 14;
-        int U  = (int)(ubuf0[i]   * uvalpha1 + ubuf1[i]     * uvalpha - (128 << 23)) >> 14;
-        int V  = (int)(vbuf0[i]   * uvalpha1 + vbuf1[i]     * uvalpha - (128 << 23)) >> 14;
+        unsigned Y  = (int)(buf0[i]     * yalpha1  + buf1[i]     * yalpha) >> 14;
+        unsigned U  = (int)(ubuf0[i]   * uvalpha1 + ubuf1[i]     * uvalpha - (128 << 23)) >> 14;
+        unsigned V  = (int)(vbuf0[i]   * uvalpha1 + vbuf1[i]     * uvalpha - (128 << 23)) >> 14;
         int R, G, B;
 
         Y -= c->yuv2rgb_y_offset;
@@ -1476,9 +1478,9 @@ yuv2rgba64_full_2_c_template(SwsInternal *c, const int32_t *buf[2],
             A += 1 << 13;
         }
 
-        output_pixel(&dest[0], av_clip_uintp2(((R_B + Y) >> 14) + (1<<15), 16));
-        output_pixel(&dest[1], av_clip_uintp2(((  G + Y) >> 14) + (1<<15), 16));
-        output_pixel(&dest[2], av_clip_uintp2(((B_R + Y) >> 14) + (1<<15), 16));
+        output_pixel(&dest[0], av_clip_uintp2(((int)(R_B + Y) >> 14) + (1<<15), 16));
+        output_pixel(&dest[1], av_clip_uintp2(((int)(  G + Y) >> 14) + (1<<15), 16));
+        output_pixel(&dest[2], av_clip_uintp2(((int)(B_R + Y) >> 14) + (1<<15), 16));
         if (eightbytes) {
             output_pixel(&dest[3], av_clip_uintp2(A, 30) >> 14);
             dest += 4;
@@ -1802,12 +1804,12 @@ yuv2rgb_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         const void *r, *g, *b;
 
         for (j = 0; j < lumFilterSize; j++) {
-            Y1 += (unsigned)(lumSrc[j][i * 2]     * lumFilter[j]);
-            Y2 += (unsigned)(lumSrc[j][i * 2 + 1] * lumFilter[j]);
+            Y1 += lumSrc[j][i * 2]     * (unsigned)lumFilter[j];
+            Y2 += lumSrc[j][i * 2 + 1] * (unsigned)lumFilter[j];
         }
         for (j = 0; j < chrFilterSize; j++) {
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
         Y1 >>= 19;
         Y2 >>= 19;
@@ -1817,8 +1819,8 @@ yuv2rgb_X_c_template(SwsInternal *c, const int16_t *lumFilter,
             A1 = 1 << 18;
             A2 = 1 << 18;
             for (j = 0; j < lumFilterSize; j++) {
-                A1 += (unsigned)(alpSrc[j][i * 2    ] * lumFilter[j]);
-                A2 += (unsigned)(alpSrc[j][i * 2 + 1] * lumFilter[j]);
+                A1 += alpSrc[j][i * 2    ] * (unsigned)lumFilter[j];
+                A2 += alpSrc[j][i * 2 + 1] * (unsigned)lumFilter[j];
             }
             A1 >>= 19;
             A2 >>= 19;
@@ -2179,11 +2181,11 @@ yuv2rgb_full_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int V = (1<<9)-(128 << 19);
 
         for (j = 0; j < lumFilterSize; j++) {
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
         }
         for (j = 0; j < chrFilterSize; j++) {
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
         Y >>= 10;
         U >>= 10;
@@ -2191,7 +2193,7 @@ yuv2rgb_full_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         if (hasAlpha) {
             A = 1 << 18;
             for (j = 0; j < lumFilterSize; j++) {
-                A += (unsigned)(alpSrc[j][i] * lumFilter[j]);
+                A += alpSrc[j][i] * (unsigned)lumFilter[j];
             }
             A >>= 19;
             if (A & 0x100)
@@ -2360,11 +2362,11 @@ yuv2gbrp_full_X_c(SwsInternal *c, const int16_t *lumFilter,
         int R, G, B;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         for (j = 0; j < chrFilterSize; j++) {
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
 
         Y >>= 10;
@@ -2375,7 +2377,7 @@ yuv2gbrp_full_X_c(SwsInternal *c, const int16_t *lumFilter,
             A = 1 << 18;
 
             for (j = 0; j < lumFilterSize; j++)
-                A += (unsigned)(alpSrc[j][i] * lumFilter[j]);
+                A += alpSrc[j][i] * (unsigned)lumFilter[j];
 
             if (A & 0xF8000000)
                 A =  av_clip_uintp2(A, 27);
@@ -2513,9 +2515,9 @@ yuv2gbrp16_full_X_c(SwsInternal *c, const int16_t *lumFilter,
         G = V * c->yuv2rgb_v2g_coeff + U * c->yuv2rgb_u2g_coeff;
         B =                            U * c->yuv2rgb_u2b_coeff;
 
-        dest16[2][i] = av_clip_uintp2(((Y + R) >> 14) + (1<<15), 16);
-        dest16[0][i] = av_clip_uintp2(((Y + G) >> 14) + (1<<15), 16);
-        dest16[1][i] = av_clip_uintp2(((Y + B) >> 14) + (1<<15), 16);
+        dest16[2][i] = av_clip_uintp2(((Y + (int64_t)R) >> 14) + (1<<15), 16);
+        dest16[0][i] = av_clip_uintp2(((Y + (int64_t)G) >> 14) + (1<<15), 16);
+        dest16[1][i] = av_clip_uintp2(((Y + (int64_t)B) >> 14) + (1<<15), 16);
 
         if (hasAlpha)
             dest16[3][i] = av_clip_uintp2(A, 30) >> 14;
@@ -2679,7 +2681,7 @@ yuv2ya8_X_c(SwsInternal *c, const int16_t *lumFilter,
         int Y = 1 << 18, A = 1 << 18;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         Y >>= 19;
         if (Y  & 0x100)
@@ -2687,7 +2689,7 @@ yuv2ya8_X_c(SwsInternal *c, const int16_t *lumFilter,
 
         if (hasAlpha) {
             for (j = 0; j < lumFilterSize; j++)
-                A += (unsigned)(alpSrc[j][i] * lumFilter[j]);
+                A += alpSrc[j][i] * (unsigned)lumFilter[j];
 
             A >>= 19;
 
@@ -2793,11 +2795,11 @@ yuv2v30_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int j;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         for (j = 0; j < chrFilterSize; j++) {
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
 
         Y = av_clip_uintp2(Y >> 17, 10);
@@ -2847,11 +2849,11 @@ yuv2xv36_X_c(SwsInternal *c, const int16_t *lumFilter,
         int j;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         for (j = 0; j < chrFilterSize; j++) {
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
         }
 
         output_pixels(dest + 8 * i + 2, Y, 15, 12, 4)
@@ -3011,13 +3013,13 @@ yuv2ayuv_X_c_template(SwsInternal *c, const int16_t *lumFilter,
         int V = 1 << 18, A = 255;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         for (j = 0; j < chrFilterSize; j++)
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
 
         for (j = 0; j < chrFilterSize; j++)
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
 
         Y >>= 19;
         U >>= 19;
@@ -3034,7 +3036,7 @@ yuv2ayuv_X_c_template(SwsInternal *c, const int16_t *lumFilter,
             A = 1 << 18;
 
             for (j = 0; j < lumFilterSize; j++)
-                A += (unsigned)(alpSrc[j][i] * lumFilter[j]);
+                A += alpSrc[j][i] * (unsigned)lumFilter[j];
 
             A >>= 19;
 
@@ -3105,13 +3107,13 @@ AYUVPACKEDWRAPPER(uyva, AV_PIX_FMT_UYVA)
             int U  = 1 << (shift - 1), V  = 1 << (shift - 1);           \
                                                                         \
             for (j = 0; j < lumFilterSize; j++) {                       \
-                Y1 += (unsigned)(lumSrc[j][i * 2]     * lumFilter[j]);              \
-                Y2 += (unsigned)(lumSrc[j][i * 2 + 1] * lumFilter[j]);              \
+                Y1 += lumSrc[j][i * 2]     * (unsigned)lumFilter[j];    \
+                Y2 += lumSrc[j][i * 2 + 1] * (unsigned)lumFilter[j];    \
             }                                                           \
                                                                         \
             for (j = 0; j < chrFilterSize; j++) {                       \
-                U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);                      \
-                V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);                      \
+                U += chrUSrc[j][i] * (unsigned)chrFilter[j];            \
+                V += chrVSrc[j][i] * (unsigned)chrFilter[j];            \
             }                                                           \
                                                                         \
             output_pixel(dest + 8 * i + 0, Y1, bits);                   \
@@ -3259,13 +3261,13 @@ yuv2vyu444_X_c(SwsInternal *c, const int16_t *lumFilter,
         int V = 1 << 18;
 
         for (j = 0; j < lumFilterSize; j++)
-            Y += (unsigned)(lumSrc[j][i] * lumFilter[j]);
+            Y += lumSrc[j][i] * (unsigned)lumFilter[j];
 
         for (j = 0; j < chrFilterSize; j++)
-            U += (unsigned)(chrUSrc[j][i] * chrFilter[j]);
+            U += chrUSrc[j][i] * (unsigned)chrFilter[j];
 
         for (j = 0; j < chrFilterSize; j++)
-            V += (unsigned)(chrVSrc[j][i] * chrFilter[j]);
+            V += chrVSrc[j][i] * (unsigned)chrFilter[j];
 
         Y >>= 19;
         U >>= 19;

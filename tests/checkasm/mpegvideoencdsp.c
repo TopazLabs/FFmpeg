@@ -16,19 +16,78 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
-#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 
+#include "libavcodec/mathops.h"
 #include "libavcodec/mpegvideoencdsp.h"
 
 #include "checkasm.h"
 
-#define randomize_buffers(buf, size)      \
-    do {                                  \
-        for (int j = 0; j < size; j += 4) \
-            AV_WN32(buf + j, rnd());      \
+#define randomize_buffers(buf, size)        \
+    do {                                    \
+        for (int j = 0; j < size; j += 4)   \
+            AV_WN32((char*)buf + j, rnd()); \
     } while (0)
+
+#define randomize_buffer_clipped(buf, min, max)          \
+    do {                                                 \
+        for (size_t j = 0; j < FF_ARRAY_ELEMS(buf); ++j) \
+            buf[j] = rnd() % (max - min + 1) + min;      \
+    } while (0)
+
+static void check_denoise_dct(MpegvideoEncDSPContext *c)
+{
+    declare_func(void, int16_t block[64], int dct_error_sum[64],
+                       const uint16_t dct_offset[64]);
+
+    if (check_func(c->denoise_dct, "denoise_dct")) {
+        DECLARE_ALIGNED(16, int16_t, block_ref)[64];
+        DECLARE_ALIGNED(16, int16_t, block_new)[64];
+        DECLARE_ALIGNED(16, int, dct_error_sum_ref)[64];
+        DECLARE_ALIGNED(16, int, dct_error_sum_new)[64];
+        DECLARE_ALIGNED(16, uint16_t, dct_offset)[64];
+
+        for (size_t i = 0; i < FF_ARRAY_ELEMS(block_ref); ++i) {
+            unsigned random = rnd();
+            block_ref[i] = random & (1 << 16) ? random : 0;
+        }
+        randomize_buffers(dct_offset, sizeof(dct_offset));
+        randomize_buffer_clipped(dct_error_sum_ref, 0, (1 << 24) - 1);
+        memcpy(block_new, block_ref, sizeof(block_new));
+        memcpy(dct_error_sum_new, dct_error_sum_ref, sizeof(dct_error_sum_ref));
+
+        call_ref(block_ref, dct_error_sum_ref, dct_offset);
+        call_new(block_new, dct_error_sum_new, dct_offset);
+        if (memcmp(block_ref, block_new, sizeof(block_ref)) ||
+            memcmp(dct_error_sum_new, dct_error_sum_ref, sizeof(dct_error_sum_new)))
+            fail();
+
+        bench_new(block_new, dct_error_sum_new, dct_offset);
+    }
+}
+
+static void check_add_8x8basis(MpegvideoEncDSPContext *c)
+{
+    declare_func(void, int16_t rem[64], const int16_t basis[64], int scale);
+    if (check_func(c->add_8x8basis, "add_8x8basis")) {
+        // FIXME: What are the actual ranges for these values?
+        int scale = sign_extend(rnd(), 12);
+        DECLARE_ALIGNED(16, int16_t, rem1)[64];
+        DECLARE_ALIGNED(16, int16_t, rem2)[64];
+        DECLARE_ALIGNED(16, int16_t, basis)[64];
+
+        randomize_buffer_clipped(basis, -15760, 15760);
+        randomize_buffers(rem1, sizeof(rem1));
+        memcpy(rem2, rem1, sizeof(rem2));
+        call_ref(rem1, basis, scale);
+        call_new(rem2, basis, scale);
+        if (memcmp(rem1, rem2, sizeof(rem1)))
+            fail();
+        bench_new(rem1, basis, scale);
+    }
+}
 
 static void check_pix_sum(MpegvideoEncDSPContext *c)
 {
@@ -88,8 +147,8 @@ static void check_draw_edges(MpegvideoEncDSPContext *c)
     LOCAL_ALIGNED_16(uint8_t, buf0, [BUFSIZE]);
     LOCAL_ALIGNED_16(uint8_t, buf1, [BUFSIZE]);
 
-    declare_func_emms(AV_CPU_FLAG_MMX, void, uint8_t *buf, ptrdiff_t wrap, int width, int height,
-                                             int w, int h, int sides);
+    declare_func(void, uint8_t *buf, ptrdiff_t wrap, int width, int height,
+                       int w, int h, int sides);
 
     for (int isi = 0; isi < FF_ARRAY_ELEMS(input_sizes); isi++) {
         int input_size = input_sizes[isi];
@@ -138,10 +197,14 @@ void checkasm_check_mpegvideoencdsp(void)
 
     ff_mpegvideoencdsp_init(&c, &avctx);
 
+    check_denoise_dct(&c);
+    report("denoise_dct");
     check_pix_sum(&c);
     report("pix_sum");
     check_pix_norm1(&c);
     report("pix_norm1");
     check_draw_edges(&c);
     report("draw_edges");
+    check_add_8x8basis(&c);
+    report("add_8x8basis");
 }

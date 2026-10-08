@@ -54,6 +54,9 @@ fate-flv-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/flv/Enigma_Principles_of_L
 FATE_SAMPLES_DEMUX-$(call FRAMECRC, GIF,, GIF_PARSER) += fate-gif-demux
 fate-gif-demux: CMD = framecrc -i $(TARGET_SAMPLES)/gif/Newtons_cradle_animation_book_2.gif -c:v copy
 
+FATE_SAMPLES_DEMUX-$(call FRAMECRC, HXVS, HEVC, EXTRACT_EXTRADATA_BSF) += fate-hxvs-demux
+fate-hxvs-demux: CMD = framecrc -i $(TARGET_SAMPLES)/hxvs/A231130_171422_171436.bin -c copy -t 3
+
 FATE_SAMPLES_DEMUX-$(call FRAMECRC, IFF) += fate-iff-demux
 fate-iff-demux: CMD = framecrc -i $(TARGET_SAMPLES)/iff-anim/Hammer2.sndanim -c:v copy -c:a copy
 
@@ -133,6 +136,12 @@ fate-pva-demux: CMD = framecrc -idct simple -i $(TARGET_SAMPLES)/pva/PVA_test-pa
 FATE_SAMPLES_DEMUX-$(call CRC, QCP) += fate-qcp-demux
 fate-qcp-demux: CMD = crc -i $(TARGET_SAMPLES)/qcp/0036580847.QCP -c:a copy
 
+FATE_SAMPLES_DEMUX-$(call FRAMECRC, RAWVIDEO, RAWVIDEO) += fate-rawvideo-rgb-demux
+fate-rawvideo-rgb-demux: CMD = framecrc -f rawvideo -pixel_format rgb24 -video_size 160x500 -stride 512 -i $(TARGET_SAMPLES)/hevc/two_first_slice.mp4
+
+FATE_SAMPLES_DEMUX-$(call FRAMECRC, RAWVIDEO, RAWVIDEO) += fate-rawvideo-yuv-demux
+fate-rawvideo-yuv-demux: CMD = framecrc -f rawvideo -pixel_format yuv420p -video_size 250x500 -stride 256,128,128 -i $(TARGET_SAMPLES)/hevc/two_first_slice.mp4
+
 FATE_SAMPLES_DEMUX-$(call FRAMECRC, R3D, JPEG2000 PCM_S32BE) += fate-redcode-demux
 fate-redcode-demux: CMD = framecrc -i $(TARGET_SAMPLES)/r3d/4MB-sample.r3d -c:v copy -c:a copy
 
@@ -165,6 +174,9 @@ fate-ts-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/ac3/mp3ac325-4864-small.ts
 
 FATE_FFPROBE_DEMUX-$(CONFIG_MPEGTS_DEMUXER) += fate-ts-timed-id3-demux
 fate-ts-timed-id3-demux: CMD = ffprobe_demux $(TARGET_SAMPLES)/mpegts/id3.ts
+
+FATE_SAMPLES_DEMUX-$(call PARSERDEM, JPEGXS, IMAGE_JPEGXS_PIPE, CONCAT_PROTOCOL) += fate-jxs-concat-demux
+fate-jxs-concat-demux: CMD = framecrc "-i concat:$(TARGET_SAMPLES)/jxs/lena.jxs|$(TARGET_SAMPLES)/jxs/lena.jxs -c:v copy"
 
 FATE_SAMPLES_DEMUX += $(FATE_SAMPLES_DEMUX-yes)
 FATE_SAMPLES_FFMPEG += $(FATE_SAMPLES_DEMUX)

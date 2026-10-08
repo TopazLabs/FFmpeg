@@ -40,8 +40,13 @@ fate-force_key_frames-source-dup: CMD = framecrc -i $(TARGET_SAMPLES)/h264/intra
   -c:v mpeg2video -g 400 -sc_threshold 99999 \
   -force_key_frames source -r 39 -force_fps -strict experimental
 
-FATE_SAMPLES_FFMPEG-$(call ENCDEC, MPEG2VIDEO H264, FRAMECRC H264, H264_PARSER CROP_FILTER DRAWBOX_FILTER PIPE_PROTOCOL) += \
-    fate-force_key_frames-source fate-force_key_frames-source-drop fate-force_key_frames-source-dup
+fate-force_key_frames-scd_metadata: CMD = framecrc -i $(TARGET_SAMPLES)/h264/intra_refresh.h264 \
+  -vf scdet=threshold=10,crop=2:2,drawbox=color=black:t=fill \
+  -c:v mpeg2video -g 400 \
+  -force_key_frames scd_metadata
+
+FATE_SAMPLES_FFMPEG-$(call ENCDEC, MPEG2VIDEO H264, FRAMECRC H264, H264_PARSER CROP_FILTER DRAWBOX_FILTER SCDET_FILTER PIPE_PROTOCOL) += \
+    fate-force_key_frames-source fate-force_key_frames-source-drop fate-force_key_frames-source-dup fate-force_key_frames-scd_metadata
 
 # Tests that the video is properly autorotated using the contained
 # display matrix and that the generated file does not contain
@@ -128,6 +133,11 @@ fate-ffmpeg-fix_sub_duration_heartbeat: CMD = fmtstdout srt -fix_sub_duration \
   -c:v mpeg2video -b:v 2M -g 30 -sc_threshold 1000000000 \
   -c:s srt \
   -f null -
+# FIXME: disabling comparison against reference as after ffmpeg multithreading
+#        went in, this test started depending on how far the input side
+#        progressed compared to how quickly the output encoded packets,
+#        causing spurious failures on the CI.
+fate-ffmpeg-fix_sub_duration_heartbeat: CMP = null
 
 # FIXME: the integer AAC decoder does not produce the same output on all platforms
 # so until that is fixed we use the volume filter to silence the data
@@ -267,3 +277,16 @@ FATE_FFMPEG-$(call ENCDEC2, MPEG2VIDEO, FFV1, NUT, HSTACK_FILTER PIPE_PROTOCOL F
 # test matching by stream disposition
 fate-ffmpeg-spec-disposition: CMD = framecrc -i $(TARGET_SAMPLES)/mpegts/pmtchange.ts -map '0:disp:visual_impaired+descriptions:1' -c copy
 FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MPEGTS,,) += fate-ffmpeg-spec-disposition
+
+# test heif image merging using internally defined filtegraphs
+# picking the stream group if not mapping any specific stream
+fate-ffmpeg-heif-merge: CMD = framecrc -i $(TARGET_SAMPLES)/heif-conformance/C007.heic
+FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER) += fate-ffmpeg-heif-merge
+
+# mapping the stream group
+fate-ffmpeg-heif-merge-mapped: CMD = framecrc -i $(TARGET_SAMPLES)/heif-conformance/C007.heic -map '[0:g:0]'
+FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER) += fate-ffmpeg-heif-merge-mapped
+
+# binding the internal filtegraph with a caller defined filtergraph
+fate-ffmpeg-heif-merge-filtergraph: CMD = framecrc -i $(TARGET_SAMPLES)/heif-conformance/C007.heic -filter_complex "sws_flags=+accurate_rnd+bitexact\;[0:g:0]scale=w=1280:h=720[out]" -map "[out]"
+FATE_SAMPLES_FFMPEG-$(call FRAMECRC, MOV, HEVC, HEVC_PARSER SCALE_FILTER) += fate-ffmpeg-heif-merge-filtergraph

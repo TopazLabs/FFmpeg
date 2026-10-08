@@ -31,7 +31,6 @@
 #include "config.h"
 #include "libavutil/attributes.h"
 #include "libavutil/common.h"
-#include "libavutil/emms.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/intreadwrite.h"
@@ -150,7 +149,6 @@ static int denoise_depth(HQDN3DContext *s,
     else
         denoise_temporal(src, dst, frame_ant,
                          w, h, sstride, dstride, temporal, depth);
-    emms_c();
     return 0;
 }
 
@@ -279,7 +277,7 @@ static int config_input(AVFilterLink *inlink)
 
     calc_coefs(ctx);
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_hqdn3d_init_x86(s);
 #endif
 

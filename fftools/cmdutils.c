@@ -263,7 +263,7 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
             return AVERROR(EINVAL);
         }
 
-        arg_allocated = file_read(arg);
+        arg_allocated = read_file_to_string(arg);
         if (!arg_allocated) {
             av_log(NULL, AV_LOG_FATAL,
                    "Error reading the value for option '%s' from file: %s\n",
@@ -275,7 +275,7 @@ static int write_option(void *optctx, const OptionDef *po, const char *opt,
     }
 
     if (po->flags & OPT_FLAG_SPEC) {
-        char *p = strchr(opt, ':');
+        const char *p = strchr(opt, ':');
         char *str;
 
         sol = dst;
@@ -962,8 +962,7 @@ FILE *get_preset_file(char *filename, size_t filename_size,
                     datadir, desired_size, sizeof *datadir);
                 if (new_datadir) {
                     datadir = new_datadir;
-                    datadir[datadir_len] = 0;
-                    strncat(datadir, "/ffpresets",  desired_size - 1 - datadir_len);
+                    strcpy(datadir + datadir_len, "/ffpresets");
                     base[2] = datadir;
                 }
             }
@@ -1350,6 +1349,77 @@ int check_stream_specifier(AVFormatContext *s, AVStream *st, const char *spec)
     return ret;
 }
 
+unsigned stream_group_specifier_match(const StreamSpecifier *ss,
+                                      const AVFormatContext *s, const AVStreamGroup *stg,
+                                      void *logctx)
+{
+    int start_stream_group = 0, nb_stream_groups;
+    int nb_matched = 0;
+
+    if (ss->idx >= 0)
+        return 0;
+
+    switch (ss->stream_list) {
+    case STREAM_LIST_STREAM_ID:
+    case STREAM_LIST_ALL:
+    case STREAM_LIST_PROGRAM:
+        return 0;
+    case STREAM_LIST_GROUP_ID:
+        // <n-th> stream with given ID makes no sense and should be impossible to request
+        av_assert0(ss->idx < 0);
+        // return early if we know for sure the stream does not match
+        if (stg->id != ss->list_id)
+            return 0;
+        start_stream_group = stg->index;
+        nb_stream_groups   = stg->index + 1;
+        break;
+    case STREAM_LIST_GROUP_IDX:
+        start_stream_group = ss->list_id >= 0 ? 0 : stg->index;
+        nb_stream_groups   = stg->index + 1;
+        break;
+    default: av_assert0(0);
+    }
+
+    for (int i = start_stream_group; i < nb_stream_groups; i++) {
+        const AVStreamGroup *candidate = s->stream_groups[i];
+
+        if (ss->meta_key) {
+            const AVDictionaryEntry *tag = av_dict_get(candidate->metadata,
+                                                       ss->meta_key, NULL, 0);
+
+            if (!tag)
+                continue;
+            if (ss->meta_val && strcmp(tag->value, ss->meta_val))
+                continue;
+        }
+
+        if (ss->usable_only) {
+            switch (candidate->type) {
+            case AV_STREAM_GROUP_PARAMS_TILE_GRID: {
+                const AVStreamGroupTileGrid *tg = candidate->params.tile_grid;
+                if (!tg->coded_width || !tg->coded_height || !tg->nb_tiles ||
+                    !tg->width       || !tg->height       || !tg->nb_tiles)
+                    continue;
+                break;
+            }
+            default:
+                continue;
+            }
+        }
+
+        if (ss->disposition &&
+            (candidate->disposition & ss->disposition) != ss->disposition)
+            continue;
+
+        if (stg == candidate)
+            return ss->list_id < 0 || ss->list_id == nb_matched;
+
+        nb_matched++;
+    }
+
+    return 0;
+}
+
 int filter_codec_opts(const AVDictionary *opts, enum AVCodecID codec_id,
                       AVFormatContext *s, AVStream *st, const AVCodec *codec,
                       AVDictionary **dst, AVDictionary **opts_used)
@@ -1498,7 +1568,7 @@ double get_rotation(const int32_t *displaymatrix)
 }
 
 /* read file contents into a string */
-char *file_read(const char *filename)
+char *read_file_to_string(const char *filename)
 {
     AVIOContext *pb      = NULL;
     int ret = avio_open(&pb, filename, AVIO_FLAG_READ);
@@ -1541,4 +1611,29 @@ int check_avoptions(AVDictionary *m)
     }
 
     return 0;
+}
+
+void dump_dictionary(void *ctx, const AVDictionary *m,
+                     const char *name, const char *indent,
+                     int log_level)
+{
+    const AVDictionaryEntry *tag = NULL;
+
+    if (!m)
+        return;
+
+    av_log(ctx, log_level, "%s%s:\n", indent, name);
+    while ((tag = av_dict_iterate(m, tag))) {
+        const char *p = tag->value;
+        av_log(ctx, log_level, "%s  %-16s: ", indent, tag->key);
+        while (*p) {
+            size_t len = strcspn(p, "\x8\xa\xb\xc\xd");
+            av_log(ctx, log_level, "%.*s", (int)(FFMIN(255, len)), p);
+            p += len;
+            if (*p == 0xd) av_log(ctx, log_level, " ");
+            if (*p == 0xa) av_log(ctx, log_level, "\n%s  %-16s: ", indent, "");
+            if (*p) p++;
+        }
+        av_log(ctx, log_level, "\n");
+    }
 }

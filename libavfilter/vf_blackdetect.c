@@ -117,9 +117,9 @@ static int query_format(const AVFilterContext *ctx,
     const BlackDetectContext *s = ctx->priv;
     AVFilterFormats *formats;
     if (s->alpha)
-        formats = ff_make_format_list(yuva_formats);
+        formats = ff_make_pixel_format_list(yuva_formats);
     else
-        formats = ff_make_format_list(yuv_formats);
+        formats = ff_make_pixel_format_list(yuv_formats);
 
     return ff_set_common_formats2(ctx, cfg_in, cfg_out, formats);
 }
@@ -187,7 +187,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
     const int max = (1 << s->depth) - 1;
     const int factor = (1 << (s->depth - 8));
     const int full = picref->color_range == AVCOL_RANGE_JPEG ||
-                     ff_fmt_is_in(picref->format, yuvj_formats) ||
+                     ff_pixfmt_is_in(picref->format, yuvj_formats) ||
                      s->alpha;
 
     s->pixel_black_th_i = full ? s->pixel_black_th * max :

@@ -44,7 +44,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#if ARCH_X86_32
+#if defined(__i386__) || defined(_M_IX86)
 #include <setjmp.h>
 typedef jmp_buf checkasm_context;
 #define checkasm_save_context() checkasm_handle_signal(setjmp(checkasm_context_buf))
@@ -90,8 +90,11 @@ void checkasm_check_blackdetect(void);
 void checkasm_check_blend(void);
 void checkasm_check_blockdsp(void);
 void checkasm_check_bswapdsp(void);
+void checkasm_check_cavsdsp(void);
 void checkasm_check_colordetect(void);
 void checkasm_check_colorspace(void);
+void checkasm_check_crc(void);
+void checkasm_check_dcadsp(void);
 void checkasm_check_diracdsp(void);
 void checkasm_check_exrdsp(void);
 void checkasm_check_fdctdsp(void);
@@ -107,22 +110,30 @@ void checkasm_check_h264pred(void);
 void checkasm_check_h264qpel(void);
 void checkasm_check_hevc_add_res(void);
 void checkasm_check_hevc_deblock(void);
+void checkasm_check_hevc_dequant(void);
 void checkasm_check_hevc_idct(void);
 void checkasm_check_hevc_pel(void);
 void checkasm_check_hevc_sao(void);
+void checkasm_check_hpeldsp(void);
 void checkasm_check_huffyuvdsp(void);
+void checkasm_check_huffyuvencdsp(void);
 void checkasm_check_idctdsp(void);
+void checkasm_check_idet(void);
 void checkasm_check_jpeg2000dsp(void);
 void checkasm_check_llauddsp(void);
 void checkasm_check_lls(void);
 void checkasm_check_llviddsp(void);
-void checkasm_check_llviddspenc(void);
+void checkasm_check_llvidencdsp(void);
 void checkasm_check_lpc(void);
 void checkasm_check_motion(void);
+void checkasm_check_mpegvideo_unquantize(void);
 void checkasm_check_mpegvideoencdsp(void);
 void checkasm_check_nlmeans(void);
 void checkasm_check_opusdsp(void);
 void checkasm_check_pixblockdsp(void);
+void checkasm_check_pixelutils(void);
+void checkasm_check_png(void);
+void checkasm_check_qpeldsp(void);
 void checkasm_check_sbrdsp(void);
 void checkasm_check_rv34dsp(void);
 void checkasm_check_rv40dsp(void);
@@ -133,8 +144,10 @@ void checkasm_check_sw_gbrp(void);
 void checkasm_check_sw_range_convert(void);
 void checkasm_check_sw_rgb(void);
 void checkasm_check_sw_scale(void);
+void checkasm_check_sw_xyz2rgb(void);
 void checkasm_check_sw_yuv2rgb(void);
 void checkasm_check_sw_yuv2yuv(void);
+void checkasm_check_sw_ops(void);
 void checkasm_check_takdsp(void);
 void checkasm_check_utvideodsp(void);
 void checkasm_check_v210dec(void);
@@ -142,12 +155,19 @@ void checkasm_check_v210enc(void);
 void checkasm_check_vc1dsp(void);
 void checkasm_check_vf_bwdif(void);
 void checkasm_check_vf_eq(void);
+void checkasm_check_vf_fspp(void);
 void checkasm_check_vf_gblur(void);
 void checkasm_check_vf_hflip(void);
 void checkasm_check_vf_threshold(void);
 void checkasm_check_vf_sobel(void);
+void checkasm_check_vp3dsp(void);
+void checkasm_check_vp6dsp(void);
 void checkasm_check_vp8dsp(void);
 void checkasm_check_vp9dsp(void);
+void checkasm_check_vp9_ipred(void);
+void checkasm_check_vp9_itxfm(void);
+void checkasm_check_vp9_loopfilter(void);
+void checkasm_check_vp9_mc(void);
 void checkasm_check_videodsp(void);
 void checkasm_check_vorbisdsp(void);
 void checkasm_check_vvc_alf(void);
@@ -182,12 +202,13 @@ int double_near_abs_eps_array(const double *a, const double *b, double eps,
 extern AVLFG checkasm_lfg;
 #define rnd() av_lfg_get(&checkasm_lfg)
 
-static av_unused void *func_ref, *func_new;
+av_unused static void *func_ref, *func_new;
 
 extern uint64_t bench_runs;
 
 /* Decide whether or not the specified function needs to be tested */
 #define check_func(func, ...) (checkasm_save_context(), func_ref = checkasm_check_func((func_new = func), __VA_ARGS__))
+#define check_key(key, ...) (checkasm_save_context(), checkasm_check_func(key, __VA_ARGS__))
 
 /* Declare the function prototype. The first argument is the return value, the remaining
  * arguments are the function parameters. Naming parameters is optional. */
@@ -203,9 +224,14 @@ extern uint64_t bench_runs;
 
 /* Call the reference function */
 #define call_ref(...)\
+    checkasm_call((func_type *)func_ref, __VA_ARGS__)
+
+#define checkasm_call(func, ...) \
     (checkasm_set_signal_handler_state(1),\
-     ((func_type *)func_ref)(__VA_ARGS__));\
+     (func)(__VA_ARGS__));\
     checkasm_set_signal_handler_state(0)
+
+#define call_new(...) checkasm_call_checked(((func_type *)func_new), __VA_ARGS__)
 
 #if ARCH_X86 && HAVE_X86ASM
 /* Verifies that clobbered callee-saved registers are properly saved and restored
@@ -238,20 +264,21 @@ void checkasm_stack_clobber(uint64_t clobber, ...);
         ((cpu_flags) & av_get_cpu_flags()) ? (void *)checkasm_checked_call_emms : \
                                              (void *)checkasm_checked_call;
 #define CLOB (UINT64_C(0xdeadbeefdeadbeef))
-#define call_new(...) (checkasm_set_signal_handler_state(1),\
-                       checkasm_stack_clobber(CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,\
-                                              CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB),\
-                       checked_call(func_new, 0, 0, 0, 0, 0, __VA_ARGS__));\
-                      checkasm_set_signal_handler_state(0)
+#define checkasm_call_checked(func, ...) \
+    (checkasm_set_signal_handler_state(1),\
+     checkasm_stack_clobber(CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,\
+                            CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB),\
+     checked_call((func), 0, 0, 0, 0, 0, __VA_ARGS__));\
+    checkasm_set_signal_handler_state(0)
 #elif ARCH_X86_32
 #define declare_new(ret, ...) ret (*checked_call)(void *, __VA_ARGS__) = (void *)checkasm_checked_call;
 #define declare_new_float(ret, ...) ret (*checked_call)(void *, __VA_ARGS__) = (void *)checkasm_checked_call_float;
 #define declare_new_emms(cpu_flags, ret, ...) ret (*checked_call)(void *, __VA_ARGS__) = \
         ((cpu_flags) & av_get_cpu_flags()) ? (void *)checkasm_checked_call_emms :        \
                                              (void *)checkasm_checked_call;
-#define call_new(...)\
+#define checkasm_call_checked(func, ...)\
     (checkasm_set_signal_handler_state(1),\
-     checked_call(func_new, __VA_ARGS__));\
+     checked_call((func), __VA_ARGS__));\
     checkasm_set_signal_handler_state(0)
 #endif
 #elif ARCH_ARM && HAVE_ARMV5TE_EXTERNAL
@@ -264,9 +291,9 @@ extern void (*checkasm_checked_call)(void *func, int dummy, ...);
 #define declare_new(ret, ...) ret (*checked_call)(void *, int dummy, __VA_ARGS__, \
                                                   int, int, int, int, int, int, int, int, \
                                                   int, int, int, int, int, int, int) = (void *)checkasm_checked_call;
-#define call_new(...) \
+#define checkasm_call_checked(func, ...) \
     (checkasm_set_signal_handler_state(1),\
-     checked_call(func_new, 0, __VA_ARGS__, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0));\
+     checked_call((func), 0, __VA_ARGS__, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0));\
     checkasm_set_signal_handler_state(0)
 #elif ARCH_AARCH64 && !defined(__APPLE__)
 void checkasm_stack_clobber(uint64_t clobber, ...);
@@ -276,28 +303,28 @@ void checkasm_checked_call(void *func, ...);
                                                   int, int, int, int, int, int, int)\
                               = (void *)checkasm_checked_call;
 #define CLOB (UINT64_C(0xdeadbeefdeadbeef))
-#define call_new(...) (checkasm_set_signal_handler_state(1),\
+#define checkasm_call_checked(func, ...) (checkasm_set_signal_handler_state(1),\
                        checkasm_stack_clobber(CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,\
                                               CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB,CLOB),\
-                      checked_call(func_new, 0, 0, 0, 0, 0, 0, 0, __VA_ARGS__,\
+                      checked_call((func), 0, 0, 0, 0, 0, 0, 0, __VA_ARGS__,\
                                    7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0));\
                      checkasm_set_signal_handler_state(0)
 #elif ARCH_RISCV
 void checkasm_set_function(void *);
 void *checkasm_get_wrapper(void);
 
-#if HAVE_RV && (__riscv_xlen == 64) && defined (__riscv_d)
+#if HAVE_RV
 #define declare_new(ret, ...) \
     ret (*checked_call)(__VA_ARGS__) = checkasm_get_wrapper();
-#define call_new(...) \
+#define checkasm_call_checked(func, ...) \
     (checkasm_set_signal_handler_state(1),\
-     checkasm_set_function(func_new), checked_call(__VA_ARGS__));\
+     checkasm_set_function(func), checked_call(__VA_ARGS__));\
     checkasm_set_signal_handler_state(0)
 #else
 #define declare_new(ret, ...)
-#define call_new(...)\
+#define checkasm_call_checked(func, ...)\
     (checkasm_set_signal_handler_state(1),\
-     ((func_type *)func_new)(__VA_ARGS__));\
+     (func)(__VA_ARGS__));\
     checkasm_set_signal_handler_state(0)
 #endif
 #else
@@ -305,9 +332,9 @@ void *checkasm_get_wrapper(void);
 #define declare_new_float(ret, ...)
 #define declare_new_emms(cpu_flags, ret, ...)
 /* Call the function */
-#define call_new(...)\
+#define checkasm_call_checked(func, ...)\
     (checkasm_set_signal_handler_state(1),\
-     ((func_type *)func_new)(__VA_ARGS__));\
+     (func)(__VA_ARGS__));\
     checkasm_set_signal_handler_state(0)
 #endif
 
@@ -345,24 +372,38 @@ typedef struct CheckasmPerf {
 #define PERF_STOP(t)  t = AV_READ_TIME() - t
 #endif
 
+#define CALL4(...)\
+    do {\
+        tfunc(__VA_ARGS__); \
+        tfunc(__VA_ARGS__); \
+        tfunc(__VA_ARGS__); \
+        tfunc(__VA_ARGS__); \
+    } while (0)
+
+#define CALL16(...)\
+    do {\
+        CALL4(__VA_ARGS__); \
+        CALL4(__VA_ARGS__); \
+        CALL4(__VA_ARGS__); \
+        CALL4(__VA_ARGS__); \
+    } while (0)
+
 /* Benchmark the function */
-#define bench_new(...)\
+#define bench(func, ...)\
     do {\
         if (checkasm_bench_func()) {\
             struct CheckasmPerf *perf = checkasm_get_perf_context();\
             av_unused const int sysfd = perf->sysfd;\
-            func_type *tfunc = func_new;\
+            func_type *tfunc = func;\
             uint64_t tsum = 0;\
             uint64_t ti, tcount = 0;\
             uint64_t t = 0; \
-            const uint64_t truns = bench_runs;\
+            const uint64_t truns = FFMAX(bench_runs >> 3, 1);\
             checkasm_set_signal_handler_state(1);\
             for (ti = 0; ti < truns; ti++) {\
                 PERF_START(t);\
-                tfunc(__VA_ARGS__);\
-                tfunc(__VA_ARGS__);\
-                tfunc(__VA_ARGS__);\
-                tfunc(__VA_ARGS__);\
+                CALL16(__VA_ARGS__);\
+                CALL16(__VA_ARGS__);\
                 PERF_STOP(t);\
                 if (t*tcount <= tsum*4 && ti > 0) {\
                     tsum += t;\
@@ -376,10 +417,12 @@ typedef struct CheckasmPerf {
         }\
     } while (0)
 #else
-#define bench_new(...) while(0)
+#define bench(func, ...) while(0)
 #define PERF_START(t)  while(0)
 #define PERF_STOP(t)   while(0)
 #endif
+
+#define bench_new(...) bench(func_new, __VA_ARGS__)
 
 #define BUF_RECT(type, name, w, h) \
     LOCAL_ALIGNED_32(type, name##_buf, [((h)+32)*(FFALIGN(w,64)+64) + 64]); \
@@ -412,6 +455,13 @@ DECL_CHECKASM_CHECK_FUNC(uint32_t);
 DECL_CHECKASM_CHECK_FUNC(int16_t);
 DECL_CHECKASM_CHECK_FUNC(int32_t);
 
+int checkasm_check_float_ulp(const char *file, int line,
+                             const float *buf1, ptrdiff_t stride1,
+                             const float *buf2, ptrdiff_t stride2,
+                             int w, int h, const char *name,
+                             unsigned max_ulp, int align_w, int align_h,
+                             int padding);
+
 #define PASTE(a,b) a ## b
 #define CONCAT(a,b) PASTE(a,b)
 
@@ -432,7 +482,7 @@ DECL_CHECKASM_CHECK_FUNC(int32_t);
  * For tests that don't have that and only operate on a single
  * bitdepth, just call checkasm_check(uint8_t, ...) directly. */
 #define checkasm_check_pixel2(buf1, stride1, buf2, stride2, ...) \
-    ((bit_depth > 8) ?                                          \
+    ((bit_depth > 8) ?                                           \
      checkasm_check2(uint16_t, (const uint16_t*)buf1, stride1,   \
                                (const uint16_t*)buf2, stride2,   \
                                __VA_ARGS__) :                    \

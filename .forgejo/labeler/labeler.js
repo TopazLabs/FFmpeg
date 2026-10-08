@@ -11,7 +11,8 @@ module.exports = async ({github, context}) => {
       'avutil': 'avutil',
       'swresample': 'swresample',
       'swscale': 'swscale',
-      'fftools': 'CLI'
+      'fftools': 'CLI',
+      'vulkan': 'vulkan'
     };
 
     async function isOrgMember(username) {
@@ -30,6 +31,7 @@ module.exports = async ({github, context}) => {
         (context.payload.action !== 'opened' && (
              context.payload.action === 'assigned' ||
              context.payload.action === 'label_updated' ||
+             context.payload.action === 'labeled' ||
              context.payload.comment) &&
          await isOrgMember(context.payload.sender.login))
     ) {

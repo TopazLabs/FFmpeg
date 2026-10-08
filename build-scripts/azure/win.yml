@@ -19,8 +19,8 @@ steps:
       cd "$(Build.SourcesDirectory)/FFmpeg"
       unix2dos ./build-scripts/win/configure-win.patch
       git apply ./build-scripts/win/configure-win.patch
-      git apply ./build-scripts/configure-zimg.patch
-      git apply ./build-scripts/configure-aom.patch
+      # zimg/aom configure patches are already applied in-tree
+      git apply ./build-scripts/configure-dav1d.patch
       git apply ./build-scripts/intmath.patch
     displayName: Apply patches
   

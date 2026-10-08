@@ -453,7 +453,7 @@ static int ost_get_filters(const OptionsContext *o, AVFormatContext *oc,
     }
 
     if (filters_script)
-        *dst = file_read(filters_script);
+        *dst = read_file_to_string(filters_script);
     else
 #endif
     if (filters)
@@ -482,9 +482,9 @@ static int parse_matrix_coeffs(void *logctx, uint16_t *dest, const char *str)
     return 0;
 }
 
-static int fmt_in_list(const int *formats, int format)
+static int pixfmt_in_list(const enum AVPixelFormat *formats, enum AVPixelFormat format)
 {
-    for (; *formats != -1; formats++)
+    for (; *formats != AV_PIX_FMT_NONE; formats++)
         if (*formats == format)
             return 1;
     return 0;
@@ -544,7 +544,7 @@ static enum AVPixelFormat pix_fmt_parse(OutputStream *ost, const char *name)
      * endianness by av_get_pix_fmt();
      * the following code handles the case when the native endianness is not
      * supported by the encoder, but the other one is */
-    if (fmts && !fmt_in_list(fmts, fmt)) {
+    if (fmts && !pixfmt_in_list(fmts, fmt)) {
         const char *name_canonical = av_get_pix_fmt_name(fmt);
         int len = strlen(name_canonical);
 
@@ -557,7 +557,7 @@ static enum AVPixelFormat pix_fmt_parse(OutputStream *ost, const char *name)
             snprintf(name_other, sizeof(name_other), "%s%ce",
                      name, name_canonical[len - 2] == 'l' ? 'b' : 'l');
             fmt_other = av_get_pix_fmt(name_other);
-            if (fmt_other != AV_PIX_FMT_NONE && fmt_in_list(fmts, fmt_other)) {
+            if (fmt_other != AV_PIX_FMT_NONE && pixfmt_in_list(fmts, fmt_other)) {
                 av_log(ost, AV_LOG_VERBOSE, "Mapping pixel format %s->%s\n",
                        name, name_other);
                 fmt = fmt_other;
@@ -565,7 +565,7 @@ static enum AVPixelFormat pix_fmt_parse(OutputStream *ost, const char *name)
         }
     }
 
-    if (fmts && !fmt_in_list(fmts, fmt))
+    if (fmts && !pixfmt_in_list(fmts, fmt))
         fmt = choose_pixel_fmt(ost->enc->enc_ctx, fmt);
 
     return fmt;
@@ -730,9 +730,14 @@ static int new_stream_video(Muxer *mux, const OptionsContext *o,
                                                      AV_OPT_SEARCH_CHILDREN) > 0)
                     av_opt_set(video_enc, "stats", logfilename,
                                AV_OPT_SEARCH_CHILDREN);
+            } else if (!strcmp(video_enc->codec->name, "libx265")) {
+                if (av_opt_is_set_to_default_by_name(video_enc, "x265-stats",
+                                                     AV_OPT_SEARCH_CHILDREN) > 0)
+                    av_opt_set(video_enc, "x265-stats", logfilename,
+                               AV_OPT_SEARCH_CHILDREN);
             } else {
                 if (video_enc->flags & AV_CODEC_FLAG_PASS2) {
-                    char  *logbuffer = file_read(logfilename);
+                    char  *logbuffer = read_file_to_string(logfilename);
 
                     if (!logbuffer) {
                         av_log(ost, AV_LOG_FATAL, "Error reading log file '%s' for pass-2 encoding\n",
@@ -917,6 +922,7 @@ ost_bind_filter(const Muxer *mux, MuxStream *ms, OutputFilter *ofilter,
         .height           = enc_ctx->height,
         .color_space      = enc_ctx->colorspace,
         .color_range      = enc_ctx->color_range,
+        .alpha_mode       = enc_ctx->alpha_mode,
         .vsync_method     = vsync_method,
         .frame_rate       = ms->frame_rate,
         .max_frame_rate   = ms->max_frame_rate,
@@ -943,7 +949,7 @@ ost_bind_filter(const Muxer *mux, MuxStream *ms, OutputFilter *ofilter,
         if (!keep_pix_fmt) {
             ret = avcodec_get_supported_config(enc_ctx, NULL,
                                                AV_CODEC_CONFIG_PIX_FORMAT, 0,
-                                               (const void **) &opts.formats, NULL);
+                                               (const void **) &opts.pix_fmts, NULL);
             if (ret < 0)
                 return ret;
         }
@@ -964,10 +970,15 @@ ost_bind_filter(const Muxer *mux, MuxStream *ms, OutputFilter *ofilter,
                                            (const void **) &opts.color_ranges, NULL);
         if (ret < 0)
             return ret;
+        ret = avcodec_get_supported_config(enc_ctx, NULL,
+                                           AV_CODEC_CONFIG_ALPHA_MODE, 0,
+                                           (const void **) &opts.alpha_modes, NULL);
+        if (ret < 0)
+            return ret;
     } else {
         ret = avcodec_get_supported_config(enc_ctx, NULL,
                                            AV_CODEC_CONFIG_SAMPLE_FORMAT, 0,
-                                           (const void **) &opts.formats, NULL);
+                                           (const void **) &opts.sample_fmts, NULL);
         if (ret < 0)
             return ret;
         ret = avcodec_get_supported_config(enc_ctx, NULL,
@@ -997,7 +1008,7 @@ ost_bind_filter(const Muxer *mux, MuxStream *ms, OutputFilter *ofilter,
         ost->filter = ofilter;
         ret = ofilter_bind_enc(ofilter, ms->sch_idx_enc, &opts);
     } else {
-        ret = fg_create_simple(&ost->fg_simple, ost->ist, filters,
+        ret = fg_create_simple(&ost->fg_simple, ost->ist, &filters,
                                mux->sch, ms->sch_idx_enc, &opts);
         if (ret >= 0)
             ost->filter = ost->fg_simple->outputs[0];
@@ -1592,6 +1603,7 @@ fail:
 static int map_auto_video(Muxer *mux, const OptionsContext *o)
 {
     AVFormatContext *oc = mux->fc;
+    InputStreamGroup *best_istg = NULL;
     InputStream *best_ist = NULL;
     int64_t best_score = 0;
     int qcr;
@@ -1603,14 +1615,49 @@ static int map_auto_video(Muxer *mux, const OptionsContext *o)
     qcr = avformat_query_codec(oc->oformat, oc->oformat->video_codec, 0);
     for (int j = 0; j < nb_input_files; j++) {
         InputFile *ifile = input_files[j];
+        InputStreamGroup *file_best_istg = NULL;
         InputStream *file_best_ist = NULL;
         int64_t file_best_score = 0;
+        for (int i = 0; i < ifile->nb_stream_groups; i++) {
+            InputStreamGroup *istg = ifile->stream_groups[i];
+            int64_t score = 0;
+
+            if (!istg->fg)
+                continue;
+
+            for (int j = 0; j < istg->stg->nb_streams; j++) {
+                AVStream *st = istg->stg->streams[j];
+
+                if (st->event_flags & AVSTREAM_EVENT_FLAG_NEW_PACKETS) {
+                    score = 100000000;
+                    break;
+                }
+            }
+
+            switch (istg->stg->type) {
+            case AV_STREAM_GROUP_PARAMS_TILE_GRID: {
+                const AVStreamGroupTileGrid *tg = istg->stg->params.tile_grid;
+                score += tg->width * (int64_t)tg->height
+                           + 5000000*!!(istg->stg->disposition & AV_DISPOSITION_DEFAULT);
+                break;
+            }
+            default:
+                continue;
+            }
+
+            if (score > file_best_score) {
+                file_best_score = score;
+                file_best_istg  = istg;
+            }
+        }
         for (int i = 0; i < ifile->nb_streams; i++) {
             InputStream *ist = ifile->streams[i];
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(ist->st->codecpar->codec_id);
             int64_t score;
 
             if (ist->user_set_discard == AVDISCARD_ALL ||
-                ist->st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO)
+                ist->st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO ||
+                (desc && (desc->props & AV_CODEC_PROP_ENHANCEMENT)))
                 continue;
 
             score = ist->st->codecpar->width * (int64_t)ist->st->codecpar->height
@@ -1624,6 +1671,15 @@ static int map_auto_video(Muxer *mux, const OptionsContext *o)
                     continue;
                 file_best_score = score;
                 file_best_ist   = ist;
+                file_best_istg  = NULL;
+            }
+        }
+        if (file_best_istg) {
+            file_best_score -= 5000000*!!(file_best_istg->stg->disposition & AV_DISPOSITION_DEFAULT);
+            if (file_best_score > best_score) {
+                best_score = file_best_score;
+                best_istg = file_best_istg;
+                best_ist = NULL;
             }
         }
         if (file_best_ist) {
@@ -1633,8 +1689,18 @@ static int map_auto_video(Muxer *mux, const OptionsContext *o)
             if (file_best_score > best_score) {
                 best_score = file_best_score;
                 best_ist = file_best_ist;
+                best_istg = NULL;
             }
        }
+    }
+    if (best_istg) {
+        FilterGraph *fg = best_istg->fg;
+        OutputFilter *ofilter = fg->outputs[0];
+
+        av_assert0(fg->nb_outputs == 1);
+        av_log(mux, AV_LOG_VERBOSE, "Creating output stream from stream group derived complex filtergraph %d.\n", fg->index);
+
+        return ost_add(mux, o, AVMEDIA_TYPE_VIDEO, NULL, ofilter, NULL, NULL);
     }
     if (best_ist)
         return ost_add(mux, o, AVMEDIA_TYPE_VIDEO, best_ist, NULL, NULL, NULL);
@@ -3220,6 +3286,8 @@ static int process_forced_keyframes(Muxer *mux, const OptionsContext *o)
                    "-force_key_frames is deprecated, use just 'source'\n");
             ost->kf.type = KF_FORCE_SOURCE;
 #endif
+        } else if (!strcmp(forced_keyframes, "scd_metadata")) {
+            ost->kf.type = KF_FORCE_SCD_METADATA;
         } else {
             int ret = parse_forced_key_frames(ost, &ost->kf, mux, forced_keyframes);
             if (ret < 0)

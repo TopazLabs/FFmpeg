@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/attributes_internal.h"
 #include "libavutil/intreadwrite.h"
 
@@ -135,6 +136,8 @@ static int imm5_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     }
 
     ret = avcodec_receive_frame(codec_avctx, frame);
+    if (ret == AVERROR(EAGAIN))
+        return avpkt->size;
     if (ret < 0)
         return ret;
 
@@ -155,7 +158,7 @@ static int imm5_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     return avpkt->size;
 }
 
-static void imm5_flush(AVCodecContext *avctx)
+static av_cold void imm5_flush(AVCodecContext *avctx)
 {
     IMM5Context *ctx = avctx->priv_data;
 

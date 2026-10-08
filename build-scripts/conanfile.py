@@ -19,11 +19,10 @@ class conanRecipe(ConanFile):
         
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
-            self.options["videoai"].tensorrt_rtx = True
 
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
-            self.tool_requires("nasm/2.14")
+            self.tool_requires("nasm/2.16.01")
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.tool_requires("nasm/2.16.01")
 
@@ -31,10 +30,12 @@ class conanRecipe(ConanFile):
     def requirements(self):
         self.requires("videoai/2.0.39-n1x+1")
         if self.settings.os == "Windows" and self.settings.arch == "armv8":
-            self.requires("libvpx/1.15.2")    
+            # no dav1d package for windows armv8 yet
+            self.requires("libvpx/1.15.2")
             self.requires("libaom-av1/3.8.0")
         else:
             self.requires("libvpx/1.14.1")
+            self.requires("dav1d/1.5.3")
 
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.requires("zimg/3.0.5@josh/oiio3")
@@ -49,6 +50,7 @@ class conanRecipe(ConanFile):
             self.requires("zlib-mt/1.2.13")
         else:
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
+
     def generate(self):
         for dep in self.dependencies.values():
             if dep.package_folder:

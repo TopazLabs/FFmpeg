@@ -36,6 +36,7 @@ OBJS-ffmpeg +=                  \
     fftools/textformat/tw_buffer.o    \
     fftools/textformat/tw_stdout.o    \
     $(OBJS-resman)                    \
+    $(RESOBJS)                        \
 
 OBJS-ffprobe +=                       \
     fftools/textformat/avtextformat.o \
@@ -50,6 +51,7 @@ OBJS-ffprobe +=                       \
     fftools/textformat/tw_buffer.o    \
     fftools/textformat/tw_stdout.o    \
 
+OBJS-ffmpeg += $(COMPAT_OBJS:%=compat/%)
 OBJS-ffplay += fftools/ffplay_renderer.o
 
 define DOFFTOOL

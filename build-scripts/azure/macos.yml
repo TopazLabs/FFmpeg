@@ -10,6 +10,7 @@ steps:
 
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
+      git apply ./build-scripts/configure-dav1d.patch
       git apply ./build-scripts/configure-zimg.patch
       git apply ./build-scripts/configure-aom.patch
       git apply ./build-scripts/mac/configure-ossl.patch

@@ -242,7 +242,7 @@ static int64_t get_duration(AVFormatContext *s)
 
     int64_t start_pos = avio_tell(s->pb);
     int64_t pos = -1;
-    int64_t start = 0, end = 0;
+    int64_t start = 0;
     struct tm timeinfo;
     uint8_t *buffer;
     int64_t buffer_size;
@@ -250,8 +250,9 @@ static int64_t get_duration(AVFormatContext *s)
     int64_t offset;
     unsigned date;
     int64_t size = avio_size(s->pb);
+    int64_t ret = 0;
 
-    if (start_pos + 16 > size)
+    if (start_pos < 0 || start_pos > size - 20)
         return 0;
 
     avio_skip(s->pb, 16);
@@ -279,22 +280,17 @@ static int64_t get_duration(AVFormatContext *s)
         }
     }
 
-    if (pos < buffer_pos || pos + 16 > buffer_pos + buffer_size)
+    if (pos < buffer_pos || pos + 20 > buffer_pos + buffer_size)
         goto fail;
 
     date = AV_RL32(buffer + (pos - buffer_pos) + 16);
     get_timeinfo(date, &timeinfo);
-    end = av_timegm(&timeinfo) * 1000LL;
 
-    av_freep(&buffer);
-
-    avio_seek(s->pb, start_pos, SEEK_SET);
-
-    return end - start;
+    ret = av_timegm(&timeinfo) * 1000LL - start;
 fail:
     av_freep(&buffer);
     avio_seek(s->pb, start_pos, SEEK_SET);
-    return 0;
+    return ret;
 }
 
 static int dhav_read_header(AVFormatContext *s)
@@ -325,7 +321,9 @@ static int dhav_read_header(AVFormatContext *s)
                 if (seek_back < 9)
                     break;
                 dhav->last_good_pos = avio_tell(s->pb);
-                avio_seek(s->pb, -seek_back, SEEK_CUR);
+                int64_t ret64 = avio_seek(s->pb, -seek_back, SEEK_CUR);
+                if (ret64 < 0)
+                    return ret64;
             }
             avio_seek(s->pb, dhav->last_good_pos, SEEK_SET);
         }
@@ -486,8 +484,7 @@ static int dhav_read_seek(AVFormatContext *s, int stream_index,
         return -1;
 
     for (int n = 0; n < s->nb_streams; n++) {
-        AVStream *st = s->streams[n];
-        DHAVStream *dst = st->priv_data;
+        DHAVStream *const dst = s->streams[n]->priv_data;
 
         dst->pts = pts;
         dst->last_time = AV_NOPTS_VALUE;

@@ -163,6 +163,13 @@ static int handle_chunk_size(URLContext *s, RTMPPacket *pkt);
 static int handle_window_ack_size(URLContext *s, RTMPPacket *pkt);
 static int handle_set_peer_bw(URLContext *s, RTMPPacket *pkt);
 
+static size_t zstrlen(const char *c)
+{
+    if(c)
+        return strlen(c);
+    return 0;
+}
+
 static int add_tracked_method(RTMPContext *rt, const char *name, int id)
 {
     int err;
@@ -327,7 +334,16 @@ static int gen_connect(URLContext *s, RTMPContext *rt)
     int ret;
 
     if ((ret = ff_rtmp_packet_create(&pkt, RTMP_SYSTEM_CHANNEL, RTMP_PT_INVOKE,
-                                     0, 4096 + APP_MAX_LENGTH)) < 0)
+                                     0, 4096 + APP_MAX_LENGTH
+                                     + strlen(rt->auth_params) + strlen(rt->flashver)
+                                     + zstrlen(rt->enhanced_codecs)/5*7
+                                     + zstrlen(rt->swfurl)
+                                     + zstrlen(rt->swfverify)
+                                     + zstrlen(rt->tcurl)
+                                     + zstrlen(rt->auth_params)
+                                     + zstrlen(rt->pageurl)
+                                     + zstrlen(rt->conn)*3
+                                     )) < 0)
         return ret;
 
     p = pkt.data;
@@ -346,7 +362,7 @@ static int gen_connect(URLContext *s, RTMPContext *rt)
         // check the string, fourcc + ',' + ...  + end fourcc correct length should be (4+1)*n+4
         if ((fourcc_str_len + 1) % 5 != 0) {
             av_log(s, AV_LOG_ERROR, "Malformed rtmp_enhanched_codecs, "
-                   "should be of the form hvc1[,av01][,vp09][,...]\n");
+                   "should be of the form hvc1[,av01][,vp09][,vvc1][,...]\n");
             ff_rtmp_packet_destroy(&pkt);
             return AVERROR(EINVAL);
         }
@@ -363,6 +379,7 @@ static int gen_connect(URLContext *s, RTMPContext *rt)
                 !strncmp(fourcc_data, "ec-3", 4) ||
                 !strncmp(fourcc_data, "fLaC", 4) ||
                 !strncmp(fourcc_data, "hvc1", 4) ||
+                !strncmp(fourcc_data, "vvc1", 4) ||
                 !strncmp(fourcc_data, ".mp3", 4) ||
                 !strncmp(fourcc_data, "mp4a", 4) ||
                 !strncmp(fourcc_data, "Opus", 4) ||
@@ -1926,7 +1943,9 @@ static int write_status(URLContext *s, RTMPPacket *pkt,
 
     if ((ret = ff_rtmp_packet_create(&spkt, RTMP_SYSTEM_CHANNEL,
                                      RTMP_PT_INVOKE, 0,
-                                     RTMP_PKTDATA_DEFAULT_SIZE)) < 0) {
+                                     RTMP_PKTDATA_DEFAULT_SIZE
+                                     + strlen(status) + strlen(description)
+                                     + zstrlen(details))) < 0) {
         av_log(s, AV_LOG_ERROR, "Unable to create response packet\n");
         return ret;
     }
@@ -2717,7 +2736,8 @@ static int rtmp_open(URLContext *s, const char *uri, int flags, AVDictionary **o
         if (rt->listen)
             ff_url_join(buf, sizeof(buf), "tcp", NULL, hostname, port,
                         "?listen&listen_timeout=%d&tcp_nodelay=%d",
-                        rt->listen_timeout * 1000, rt->tcp_nodelay);
+                        rt->listen_timeout < 0 ? -1 : rt->listen_timeout * 1000,
+                        rt->tcp_nodelay);
         else
             ff_url_join(buf, sizeof(buf), "tcp", NULL, hostname, port, "?tcp_nodelay=%d", rt->tcp_nodelay);
     }
@@ -2858,6 +2878,12 @@ reconnect:
             snprintf(rt->flashver, FLASHVER_MAX_LENGTH,
                     "FMLE/3.0 (compatible; %s)", LIBAVFORMAT_IDENT);
         }
+    }
+    if (   strlen(rt->flashver) > FLASHVER_MAX_LENGTH
+        || strlen(rt->tcurl   ) >    TCURL_MAX_LENGTH
+    ) {
+        ret = AVERROR(EINVAL);
+        goto fail;
     }
 
     rt->receive_report_size = 1048576;

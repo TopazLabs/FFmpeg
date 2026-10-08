@@ -43,8 +43,17 @@ esac
 
 
 target_path(){
-    test ${1} = ${1#/} && p=${target_path}/
-    echo ${p}${1}
+    case ${1} in
+    [a-zA-Z]:/*)
+        echo ${1}
+        ;;
+    /*)
+        echo ${1}
+        ;;
+    *)
+        echo ${target_path}/${1}
+        ;;
+    esac
 }
 
 # $1=value1, $2=value2, $3=threshold
@@ -94,20 +103,30 @@ runecho(){
     $target_exec $target_path/"$@" >&3
 }
 
+run_with_temp(){
+    create_tmp=$1
+    process_tmp=$2
+    filext=$3
+    tmpfile=${outdir}/$test.$filext
+    cleanfiles="$cleanfiles $tmpfile"
+    run $create_tmp $tmpfile || return 1
+    run $process_tmp $tmpfile
+}
+
 probefmt(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_entries format=format_name -print_format default=nw=1:nk=1 "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_entries format=format_name -print_format default=nw=1:nk=1 "$@"
 }
 
 probecodec(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_entries stream=codec_name -print_format default=nw=1:nk=1 "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_entries stream=codec_name -print_format default=nw=1:nk=1 "$@"
 }
 
 probeaudiostream(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_entries stream=codec_name,codec_time_base,sample_fmt,channels,channel_layout:side_data "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_entries stream=codec_name,codec_time_base,sample_fmt,channels,channel_layout:side_data "$@"
 }
 
 probetags(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_entries format_tags "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_entries format_tags "$@"
 }
 
 runlocal(){
@@ -116,28 +135,28 @@ runlocal(){
 }
 
 probeframes(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_frames "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_frames "$@"
 }
 
 probechapters(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_chapters "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_chapters "$@"
 }
 
 probe(){
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads "$@"
 }
 
 probegaplessinfo(){
     filename="$1"
     shift
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -select_streams a -show_entries format=start_time,duration:stream=index,start_pts,duration_ts "$filename" "$@"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -select_streams a -show_entries format=start_time,duration:stream=index,start_pts,duration_ts "$filename" "$@"
     pktfile1="${outdir}/${test}.pkts"
     framefile1="${outdir}/${test}.frames"
     cleanfiles="$cleanfiles $pktfile1 $framefile1"
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -select_streams a -of compact -count_packets -show_entries packet=pts,dts,duration,flags:stream=nb_read_packets "$filename" "$@" > "$pktfile1"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -select_streams a -of compact -count_packets -show_entries packet=pts,dts,duration,flags:stream=nb_read_packets "$filename" "$@" > "$pktfile1"
     head -n 8 "$pktfile1"
     tail -n 9 "$pktfile1"
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact -select_streams a -of compact -count_frames -show_entries frame=pts,pkt_dts,best_effort_timestamp,pkt_duration,nb_samples:stream=nb_read_frames "$filename" "$@" > "$framefile1"
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -select_streams a -of compact -count_frames -show_entries frame=pts,pkt_dts,best_effort_timestamp,pkt_duration,nb_samples:stream=nb_read_frames "$filename" "$@" > "$framefile1"
     head -n 8 "$framefile1"
     tail -n 9 "$framefile1"
 }
@@ -157,7 +176,7 @@ ffprobe_demux(){
     shift
     print_filename=$(basename "$filename")
     run ffprobe${PROGSUF}${EXECSUF} -print_filename "${print_filename}" \
-        -of compact -bitexact -show_format -show_streams -show_packets  \
+        -of compact -bitexact -threads $threads -show_format -show_streams -show_packets  \
         -show_data_hash CRC32 "$filename" "$@"
 }
 
@@ -253,7 +272,7 @@ enc_dec(){
     do_md5sum $decfile
     tests/tiny_psnr${HOSTEXECSUF} $srcfile $decfile $cmp_unit $cmp_shift
     test -z "$ffprobe_opts" || \
-        run ffprobe${PROGSUF}${EXECSUF} -bitexact $ffprobe_opts $tencfile || return
+        run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads $ffprobe_opts $tencfile || return
 }
 
 transcode(){
@@ -266,7 +285,9 @@ transcode(){
     additional_input=$7
     final_decode=$8
     enc_opt_in=$9
+    final_encode_muxer="${10}"
     test -z "$additional_input" || additional_input="$DEC_OPTS $additional_input"
+    test -z "$final_encode_muxer" && final_encode_muxer="framecrc"
     encfile="${outdir}/${test}.${enc_fmt}"
     test $keep -ge 1 || cleanfiles="$cleanfiles $encfile"
     tsrcfile=$(target_path $srcfile)
@@ -276,9 +297,9 @@ transcode(){
     do_md5sum $encfile
     echo $(wc -c $encfile)
     ffmpeg $DEC_OPTS $final_decode -i $tencfile $ENC_OPTS $FLAGS $final_encode \
-        -f framecrc - || return
+        -f $final_encode_muxer - || return
     test -z "$ffprobe_opts" || \
-        run ffprobe${PROGSUF}${EXECSUF} -bitexact $ffprobe_opts $tencfile || return
+        run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads $ffprobe_opts $tencfile || return
 }
 
 stream_demux(){
@@ -291,7 +312,7 @@ stream_demux(){
     ffmpeg $DEC_OPTS -f $src_fmt $src_opts -i $tsrcfile $ENC_OPTS $FLAGS $enc_opts \
         -f framecrc - || return
     test -z "$ffprobe_opts" || \
-        run ffprobe${PROGSUF}${EXECSUF} -bitexact $ffprobe_opts $tsrcfile || return
+        run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads $ffprobe_opts $tsrcfile || return
 }
 
 stream_remux(){
@@ -312,7 +333,7 @@ stream_remux(){
     ffmpeg $DEC_OPTS $final_decode -i $tencfile $ENC_OPTS $FLAGS $final_encode \
         -f framecrc - || return
     test -z "$ffprobe_opts" || \
-        run ffprobe${PROGSUF}${EXECSUF} -bitexact $ffprobe_opts $tencfile || return
+        run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads $ffprobe_opts $tencfile || return
 }
 
 # this function is for testing external encoders,
@@ -329,7 +350,7 @@ enc_external(){
     test "$keep" -ge 1 || cleanfiles="$cleanfiles $encfile"
 
     ffmpeg -i $srcfile $enc_opt -f $enc_fmt -y $encfile || return
-    run ffprobe${PROGSUF}${EXECSUF} -bitexact $probe_opt $encfile || return
+    run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads $probe_opt $encfile || return
 }
 
 # FIXME: There is a certain duplication between the avconv-related helper
@@ -654,10 +675,10 @@ concat(){
     awk "{gsub(/%SRCFILE%/, \"$sample\"); print}" $template > $concatfile
 
     if [ "$mode" = "md5" ]; then
-        run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_streams -show_packets -safe 0 $extra_args $(target_path $concatfile) | tr -d '\r' > $packetfile
+        run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_streams -show_packets -safe 0 $extra_args $(target_path $concatfile) | tr -d '\r' > $packetfile
         do_md5sum $packetfile
     else
-        run ffprobe${PROGSUF}${EXECSUF} -bitexact -show_streams -show_packets -of compact=p=0:nk=1 -safe 0 $extra_args $(target_path $concatfile)
+        run ffprobe${PROGSUF}${EXECSUF} -bitexact -threads $threads -show_streams -show_packets -of compact=p=0:nk=1 -safe 0 $extra_args $(target_path $concatfile)
     fi
 }
 
