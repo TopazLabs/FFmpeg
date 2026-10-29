@@ -19,6 +19,13 @@ parameters:
     displayName: 'Linux TensorRT RTX (Ubuntu 22.04)'
     type: boolean
     default: false
+  # Linux only. When checked, FFmpeg is configured with --enable-gpl and links
+  # libx264/libx265 (H.264/HEVC software encoders). The resulting Linux build is
+  # GPL-licensed instead of LGPL. Has no effect on Windows or Mac.
+  - name: linux_GPL
+    displayName: 'Linux ONLY: GPL build (--enable-gpl + libx264/libx265 H.264/HEVC software encoders). Output becomes GPL-licensed, not LGPL'
+    type: boolean
+    default: false
   - name: mac
     displayName: 'MacOS'
     type: boolean
@@ -99,6 +106,7 @@ stages:
         - template: ubuntu.yml
           parameters:
             tensorrt_rtx: False
+            build_linux_GPL: ${{ parameters.linux_GPL }}
 
   - ${{ if eq(parameters.linux_tensorrt_rtx, true) }}:
     - job: Ubuntu22_04_TensorRT_RTX
@@ -110,6 +118,7 @@ stages:
         - template: ubuntu.yml
           parameters:
             tensorrt_rtx: True
+            build_linux_GPL: ${{ parameters.linux_GPL }}
 
   - ${{ if eq(parameters.mac, true) }}:
     - job: Mac

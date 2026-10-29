@@ -11,9 +11,11 @@ class conanRecipe(ConanFile):
     settings = "os", "build_type", "arch"
     options = {
         "tensorrt_rtx": [True, False],
+        "build_linux_GPL": [True, False],
     }
     default_options = {
         "tensorrt_rtx": True,
+        "build_linux_GPL": False,
     }
 
     def configure(self):
@@ -29,6 +31,10 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Linux":
             self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
             self.options["videoai"].with_cuda = True
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.options["libx264"].shared = True
+            self.options["libx265"].shared = True
 
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
@@ -52,6 +58,10 @@ class conanRecipe(ConanFile):
             self.requires("zlib-mt/1.2.13")
         else:
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.requires("libx264/cci.20240224")
+            self.requires("libx265/3.4")
 
     def generate(self):
         for dep in self.dependencies.values():

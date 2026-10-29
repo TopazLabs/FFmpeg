@@ -2,6 +2,11 @@ parameters:
   - name: tensorrt_rtx
     type: boolean
     default: false
+  # True => GPL-licensed FFmpeg: --enable-gpl + libx264/libx265 software encoders.
+  # False => LGPL FFmpeg (no x264/x265).
+  - name: build_linux_GPL
+    type: boolean
+    default: false
 
 steps:
   - checkout: self
@@ -21,7 +26,7 @@ steps:
       
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
-      bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }}
+      bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }} ${{ parameters.build_linux_GPL }}
     displayName: Install conan packages
     
   - bash: |
@@ -29,9 +34,17 @@ steps:
       git apply ./build-scripts/configure-dav1d.patch
       git apply ./build-scripts/configure-zimg.patch
       git apply ./build-scripts/configure-aom.patch
-      echo ./configure --disable-stripping --enable-libdav1d  --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      configure_flags="--disable-stripping --enable-libdav1d --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec"
+      if [ "${{ parameters.build_linux_GPL }}" = "True" ]; then
+        echo "##[warning]GPL BUILD: enabling --enable-gpl --enable-libx264 --enable-libx265. This FFmpeg build is GPL-licensed, NOT LGPL."
+        git apply ./build-scripts/linux/configure-x264-x265.patch
+        configure_flags="--enable-gpl --enable-libx264 --enable-libx265 ${configure_flags}"
+      else
+        echo "LGPL build: libx264/libx265 software encoders are NOT included (set linux_GPL to enable)."
+      fi
+      echo ./configure ${configure_flags} --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
       set -e
-      ./configure --disable-stripping --enable-libdav1d  --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
+      ./configure ${configure_flags} --extra-cflags="-I./conan/include -I./conan/include/videoai" --extra-ldflags="-Wl,-rpath,./conan/lib/ -L./conan/lib" --prefix=./output-conan/
       
       make clean
       make -j$(nproc) install
@@ -43,7 +56,7 @@ steps:
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
         cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cd $(Build.SourcesDirectory)/topaz-conan-dev
-        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }}
+        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }}
       fi
     displayName: Build FFmpeg
 
