@@ -75,13 +75,18 @@ stages:
   condition: or(eq(variables['TAGABLE'], 'true'), eq(variables['PUBLISH'], ''))
   jobs:
   - ${{ if eq(parameters.windows, true) }}:
-    - job: Windows2022
+    # - job: Windows2022
+    #   workspace:
+    #     clean: all
+    #   pool:
+    #       name: Default
+    #       demands:
+    #         - Agent.Name -equals Medusa
+    - job: WindowsAMD64
       workspace:
         clean: all
       pool:
-          name: Default
-          demands:
-            - Agent.Name -equals Medusa
+        name: 'WinARM'
       steps:
         - template: win.yml
 
