@@ -120,15 +120,15 @@ static const AVFilterPad tvai_pe_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_tvai_pe = {
-    .name          = "tvai_pe",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI parameter estimation models."),
+const FFFilter ff_vf_tvai_pe = {
+    .p.name          = "tvai_pe",
+    .p.description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI parameter estimation models."),
     .priv_size     = sizeof(TVAIParamContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(tvai_pe_inputs),
     FILTER_OUTPUTS(tvai_pe_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &tvai_pe_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    .p.priv_class    = &tvai_pe_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

@@ -196,10 +196,7 @@ static float calculate_blur(BLRContext *s, int w, int h, int hsub, int vsub,
                             uint8_t* src, int src_linesize)
 {
     float total_width = 0.0;
-    int block_count;
-    double block_total_width;
 
-    int i, j;
     int blkcnt = 0;
 
     float *blks = s->blks;
@@ -212,12 +209,12 @@ static float calculate_blur(BLRContext *s, int w, int h, int hsub, int vsub,
 
     for (int blkj = 0; blkj < brows; blkj++) {
         for (int blki = 0; blki < bcols; blki++) {
-            block_total_width = 0.0;
-            block_count = 0;
+            double block_total_width = 0.0;
+            int block_count = 0;
             for (int inj = 0; inj < block_height; inj++) {
                 for (int ini = 0; ini < block_width; ini++) {
-                    i = blki * block_width + ini;
-                    j = blkj * block_height + inj;
+                    int i = blki * block_width + ini;
+                    int j = blkj * block_height + inj;
 
                     if (dst[j * dst_linesize + i] > 0) {
                         float width = edge_width(s, i, j, dir[j*dir_linesize+i],
@@ -360,15 +357,15 @@ static const AVFilterPad blurdetect_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_blurdetect = {
-    .name          = "blurdetect",
-    .description   = NULL_IF_CONFIG_SMALL("Blurdetect filter."),
+const FFFilter ff_vf_blurdetect = {
+    .p.name        = "blurdetect",
+    .p.description = NULL_IF_CONFIG_SMALL("Blurdetect filter."),
+    .p.priv_class  = &blurdetect_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(BLRContext),
     .init          = blurdetect_init,
     .uninit        = blurdetect_uninit,
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     FILTER_INPUTS(blurdetect_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    .priv_class    = &blurdetect_class,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
 };

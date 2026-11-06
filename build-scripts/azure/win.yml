@@ -2,6 +2,7 @@ steps:
   - checkout: self
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
+  - checkout: pipeline-helper
     
   - template: set_tools_and_deps.yml
     parameters:
@@ -12,7 +13,10 @@ steps:
       cd "$(Build.SourcesDirectory)/FFmpeg"
       unix2dos ./build-scripts/win/configure-win.patch
       git apply ./build-scripts/win/configure-win.patch
-      git apply ./build-scripts/configure-zimg.patch
+      # Patches are already applied
+      # git apply ./build-scripts/configure-zimg.patch
+      # git apply ./build-scripts/configure-aom.patch
+      git apply ./build-scripts/configure-dav1d.patch
       bash ./build-scripts/win/conan_win.sh
     displayName: Install conan packages
 
@@ -32,10 +36,32 @@ steps:
       if [[ "${BUILD_REASON}" == "PullRequest" || -z "${PUBLISH}" ]]; then
         exit 0
       else
-        mkdir -p "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type=Release/"
+        mkdir -p "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/windows_x86_64_2022/build_type=Release/"
         cp build-scripts/deploy_conanfile.py "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py"
-        cp -Rp "output-conan"/* "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/profile_win2019/build_type=Release/"
+        cp -Rp "output-conan"/* "$(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/windows_x86_64_2022/build_type=Release/"
         cd "$(Build.SourcesDirectory)/topaz-conan-dev"
         ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version "$(VERSION)" -r topaz-conan
       fi
     displayName: Publish to conan
+
+  - bash: |
+      cp "$(Build.SourcesDirectory)/pipeline-helper/dependency-manager/dependency_viewer.py" "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
+      cd "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
+      # if [ "$ARCH" == "ARM64" ]; then
+      #   arch="armv8"
+      # else
+      #   arch="x86_64"
+      # fi
+
+      arch="x86_64"
+
+      cp ./win/profile_win2022 ./profile_win2022
+
+      python dependency_viewer.py -os=WIN -ar=$arch -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
+    condition: and(succeeded(), ne(variables['PUBLISH'], ''))
+    displayName: Slack Dependency Manager
+    continueOnError: true 
+    env:
+      ARCH: ${{ parameters.arch }}
+      DEPENDENCY_MANAGER_SLACK_WEBHOOK: $(DEPENDENCY_MANAGER_SLACK_WEBHOOK)
+      BUILD_TYPE: ""

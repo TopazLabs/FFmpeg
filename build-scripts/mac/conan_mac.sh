@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 rm -rf ./conan_x64
 rm -rf ./conan_arm

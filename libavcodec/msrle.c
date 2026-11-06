@@ -34,6 +34,7 @@
 #include "codec_internal.h"
 #include "decode.h"
 #include "msrledec.h"
+#include "libavutil/attributes.h"
 #include "libavutil/imgutils.h"
 
 typedef struct MsrleContext {
@@ -95,15 +96,7 @@ static int msrle_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
         return ret;
 
     if (avctx->bits_per_coded_sample > 1 && avctx->bits_per_coded_sample <= 8) {
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-        s->frame->palette_has_changed =
-#endif
         ff_copy_palette(s->pal, avpkt, avctx);
-#if FF_API_PALETTE_HAS_CHANGED
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
         /* make the palette available */
         memcpy(s->frame->data[1], s->pal, AVPALETTE_SIZE);
     }
@@ -146,7 +139,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return buf_size;
 }
 
-static void msrle_decode_flush(AVCodecContext *avctx)
+static av_cold void msrle_decode_flush(AVCodecContext *avctx)
 {
     MsrleContext *s = avctx->priv_data;
 

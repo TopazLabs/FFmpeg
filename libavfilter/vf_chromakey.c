@@ -262,6 +262,8 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
                                 FFMIN(frame->height, ff_filter_get_nb_threads(avctx))))
         return res;
 
+    if (!strcmp(avctx->filter->name, "chromakey"))
+        frame->alpha_mode = avctx->outputs[0]->alpha_mode;
     return ff_filter_frame(avctx->outputs[0], frame);
 }
 
@@ -291,6 +293,7 @@ static av_cold int config_output(AVFilterLink *outlink)
     }
 
     if (!strcmp(avctx->filter->name, "chromakey")) {
+        outlink->alpha_mode = AVALPHA_MODE_STRAIGHT;
         ctx->do_slice = ctx->depth <= 8 ? do_chromakey_slice : do_chromakey16_slice;
     } else {
         ctx->do_slice = ctx->depth <= 8 ? do_chromahold_slice: do_chromahold16_slice;
@@ -365,15 +368,15 @@ static const enum AVPixelFormat chromakey_fmts[] = {
 
 AVFILTER_DEFINE_CLASS(chromakey);
 
-const AVFilter ff_vf_chromakey = {
-    .name          = "chromakey",
-    .description   = NULL_IF_CONFIG_SMALL("Turns a certain color into transparency. Operates on YUV colors."),
+const FFFilter ff_vf_chromakey = {
+    .p.name        = "chromakey",
+    .p.description = NULL_IF_CONFIG_SMALL("Turns a certain color into transparency. Operates on YUV colors."),
+    .p.priv_class  = &chromakey_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(ChromakeyContext),
-    .priv_class    = &chromakey_class,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS_ARRAY(chromakey_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
 
@@ -406,14 +409,14 @@ static const enum AVPixelFormat hold_pixel_fmts[] = {
 
 AVFILTER_DEFINE_CLASS(chromahold);
 
-const AVFilter ff_vf_chromahold = {
-    .name          = "chromahold",
-    .description   = NULL_IF_CONFIG_SMALL("Turns a certain color range into gray."),
+const FFFilter ff_vf_chromahold = {
+    .p.name        = "chromahold",
+    .p.description = NULL_IF_CONFIG_SMALL("Turns a certain color range into gray."),
+    .p.priv_class  = &chromahold_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(ChromakeyContext),
-    .priv_class    = &chromahold_class,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS_ARRAY(hold_pixel_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

@@ -19,17 +19,15 @@
  */
 
 #include "config.h"
+#include <stdio.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>             /* getopt */
 #endif
 
+#include "libavutil/avutil.h"
 #include "libavutil/pixdesc.h"
-#include "libavcodec/avcodec.h"
-#include "libavutil/common.h"
 #include "libavcodec/raw.h"
-
-#undef printf
-#undef fprintf
+#include "libavcodec/raw_pix_fmt_tags.h"
 
 #if !HAVE_GETOPT
 #include "compat/getopt.c"
@@ -59,9 +57,9 @@ static void print_pix_fmt_fourccs(enum AVPixelFormat pix_fmt, const PixelFormatT
 int main(int argc, char **argv)
 {
     int i, list_fourcc_pix_fmt = 0, list_pix_fmt_fourccs = 0;
-    const PixelFormatTag *pix_fmt_tags = avpriv_get_raw_pix_fmt_tags();
+    const PixelFormatTag *pix_fmt_tags = raw_pix_fmt_tags;
     const char *pix_fmt_name = NULL;
-    char c;
+    int c;
 
     if (argc == 1) {
         usage();

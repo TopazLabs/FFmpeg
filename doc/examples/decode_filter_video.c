@@ -27,8 +27,6 @@
  * @example decode_filter_video.c
  */
 
-#define _XOPEN_SOURCE 600 /* for usleep */
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -38,6 +36,7 @@
 #include <libavfilter/buffersrc.h>
 #include <libavutil/mem.h>
 #include <libavutil/opt.h>
+#include <libavutil/time.h>
 
 const char *filter_descr = "scale=78:24,transpose=cclock";
 /* other way:
@@ -99,7 +98,6 @@ static int init_filters(const char *filters_descr)
     AVFilterInOut *outputs = avfilter_inout_alloc();
     AVFilterInOut *inputs  = avfilter_inout_alloc();
     AVRational time_base = fmt_ctx->streams[video_stream_index]->time_base;
-    enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE };
 
     filter_graph = avfilter_graph_alloc();
     if (!outputs || !inputs || !filter_graph) {
@@ -122,17 +120,23 @@ static int init_filters(const char *filters_descr)
     }
 
     /* buffer video sink: to terminate the filter chain. */
-    ret = avfilter_graph_create_filter(&buffersink_ctx, buffersink, "out",
-                                       NULL, NULL, filter_graph);
-    if (ret < 0) {
+    buffersink_ctx = avfilter_graph_alloc_filter(filter_graph, buffersink, "out");
+    if (!buffersink_ctx) {
         av_log(NULL, AV_LOG_ERROR, "Cannot create buffer sink\n");
+        ret = AVERROR(ENOMEM);
         goto end;
     }
 
-    ret = av_opt_set_int_list(buffersink_ctx, "pix_fmts", pix_fmts,
-                              AV_PIX_FMT_NONE, AV_OPT_SEARCH_CHILDREN);
+    ret = av_opt_set(buffersink_ctx, "pixel_formats", "gray8",
+                     AV_OPT_SEARCH_CHILDREN);
     if (ret < 0) {
         av_log(NULL, AV_LOG_ERROR, "Cannot set output pixel format\n");
+        goto end;
+    }
+
+    ret = avfilter_init_dict(buffersink_ctx, NULL);
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_ERROR, "Cannot initialize buffer sink\n");
         goto end;
     }
 
@@ -190,7 +194,7 @@ static void display_frame(const AVFrame *frame, AVRational time_base)
             delay = av_rescale_q(frame->pts - last_pts,
                                  time_base, AV_TIME_BASE_Q);
             if (delay > 0 && delay < 1000000)
-                usleep(delay);
+                av_usleep(delay);
         }
         last_pts = frame->pts;
     }

@@ -7,15 +7,19 @@ if [ -z "$2" -o -z "$3" -o -z "$4" ]; then
 	exit 1
 fi;
 
-FLAGS=(--enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-ffplay --enable-shared --disable-static --disable-asm --enable-neon --disable-libxcb --disable-sdl2 --disable-xlib --extra-cflags="-I./conan_arm/include" --extra-ldflags="-L./conan_arm/lib")
-XFLAGS=(--arch=x86_64 --extra-cflags="-arch x86_64 -I./conan_x64/include" --extra-ldflags="-arch x86_64 -L./conan_x64/lib" --disable-ffplay --enable-cross-compile --enable-shared --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-libxcb --disable-sdl2 --disable-xlib)
+FLAGS=(--enable-decoder=h264_videotoolbox  --enable-libdav1d --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-ffplay --enable-shared --disable-static --disable-asm --enable-neon --disable-libxcb --disable-sdl2 --disable-xlib)
+XFLAGS=(--arch=x86_64  --enable-libdav1d --disable-ffplay --enable-cross-compile --enable-shared --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-muxer=whip --disable-libxcb --disable-sdl2 --disable-xlib)
+if [ ! -z "${BUILD_MAC_EXTRA_CONFIGURE_FLAGS}" ]; then
+	FLAGS=(${FLAGS[@]} ${BUILD_MAC_EXTRA_CONFIGURE_FLAGS})
+	XFLAGS=(${XFLAGS[@]} ${BUILD_MAC_EXTRA_CONFIGURE_FLAGS})
+fi
 if [[ "$1" -eq 1 ]]; then
 	bash ./build-scripts/mac/conan_mac.sh
 	CONAN_X64=./conan_x64
 	CONAN_ARM=./conan_arm
 	export PATH=${CONAN_X64}/bin:${CONAN_ARM}/bin:$PATH
-	FLAGS=(--extra-cflags="-I${CONAN_ARM}/include/videoai -I${CONAN_ARM}/include $5" --extra-ldflags="-L${CONAN_ARM}/lib -headerpad_max_install_names $6" --enable-tvai ${FLAGS[@]})
-	XFLAGS=(--arch=x86_64 --extra-cflags="-arch x86_64 -I${CONAN_X64}/include/videoai -I${CONAN_X64}/include $5" --extra-ldflags="-arch x86_64 -L${CONAN_X64}/lib -headerpad_max_install_names $6" --enable-shared --disable-static --enable-cross-compile --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-openssl --disable-ffplay --disable-libxcb --disable-sdl2 --disable-xlib)
+	FLAGS=(--enable-tvai --extra-cflags="-I${CONAN_ARM}/include/videoai -I${CONAN_ARM}/include $5" --extra-ldflags="-L${CONAN_ARM}/lib -headerpad_max_install_names $6" --extra-libs="-lssl -lcrypto -lz" ${FLAGS[@]})
+	XFLAGS=(--enable-tvai --arch=x86_64 --extra-cflags="-arch x86_64 -I${CONAN_X64}/include/videoai -I${CONAN_X64}/include $5" --extra-ldflags="-arch x86_64 -L${CONAN_X64}/lib -headerpad_max_install_names $6" --extra-libs="-lssl -lcrypto -lz" ${XFLAGS[@]})
 fi
 
 echo "$2, $3, and $4 will be deleted in 10 seconds. Press control-c to abort..."
@@ -35,8 +39,8 @@ CFLAGS="-mmacosx-version-min=11.0 -fexceptions" LDFLAGS="-mmacosx-version-min=11
 make clean
 make -j8 install
 if [ ! -z "$DO_CONAN_EXPORT" ]; then
-	mkdir -p ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac_armv8/build_type\=Release/
-	cp -Rp "$2"/* ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac_armv8/build_type\=Release/
+	mkdir -p ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/macos_armv8/build_type\=Release/
+	cp -Rp "$2"/* ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/macos_armv8/build_type\=Release/
 fi
 if [ ! -z "$CONAN_ARM" ]; then
 	cp "$CONAN_ARM/lib/"*".dylib" $2/lib/
@@ -50,8 +54,8 @@ CFLAGS="-mmacosx-version-min=10.14 -fexceptions" LDFLAGS="-mmacosx-version-min=1
 make clean
 make -j8 install
 if [ ! -z "$DO_CONAN_EXPORT" ]; then
-	mkdir -p ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac14.0/build_type\=Release/
-	cp -Rp "$3"/* ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/profile_mac14.0/build_type\=Release/
+	mkdir -p ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/macos_x86_64/build_type\=Release/
+	cp -Rp "$3"/* ${CONAN_PACKAGES}/prebuilt/topaz-ffmpeg/${PKG_VERSION}/macos_x86_64/build_type\=Release/
 fi
 if [ ! -z "$CONAN_X64" ]; then
 	cp "$CONAN_X64/lib/"*".dylib" $3/lib/

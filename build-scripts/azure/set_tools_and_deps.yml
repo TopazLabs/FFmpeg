@@ -31,8 +31,8 @@ steps:
       displayName: 'Select XCode $(XCODE_VERSION)'
 
   - script: |
-      python -m pip install pipenv
-    displayName: 'Install pipenv'
+      python -m pip install pipenv conan==2.7.1 slack_sdk==3.35.0 pytz==2025.2
+    displayName: 'Install Python packages'
 
   - bash: |
       echo "##vso[task.setvariable variable=CONAN_HOME]${{ parameters.CONAN_USER_HOME }}/.conan2"
@@ -40,12 +40,11 @@ steps:
     displayName: 'Set conan cache location'
 
   - script: |
-      python -m pip install conan==2.0.9
       conan profile detect --force
       conan remote add topaz-conan https://topaz.jfrog.io/artifactory/api/conan/topaz-conan
       conan remote login -p $(CONAN_PASSWORD) topaz-conan build.bot
       conan remote disable conancenter
-    displayName: 'Install conan'
+    displayName: 'conan setup'
     env:
       CONAN_PASSWORD: $(CONAN_PASSWORD)
       

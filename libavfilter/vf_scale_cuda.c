@@ -39,17 +39,29 @@
 #include "cuda/load_helper.h"
 #include "vf_scale_cuda.h"
 
-static const enum AVPixelFormat supported_formats[] = {
-    AV_PIX_FMT_YUV420P,
-    AV_PIX_FMT_NV12,
-    AV_PIX_FMT_YUV444P,
-    AV_PIX_FMT_P010,
-    AV_PIX_FMT_P016,
-    AV_PIX_FMT_YUV444P16,
-    AV_PIX_FMT_0RGB32,
-    AV_PIX_FMT_0BGR32,
-    AV_PIX_FMT_RGB32,
-    AV_PIX_FMT_BGR32,
+struct format_entry {
+    enum AVPixelFormat format;
+    char name[13];
+};
+
+static const struct format_entry supported_formats[] = {
+    {AV_PIX_FMT_YUV420P,  "planar8"},
+    {AV_PIX_FMT_YUV422P,  "planar8"},
+    {AV_PIX_FMT_YUV444P,  "planar8"},
+    {AV_PIX_FMT_YUV420P10,"planar10"},
+    {AV_PIX_FMT_YUV422P10,"planar10"},
+    {AV_PIX_FMT_YUV444P10,"planar10"},
+    {AV_PIX_FMT_YUV444P16,"planar16"},
+    {AV_PIX_FMT_NV12,     "semiplanar8"},
+    {AV_PIX_FMT_NV16,     "semiplanar8"},
+    {AV_PIX_FMT_P010,     "semiplanar10"},
+    {AV_PIX_FMT_P210,     "semiplanar10"},
+    {AV_PIX_FMT_P016,     "semiplanar16"},
+    {AV_PIX_FMT_P216,     "semiplanar16"},
+    {AV_PIX_FMT_0RGB32,   "bgr0"},
+    {AV_PIX_FMT_0BGR32,   "rgb0"},
+    {AV_PIX_FMT_RGB32,    "bgra"},
+    {AV_PIX_FMT_BGR32,    "rgba"},
 };
 
 #define DIV_UP(a, b) ( ((a) + (b) - 1) / (b) )
@@ -96,6 +108,7 @@ typedef struct CUDAScaleContext {
 
     int force_original_aspect_ratio;
     int force_divisible_by;
+    int reset_sar;
 
     CUcontext   cu_ctx;
     CUmodule    cu_module;
@@ -183,12 +196,18 @@ fail:
 
 static int format_is_supported(enum AVPixelFormat fmt)
 {
-    int i;
-
-    for (i = 0; i < FF_ARRAY_ELEMS(supported_formats); i++)
-        if (supported_formats[i] == fmt)
+    for (int i = 0; i < FF_ARRAY_ELEMS(supported_formats); i++)
+        if (supported_formats[i].format == fmt)
             return 1;
     return 0;
+}
+
+static const char* get_format_name(enum AVPixelFormat fmt)
+{
+    for (int i = 0; i < FF_ARRAY_ELEMS(supported_formats); i++)
+        if (supported_formats[i].format == fmt)
+            return supported_formats[i].name;
+    return NULL;
 }
 
 static av_cold void set_format_info(AVFilterContext *ctx, enum AVPixelFormat in_format, enum AVPixelFormat out_format)
@@ -283,8 +302,8 @@ static av_cold int cudascale_load_functions(AVFilterContext *ctx)
     char buf[128];
     int ret;
 
-    const char *in_fmt_name = av_get_pix_fmt_name(s->in_fmt);
-    const char *out_fmt_name = av_get_pix_fmt_name(s->out_fmt);
+    const char *in_fmt_name = get_format_name(s->in_fmt);
+    const char *out_fmt_name = get_format_name(s->out_fmt);
 
     const char *function_infix = "";
 
@@ -334,11 +353,13 @@ static av_cold int cudascale_load_functions(AVFilterContext *ctx)
         ret = AVERROR(ENOSYS);
         goto fail;
     }
+    av_log(ctx, AV_LOG_DEBUG, "Luma filter: %s (%s -> %s)\n", buf, av_get_pix_fmt_name(s->in_fmt), av_get_pix_fmt_name(s->out_fmt));
 
     snprintf(buf, sizeof(buf), "Subsample_%s_%s_%s_uv", function_infix, in_fmt_name, out_fmt_name);
     ret = CHECK_CU(cu->cuModuleGetFunction(&s->cu_func_uv, s->cu_module, buf));
     if (ret < 0)
         goto fail;
+    av_log(ctx, AV_LOG_DEBUG, "Chroma filter: %s (%s -> %s)\n", buf, av_get_pix_fmt_name(s->in_fmt), av_get_pix_fmt_name(s->out_fmt));
 
 fail:
     CHECK_CU(cu->cuCtxPopCurrent(&dummy));
@@ -355,6 +376,7 @@ static av_cold int cudascale_config_props(AVFilterLink *outlink)
     AVHWFramesContext     *frames_ctx;
     AVCUDADeviceContext *device_hwctx;
     int w, h;
+    double w_adj = 1.0;
     int ret;
 
     if ((ret = ff_scale_eval_dimensions(s,
@@ -363,8 +385,12 @@ static av_cold int cudascale_config_props(AVFilterLink *outlink)
                                         &w, &h)) < 0)
         goto fail;
 
+    if (s->reset_sar)
+        w_adj = inlink->sample_aspect_ratio.num ?
+        (double)inlink->sample_aspect_ratio.num / inlink->sample_aspect_ratio.den : 1;
+
     ff_scale_adjust_dimensions(inlink, &w, &h,
-                               s->force_original_aspect_ratio, s->force_divisible_by);
+                               s->force_original_aspect_ratio, s->force_divisible_by, w_adj);
 
     if (((int64_t)h * inlink->w) > INT_MAX  ||
         ((int64_t)w * inlink->h) > INT_MAX)
@@ -383,7 +409,9 @@ static av_cold int cudascale_config_props(AVFilterLink *outlink)
     s->hwctx = device_hwctx;
     s->cu_stream = s->hwctx->stream;
 
-    if (inlink->sample_aspect_ratio.num) {
+    if (s->reset_sar)
+        outlink->sample_aspect_ratio = (AVRational){1, 1};
+    else if (inlink->sample_aspect_ratio.num) {
         outlink->sample_aspect_ratio = av_mul_q((AVRational){outlink->h*inlink->w,
                                                              outlink->w*inlink->h},
                                                 inlink->sample_aspect_ratio);
@@ -407,27 +435,36 @@ fail:
 }
 
 static int call_resize_kernel(AVFilterContext *ctx, CUfunction func,
-                              CUtexObject src_tex[4], int src_width, int src_height,
-                              AVFrame *out_frame, int dst_width, int dst_height, int dst_pitch)
+                              CUtexObject src_tex[4], int src_left, int src_top, int src_width, int src_height,
+                              AVFrame *out_frame, int dst_width, int dst_height, int dst_pitch, int mpeg_range)
 {
     CUDAScaleContext *s = ctx->priv;
     CudaFunctions *cu = s->hwctx->internal->cuda_dl;
 
-    CUdeviceptr dst_devptr[4] = {
-        (CUdeviceptr)out_frame->data[0], (CUdeviceptr)out_frame->data[1],
-        (CUdeviceptr)out_frame->data[2], (CUdeviceptr)out_frame->data[3]
+    CUDAScaleKernelParams params = {
+        .src_tex = {src_tex[0], src_tex[1], src_tex[2], src_tex[3]},
+        .dst = {
+            (CUdeviceptr)out_frame->data[0],
+            (CUdeviceptr)out_frame->data[1],
+            (CUdeviceptr)out_frame->data[2],
+            (CUdeviceptr)out_frame->data[3]
+        },
+        .dst_width = dst_width,
+        .dst_height = dst_height,
+        .dst_pitch = dst_pitch,
+        .src_left = src_left,
+        .src_top = src_top,
+        .src_width = src_width,
+        .src_height = src_height,
+        .param = s->param,
+        .mpeg_range = mpeg_range
     };
 
-    void *args_uchar[] = {
-        &src_tex[0], &src_tex[1], &src_tex[2], &src_tex[3],
-        &dst_devptr[0], &dst_devptr[1], &dst_devptr[2], &dst_devptr[3],
-        &dst_width, &dst_height, &dst_pitch,
-        &src_width, &src_height, &s->param
-    };
+    void *args[] = { &params };
 
     return CHECK_CU(cu->cuLaunchKernel(func,
                                        DIV_UP(dst_width, BLOCKX), DIV_UP(dst_height, BLOCKY), 1,
-                                       BLOCKX, BLOCKY, 1, 0, s->cu_stream, args_uchar, NULL));
+                                       BLOCKX, BLOCKY, 1, 0, s->cu_stream, args, NULL));
 }
 
 static int scalecuda_resize(AVFilterContext *ctx,
@@ -437,8 +474,12 @@ static int scalecuda_resize(AVFilterContext *ctx,
     CudaFunctions *cu = s->hwctx->internal->cuda_dl;
     CUcontext dummy, cuda_ctx = s->hwctx->cuda_ctx;
     int i, ret;
+    int mpeg_range = in->color_range != AVCOL_RANGE_JPEG;
 
     CUtexObject tex[4] = { 0, 0, 0, 0 };
+
+    int crop_width = (in->width - in->crop_right) - in->crop_left;
+    int crop_height = (in->height - in->crop_bottom) - in->crop_top;
 
     ret = CHECK_CU(cu->cuCtxPushCurrent(cuda_ctx));
     if (ret < 0)
@@ -477,20 +518,22 @@ static int scalecuda_resize(AVFilterContext *ctx,
 
     // scale primary plane(s). Usually Y (and A), or single plane of RGB frames.
     ret = call_resize_kernel(ctx, s->cu_func,
-                             tex, in->width, in->height,
-                             out, out->width, out->height, out->linesize[0]);
+                             tex, in->crop_left, in->crop_top, crop_width, crop_height,
+                             out, out->width, out->height, out->linesize[0], mpeg_range);
     if (ret < 0)
         goto exit;
 
     if (s->out_planes > 1) {
         // scale UV plane. Scale function sets both U and V plane, or singular interleaved plane.
         ret = call_resize_kernel(ctx, s->cu_func_uv, tex,
-                                 AV_CEIL_RSHIFT(in->width, s->in_desc->log2_chroma_w),
-                                 AV_CEIL_RSHIFT(in->height, s->in_desc->log2_chroma_h),
+                                 AV_CEIL_RSHIFT(in->crop_left, s->in_desc->log2_chroma_w),
+                                 AV_CEIL_RSHIFT(in->crop_top, s->in_desc->log2_chroma_h),
+                                 AV_CEIL_RSHIFT(crop_width, s->in_desc->log2_chroma_w),
+                                 AV_CEIL_RSHIFT(crop_height, s->in_desc->log2_chroma_h),
                                  out,
                                  AV_CEIL_RSHIFT(out->width, s->out_desc->log2_chroma_w),
                                  AV_CEIL_RSHIFT(out->height, s->out_desc->log2_chroma_h),
-                                 out->linesize[1]);
+                                 out->linesize[1], mpeg_range);
         if (ret < 0)
             goto exit;
     }
@@ -531,6 +574,11 @@ static int cudascale_scale(AVFilterContext *ctx, AVFrame *out, AVFrame *in)
     if (ret < 0)
         return ret;
 
+    if (out->width != in->width || out->height != in->height) {
+        av_frame_side_data_remove_by_props(&out->side_data, &out->nb_side_data,
+                                           AV_SIDE_DATA_PROP_SIZE_DEPENDENT);
+    }
+
     return 0;
 }
 
@@ -564,10 +612,14 @@ static int cudascale_filter_frame(AVFilterLink *link, AVFrame *in)
     if (ret < 0)
         goto fail;
 
-    av_reduce(&out->sample_aspect_ratio.num, &out->sample_aspect_ratio.den,
-              (int64_t)in->sample_aspect_ratio.num * outlink->h * link->w,
-              (int64_t)in->sample_aspect_ratio.den * outlink->w * link->h,
-              INT_MAX);
+    if (s->reset_sar) {
+        out->sample_aspect_ratio = (AVRational){1, 1};
+    } else {
+        av_reduce(&out->sample_aspect_ratio.num, &out->sample_aspect_ratio.den,
+                  (int64_t)in->sample_aspect_ratio.num * outlink->h * link->w,
+                  (int64_t)in->sample_aspect_ratio.den * outlink->w * link->h,
+                  INT_MAX);
+    }
 
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
@@ -599,11 +651,12 @@ static const AVOption options[] = {
     { "format", "Output video pixel format", OFFSET(format), AV_OPT_TYPE_PIXEL_FMT, { .i64 = AV_PIX_FMT_NONE }, INT_MIN, INT_MAX, .flags=FLAGS },
     { "passthrough", "Do not process frames at all if parameters match", OFFSET(passthrough), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
     { "param", "Algorithm-Specific parameter", OFFSET(param), AV_OPT_TYPE_FLOAT, { .dbl = SCALE_CUDA_PARAM_DEFAULT }, -FLT_MAX, FLT_MAX, FLAGS },
-    { "force_original_aspect_ratio", "decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 2, FLAGS, .unit = "force_oar" },
-        { "disable",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 0 }, 0, 0, FLAGS, .unit = "force_oar" },
-        { "decrease", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 1 }, 0, 0, FLAGS, .unit = "force_oar" },
-        { "increase", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = 2 }, 0, 0, FLAGS, .unit = "force_oar" },
+    { "force_original_aspect_ratio", "decrease or increase w/h if necessary to keep the original AR", OFFSET(force_original_aspect_ratio), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, SCALE_FORCE_OAR_NB-1, FLAGS, .unit = "force_oar" },
+        { "disable",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = SCALE_FORCE_OAR_DISABLE  }, 0, 0, FLAGS, .unit = "force_oar" },
+        { "decrease", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = SCALE_FORCE_OAR_DECREASE }, 0, 0, FLAGS, .unit = "force_oar" },
+        { "increase", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = SCALE_FORCE_OAR_INCREASE }, 0, 0, FLAGS, .unit = "force_oar" },
     { "force_divisible_by", "enforce that the output resolution is divisible by a defined integer when force_original_aspect_ratio is used", OFFSET(force_divisible_by), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS },
+    { "reset_sar", "reset SAR to 1 and scale to square pixels if scaling proportionally", OFFSET(reset_sar), AV_OPT_TYPE_BOOL, { .i64 = 0}, 0, 1, FLAGS },
     { NULL },
 };
 
@@ -631,15 +684,16 @@ static const AVFilterPad cudascale_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_scale_cuda = {
-    .name      = "scale_cuda",
-    .description = NULL_IF_CONFIG_SMALL("GPU accelerated video resizer"),
+const FFFilter ff_vf_scale_cuda = {
+    .p.name        = "scale_cuda",
+    .p.description = NULL_IF_CONFIG_SMALL("GPU accelerated video resizer"),
+
+    .p.priv_class  = &cudascale_class,
 
     .init          = cudascale_init,
     .uninit        = cudascale_uninit,
 
     .priv_size = sizeof(CUDAScaleContext),
-    .priv_class = &cudascale_class,
 
     FILTER_INPUTS(cudascale_inputs),
     FILTER_OUTPUTS(cudascale_outputs),

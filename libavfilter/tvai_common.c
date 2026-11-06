@@ -164,7 +164,8 @@ DictionaryItem* ff_tvai_alloc_copy_entries(AVDictionary* dict, int *pCount) {
 int ff_tvai_postflight(AVFilterLink *outlink, void* pFrameProcessor, AVFrame* previousFrame) {
     tvai_end_stream(pFrameProcessor);
     int i = 0, remaining = tvai_remaining_frames(pFrameProcessor), pr = 0;
-    while(remaining > 0 && i < 50) {
+    unsigned int timeout_count = tvai_timeout_count(pFrameProcessor, remaining);
+    while(remaining > 0 && i < timeout_count) {
         int ret = ff_tvai_add_output(pFrameProcessor, outlink, previousFrame);
         if(ret)
             return ret;

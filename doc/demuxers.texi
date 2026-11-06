@@ -281,7 +281,11 @@ This demuxer accepts the following option:
 @table @option
 
 @item cenc_decryption_key
-16-byte key, in hex, to decrypt files encrypted using ISO Common Encryption (CENC/AES-128 CTR; ISO/IEC 23001-7).
+Default 16-byte key, in hex, to decrypt files encrypted using ISO Common Encryption (CENC/AES-128 CTR; ISO/IEC 23001-7).
+
+@item cenc_decryption_keys
+Dictionary of 16-byte key ID => 16-byte key, both in hex, to decrypt files encrypted using ISO Common Encryption
+(CENC/AES-128 CTR; ISO/IEC 23001-7).
 
 @end table
 
@@ -292,7 +296,6 @@ DVD-Video demuxer, powered by libdvdnav and libdvdread.
 Can directly ingest DVD titles, specifically sequential PGCs, into
 a conversion pipeline. Menu assets, such as background video or audio,
 can also be demuxed given the menu's coordinates (at best effort).
-Seeking is not supported at this time.
 
 Block devices (DVD drives), ISO files, and directory structures are accepted.
 Activate with @code{-f dvdvideo} in front of one of these inputs.
@@ -380,11 +383,11 @@ Default is false.
 
 @item menu_lu @var{int}
 The menu language to demux. In DVD, menus are grouped by language.
-Default is 0, the first language unit.
+Default is 1, the first language unit.
 
 @item menu_vts @var{int}
 The VTS where the menu lives, or 0 if it is a VMG menu (root-level).
-Default is 0, VMG menu.
+Default is 1, menu of the first VTS.
 
 @item pgc @var{int}
 The entry PGC to start playback, in conjunction with @option{pg}.
@@ -397,8 +400,7 @@ Default is 0, automatically resolve from value of @option{title}.
 The entry PG to start playback, in conjunction with @option{pgc}.
 Alternative to setting @option{title}.
 Chapter markers are not supported at this time.
-Default is 0, automatically resolve from value of @option{title}, or
-start from the beginning (PG 1) of the menu.
+Default is 1, the first PG of the PGC.
 
 @item preindex @var{bool}
 Enable this to have accurate chapter (PTT) markers and duration measurement,
@@ -406,7 +408,6 @@ which requires a slow second pass read in order to index the chapter marker
 timestamps from NAV packets. This is non-ideal extra work for real optical drives.
 It is recommended and faster to use this option with a backup of the DVD structure
 stored on a hard drive. Not compatible with @option{pgc} and @option{pg}.
-Not applicable to menus.
 Default is 0, false.
 
 @item trim @var{bool}
@@ -567,6 +568,13 @@ prefer to use #EXT-X-START if it's in playlist instead of live_start_index.
 @item allowed_extensions
 ',' separated list of file extensions that hls is allowed to access.
 
+@item extension_picky
+This blocks disallowed extensions from probing
+It also requires all available segments to have matching extensions to the format
+except mpegts, which is always allowed.
+It is recommended to set the whitelists correctly instead of depending on extensions
+Enabled by default.
+
 @item max_reload
 Maximum number of times a insufficient list is attempted to be reloaded.
 Default value is 1000.
@@ -660,30 +668,9 @@ Select a glob wildcard pattern type.
 
 The pattern is interpreted like a @code{glob()} pattern. This is only
 selectable if libavformat was compiled with globbing support.
-
-@item glob_sequence @emph{(deprecated, will be removed)}
-Select a mixed glob wildcard/sequence pattern.
-
-If your version of libavformat was compiled with globbing support, and
-the provided pattern contains at least one glob meta character among
-@code{%*?[]@{@}} that is preceded by an unescaped "%", the pattern is
-interpreted like a @code{glob()} pattern, otherwise it is interpreted
-like a sequence pattern.
-
-All glob special characters @code{%*?[]@{@}} must be prefixed
-with "%". To escape a literal "%" you shall use "%%".
-
-For example the pattern @code{foo-%*.jpeg} will match all the
-filenames prefixed by "foo-" and terminating with ".jpeg", and
-@code{foo-%?%?%?.jpeg} will match all the filenames prefixed with
-"foo-", followed by a sequence of three characters, and terminating
-with ".jpeg".
-
-This pattern type is deprecated in favor of @var{glob} and
-@var{sequence}.
 @end table
 
-Default value is @var{glob_sequence}.
+Default value is @var{sequence}.
 @item pixel_format
 Set the pixel format of the images to read. If not specified the pixel
 format is guessed from the first image file in the sequence.
@@ -851,6 +838,32 @@ Set the sample rate for libopenmpt to output.
 Range is from 1000 to INT_MAX. The value default is 48000.
 @end table
 
+@anchor{mccdec}
+@section mcc
+
+Demuxer for MacCaption MCC files, it supports MCC versions 1.0 and 2.0.
+MCC files store VANC data, which can include closed captions (EIA-608 and CEA-708), ancillary time code, pan-scan data, etc.
+By default, for backward compatibility, the MCC demuxer extracts just the EIA-608 and CEA-708 closed captions and returns a @code{EIA_608} stream, ignoring all other VANC data.
+You can change it to return all VANC data in a @code{SMPTE_436M_ANC} data stream by setting @option{-eia608_extract 0}
+
+@subsection Examples
+
+@itemize
+@item
+Convert a MCC file to Scenarist (SCC) format:
+@example
+ffmpeg -i CC.mcc -c:s copy CC.scc
+@end example
+Note that the SCC format only supports EIA-608, so this will discard all other data such as CEA-708 extensions.
+
+@item
+Merge a MCC file into a MXF file:
+@example
+ffmpeg -i video_and_audio.mxf -eia608_extract 0 -i CC.mcc -c copy -map 0 -map 1 out.mxf
+@end example
+This retains all VANC data and inserts it into the output MXF file as a @code{SMPTE_436M_ANC} data stream.
+@end itemize
+
 @section mov/mp4/3gp
 
 Demuxer for Quicktime File Format & ISO/IEC Base Media File Format (ISO/IEC 14496-12 or MPEG-4 Part 12, ISO/IEC 15444-12 or JPEG 2000 Part 12).
@@ -931,7 +944,11 @@ Fixed key used for handling Audible AAX/AAX+ files. It has been pre-set so shoul
 specify.
 
 @item decryption_key
-16-byte key, in hex, to decrypt files encrypted using ISO Common Encryption (CENC/AES-128 CTR; ISO/IEC 23001-7).
+Default 16-byte key, in hex, to decrypt files encrypted using ISO Common Encryption (CENC/AES-128 CTR; ISO/IEC 23001-7).
+
+@item decryption_keys
+Dictionary of 16-byte key ID => 16-byte key, both in hex, to decrypt files encrypted using ISO Common Encryption
+(CENC/AES-128 CTR; ISO/IEC 23001-7).
 
 @item max_stts_delta
 Very high sample deltas written in a trak's stts box may occasionally be intended but usually they are written in
@@ -986,7 +1003,7 @@ to 1 (-1 means automatic setting, 1 means enabled, 0 means
 disabled). Default value is -1.
 
 @item merge_pmt_versions
-Re-use existing streams when a PMT's version is updated and elementary
+Reuse existing streams when a PMT's version is updated and elementary
 streams move to different PIDs. Default value is 0.
 
 @item max_packet_size
@@ -1026,6 +1043,11 @@ Set input video frame rate. Default value is 25.
 @item pixel_format
 Set the input video pixel format. Default value is @code{yuv420p}.
 
+@item stride
+Set frame line size in bytes, only required if there are extra padding.
+For multiplane formats, @option{stride} is a list of line size for each
+plane.
+
 @item video_size
 Set the input video size. This value must be specified explicitly.
 @end table
@@ -1036,6 +1058,13 @@ size of @code{320x240}, and a frame rate of 10 images per second, use
 the command:
 @example
 ffplay -f rawvideo -pixel_format rgb24 -video_size 320x240 -framerate 10 input.raw
+@end example
+
+Read a rawvideo with @command{ffplay}, assuming a pixel format of @code{yuv420p},
+a video size of @code{1080x1920}, has 8 bytes of padding in each line of Y plane,
+and 4 bytes of padding with UV plane,
+@example
+ffplay -f rawvideo -pixel_format yuv420p -video_size 1080x1920 -stride 1088,544,544 input.raw
 @end example
 
 @anchor{rcwtdec}

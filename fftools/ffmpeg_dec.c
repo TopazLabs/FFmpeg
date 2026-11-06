@@ -733,23 +733,25 @@ static int packet_decode(DecoderPriv *dp, AVPacket *pkt, AVFrame *frame)
         av_log(dp, AV_LOG_ERROR, "Error submitting %s to decoder: %s\n",
                pkt ? "packet" : "EOF", av_err2str(ret));
 
-        if (ret != AVERROR_EOF) {
-            dp->dec.decode_errors++;
-            if (!exit_on_error)
-                ret = 0;
-        }
+        if (ret == AVERROR_EOF)
+            return ret;
 
-        return ret;
+        dp->dec.decode_errors++;
+        if (exit_on_error)
+            return ret;
     }
 
     while (1) {
         FrameData *fd;
         unsigned outputs_mask = 1;
+        unsigned flags = 0;
+        if (!dp->dec.frames_decoded)
+            flags |= AV_CODEC_RECEIVE_FRAME_FLAG_SYNCHRONOUS;
 
         av_frame_unref(frame);
 
         update_benchmark(NULL);
-        ret = avcodec_receive_frame(dec, frame);
+        ret = avcodec_receive_frame_flags(dec, frame, flags);
         update_benchmark("decode_%s %s", type_desc, dp->parent_name);
 
         if (ret == AVERROR(EAGAIN)) {
@@ -1008,7 +1010,7 @@ static int decoder_thread(void *arg)
         ret = 0;
 
         err_rate = (dp->dec.frames_decoded || dp->dec.decode_errors) ?
-                   dp->dec.decode_errors / (dp->dec.frames_decoded + dp->dec.decode_errors) : 0.f;
+                   (float)dp->dec.decode_errors / (dp->dec.frames_decoded + dp->dec.decode_errors) : 0.f;
         if (err_rate > max_error_rate) {
             av_log(dp, AV_LOG_FATAL, "Decode error rate %g exceeds maximum %g\n",
                    err_rate, max_error_rate);
@@ -1019,6 +1021,7 @@ static int decoder_thread(void *arg)
 
 finish:
     dec_thread_uninit(&dt);
+    avcodec_free_context(&dp->dec_ctx);
 
     return ret;
 }
@@ -1595,7 +1598,7 @@ static int dec_open(DecoderPriv *dp, AVDictionary **dec_opts,
     if (o->flags & DECODER_FLAG_BITEXACT)
         dp->dec_ctx->flags |= AV_CODEC_FLAG_BITEXACT;
 
-    // we apply cropping outselves
+    // we apply cropping ourselves
     dp->apply_cropping          = dp->dec_ctx->apply_cropping;
     dp->dec_ctx->apply_cropping = 0;
 
@@ -1636,8 +1639,14 @@ static int dec_open(DecoderPriv *dp, AVDictionary **dec_opts,
             param_out->sample_aspect_ratio  = dp->dec_ctx->sample_aspect_ratio;
             param_out->colorspace           = dp->dec_ctx->colorspace;
             param_out->color_range          = dp->dec_ctx->color_range;
+            param_out->alpha_mode           = dp->dec_ctx->alpha_mode;
         }
 
+        av_frame_side_data_free(&param_out->side_data, &param_out->nb_side_data);
+        ret = clone_side_data(&param_out->side_data, &param_out->nb_side_data,
+                              dp->dec_ctx->decoded_side_data, dp->dec_ctx->nb_decoded_side_data, 0);
+        if (ret < 0)
+            return ret;
         param_out->time_base = dp->dec_ctx->pkt_timebase;
     }
 

@@ -77,6 +77,7 @@ static void free_stream(AVFormatContext *s, int i)
 
     av_freep(&stream->private);
     av_freep(&stream->new_metadata);
+    av_freep(&stream->new_extradata);
 }
 
 //FIXME We could avoid some structure duplication
@@ -104,8 +105,10 @@ static int ogg_save(AVFormatContext *s)
             memcpy(os->buf, ost->streams[i].buf, os->bufpos);
         else
             ret = AVERROR(ENOMEM);
-        os->new_metadata      = NULL;
-        os->new_metadata_size = 0;
+        os->new_metadata       = NULL;
+        os->new_metadata_size  = 0;
+        os->new_extradata      = NULL;
+        os->new_extradata_size = 0;
     }
 
     ogg->state = ost;
@@ -132,6 +135,7 @@ static int ogg_restore(AVFormatContext *s)
             struct ogg_stream *stream = &ogg->streams[i];
             av_freep(&stream->buf);
             av_freep(&stream->new_metadata);
+            av_freep(&stream->new_extradata);
 
             if (i >= ost->nstreams || !ost->streams[i].private) {
                 free_stream(s, i);
@@ -182,6 +186,8 @@ static int ogg_reset(AVFormatContext *s)
         os->end_trimming = 0;
         av_freep(&os->new_metadata);
         os->new_metadata_size = 0;
+        av_freep(&os->new_extradata);
+        os->new_extradata_size = 0;
     }
 
     ogg->page_pos = -1;
@@ -236,12 +242,10 @@ static int ogg_replace_stream(AVFormatContext *s, uint32_t serial, char *magic, 
     os->serial  = serial;
     os->lastpts = 0;
     os->lastdts = 0;
+    os->flags   = 0;
     os->start_trimming = 0;
     os->end_trimming = 0;
-
-    /* Chained files have extradata as a new packet */
-    if (codec == &ff_opus_codec)
-        os->header = -1;
+    os->replace = 1;
 
     return i;
 }
@@ -373,7 +377,7 @@ static int ogg_read_page(AVFormatContext *s, int *sid, int probing)
     flags   = avio_r8(bc);
     gp      = avio_rl64(bc);
     serial  = avio_rl32(bc);
-    avio_skip(bc, 4); /* seq */
+    avio_rl32(bc); /* seq */
 
     crc_tmp = ffio_get_checksum(bc);
     crc     = avio_rb32(bc);
@@ -605,20 +609,26 @@ static int ogg_packet(AVFormatContext *s, int *sid, int *dstart, int *dsize,
     } else {
         os->pflags    = 0;
         os->pduration = 0;
+
+        ret = 0;
         if (os->codec && os->codec->packet) {
             if ((ret = os->codec->packet(s, idx)) < 0) {
                 av_log(s, AV_LOG_ERROR, "Packet processing failed: %s\n", av_err2str(ret));
                 return ret;
             }
         }
-        if (sid)
-            *sid = idx;
-        if (dstart)
-            *dstart = os->pstart;
-        if (dsize)
-            *dsize = os->psize;
-        if (fpos)
-            *fpos = os->sync_pos;
+
+        if (!ret) {
+            if (sid)
+                *sid = idx;
+            if (dstart)
+                *dstart = os->pstart;
+            if (dsize)
+                *dsize = os->psize;
+            if (fpos)
+                *fpos = os->sync_pos;
+        }
+
         os->pstart  += os->psize;
         os->psize    = 0;
         if(os->pstart == os->bufpos)
@@ -876,14 +886,29 @@ retry:
         os->end_trimming = 0;
     }
 
+    if (os->replace) {
+        os->replace = 0;
+        pkt->dts = pkt->pts = AV_NOPTS_VALUE;
+    }
+
     if (os->new_metadata) {
-        ret = av_packet_add_side_data(pkt, AV_PKT_DATA_METADATA_UPDATE,
+        ret = av_packet_add_side_data(pkt, AV_PKT_DATA_STRINGS_METADATA,
                                       os->new_metadata, os->new_metadata_size);
         if (ret < 0)
             return ret;
 
         os->new_metadata      = NULL;
         os->new_metadata_size = 0;
+    }
+
+    if (os->new_extradata) {
+        ret = av_packet_add_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA,
+                                      os->new_extradata, os->new_extradata_size);
+        if (ret < 0)
+            return ret;
+
+        os->new_extradata      = NULL;
+        os->new_extradata_size = 0;
     }
 
     return psize;

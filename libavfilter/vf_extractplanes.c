@@ -175,7 +175,7 @@ static int query_formats(AVFilterContext *ctx)
         in_pixfmts = in_pixfmts_le;
     }
     if (!ctx->inputs[0]->outcfg.formats)
-        if ((ret = ff_formats_ref(ff_make_format_list(in_pixfmts), &ctx->inputs[0]->outcfg.formats)) < 0)
+        if ((ret = ff_formats_ref(ff_make_pixel_format_list(in_pixfmts), &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
 
     for (i = 1; i < avff->nb_formats; i++) {
@@ -213,8 +213,12 @@ static int query_formats(AVFilterContext *ctx)
     else
         out_pixfmts = out32le_pixfmts;
 
+    /* Splitting planes apart only makes sense for straight alpha */
+    if ((ret = ff_formats_ref(ff_make_formats_list_singleton(AVALPHA_MODE_STRAIGHT), &ctx->inputs[0]->outcfg.alpha_modes)) < 0)
+        return ret;
+
     for (i = 0; i < ctx->nb_outputs; i++)
-        if ((ret = ff_formats_ref(ff_make_format_list(out_pixfmts), &ctx->outputs[i]->incfg.formats)) < 0)
+        if ((ret = ff_formats_ref(ff_make_pixel_format_list(out_pixfmts), &ctx->outputs[i]->incfg.formats)) < 0)
             return ret;
     return 0;
 }
@@ -367,15 +371,7 @@ static int activate(AVFilterContext *ctx)
         return 0;
     }
 
-    for (int i = 0; i < ctx->nb_outputs; i++) {
-        if (ff_outlink_get_status(ctx->outputs[i]))
-            continue;
-
-        if (ff_outlink_frame_wanted(ctx->outputs[i])) {
-            ff_inlink_request_frame(inlink);
-            return 0;
-        }
-    }
+    FF_FILTER_FORWARD_WANTED_ANY(ctx, inlink);
 
     return FFERROR_NOT_READY;
 }
@@ -416,17 +412,17 @@ static const AVFilterPad extractplanes_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_extractplanes = {
-    .name          = "extractplanes",
-    .description   = NULL_IF_CONFIG_SMALL("Extract planes as grayscale frames."),
+const FFFilter ff_vf_extractplanes = {
+    .p.name        = "extractplanes",
+    .p.description = NULL_IF_CONFIG_SMALL("Extract planes as grayscale frames."),
+    .p.priv_class  = &extractplanes_class,
+    .p.outputs     = NULL,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
     .priv_size     = sizeof(ExtractPlanesContext),
-    .priv_class    = &extractplanes_class,
     .init          = init,
     .activate      = activate,
     FILTER_INPUTS(extractplanes_inputs),
-    .outputs       = NULL,
     FILTER_QUERY_FUNC(query_formats),
-    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
 };
 
 #if CONFIG_ALPHAEXTRACT_FILTER
@@ -449,9 +445,9 @@ static const AVFilterPad alphaextract_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_alphaextract = {
-    .name           = "alphaextract",
-    .description    = NULL_IF_CONFIG_SMALL("Extract an alpha channel as a "
+const FFFilter ff_vf_alphaextract = {
+    .p.name         = "alphaextract",
+    .p.description  = NULL_IF_CONFIG_SMALL("Extract an alpha channel as a "
                       "grayscale image component."),
     .priv_size      = sizeof(ExtractPlanesContext),
     .init           = init_alphaextract,

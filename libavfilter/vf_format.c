@@ -42,10 +42,12 @@ typedef struct FormatContext {
     char *pix_fmts;
     char *csps;
     char *ranges;
+    char *alphamodes;
 
     AVFilterFormats *formats; ///< parsed from `pix_fmts`
     AVFilterFormats *color_spaces; ///< parsed from `csps`
     AVFilterFormats *color_ranges; ///< parsed from `ranges`
+    AVFilterFormats *alpha_modes; ///< parsed from `alphamodes`
 } FormatContext;
 
 static av_cold void uninit(AVFilterContext *ctx)
@@ -54,6 +56,7 @@ static av_cold void uninit(AVFilterContext *ctx)
     ff_formats_unref(&s->formats);
     ff_formats_unref(&s->color_spaces);
     ff_formats_unref(&s->color_ranges);
+    ff_formats_unref(&s->alpha_modes);
 }
 
 static av_cold int invert_formats(AVFilterFormats **fmts,
@@ -133,30 +136,44 @@ static av_cold int init(AVFilterContext *ctx)
             return ret;
     }
 
+    for (char *sep, *cur = s->alphamodes; cur; cur = sep) {
+        sep = strchr(cur, '|');
+        if (sep && *sep)
+            *sep++ = 0;
+        if ((ret = av_alpha_mode_from_name(cur)) < 0 ||
+            (ret = ff_add_format(&s->alpha_modes, ret)) < 0)
+            return ret;
+    }
+
     if (!strcmp(ctx->filter->name, "noformat")) {
         if ((ret = invert_formats(&s->formats,      ff_all_formats(AVMEDIA_TYPE_VIDEO))) < 0 ||
             (ret = invert_formats(&s->color_spaces, ff_all_color_spaces())) < 0 ||
-            (ret = invert_formats(&s->color_ranges, ff_all_color_ranges())) < 0)
+            (ret = invert_formats(&s->color_ranges, ff_all_color_ranges())) < 0 ||
+            (ret = invert_formats(&s->alpha_modes,  ff_all_alpha_modes())) < 0)
             return ret;
     }
 
     /* hold on to a ref for the lifetime of the filter */
     if (s->formats      && (ret = ff_formats_ref(s->formats,      &s->formats)) < 0 ||
         s->color_spaces && (ret = ff_formats_ref(s->color_spaces, &s->color_spaces)) < 0 ||
-        s->color_ranges && (ret = ff_formats_ref(s->color_ranges, &s->color_ranges)) < 0)
+        s->color_ranges && (ret = ff_formats_ref(s->color_ranges, &s->color_ranges)) < 0 ||
+        s->alpha_modes  && (ret = ff_formats_ref(s->alpha_modes,  &s->alpha_modes)) < 0)
         return ret;
 
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     FormatContext *s = ctx->priv;
     int ret;
 
-    if (s->formats      && (ret = ff_set_common_formats(ctx,      s->formats)) < 0 ||
-        s->color_spaces && (ret = ff_set_common_color_spaces(ctx, s->color_spaces)) < 0 ||
-        s->color_ranges && (ret = ff_set_common_color_ranges(ctx, s->color_ranges)) < 0)
+    if (s->formats      && (ret = ff_set_common_formats2     (ctx, cfg_in, cfg_out, s->formats)) < 0 ||
+        s->color_spaces && (ret = ff_set_common_color_spaces2(ctx, cfg_in, cfg_out, s->color_spaces)) < 0 ||
+        s->color_ranges && (ret = ff_set_common_color_ranges2(ctx, cfg_in, cfg_out, s->color_ranges)) < 0 ||
+        s->alpha_modes  && (ret = ff_set_common_alpha_modes2(ctx, cfg_in, cfg_out, s->alpha_modes)) < 0)
         return ret;
 
     return 0;
@@ -168,6 +185,7 @@ static const AVOption options[] = {
     { "pix_fmts", "A '|'-separated list of pixel formats", OFFSET(pix_fmts), AV_OPT_TYPE_STRING, .flags = AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM },
     { "color_spaces", "A '|'-separated list of color spaces", OFFSET(csps), AV_OPT_TYPE_STRING, .flags = AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM },
     { "color_ranges", "A '|'-separated list of color ranges", OFFSET(ranges), AV_OPT_TYPE_STRING, .flags = AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM },
+    { "alpha_modes", "A '|'-separated list of alpha modes", OFFSET(alphamodes), AV_OPT_TYPE_STRING, .flags = AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_FILTERING_PARAM },
     { NULL }
 };
 
@@ -182,41 +200,41 @@ static const AVFilterPad inputs[] = {
 };
 
 #if CONFIG_FORMAT_FILTER
-const AVFilter ff_vf_format = {
-    .name          = "format",
-    .description   = NULL_IF_CONFIG_SMALL("Convert the input video to one of the specified pixel formats."),
+const FFFilter ff_vf_format = {
+    .p.name        = "format",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert the input video to one of the specified pixel formats."),
+    .p.priv_class  = &format_class,
+
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
 
     .init          = init,
     .uninit        = uninit,
 
     .priv_size     = sizeof(FormatContext),
-    .priv_class    = &format_class,
-
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
 
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
 
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };
 #endif /* CONFIG_FORMAT_FILTER */
 
 #if CONFIG_NOFORMAT_FILTER
-const AVFilter ff_vf_noformat = {
-    .name          = "noformat",
-    .description   = NULL_IF_CONFIG_SMALL("Force libavfilter not to use any of the specified pixel formats for the input to the next filter."),
-    .priv_class    = &format_class,
+const FFFilter ff_vf_noformat = {
+    .p.name        = "noformat",
+    .p.description = NULL_IF_CONFIG_SMALL("Force libavfilter not to use any of the specified pixel formats for the input to the next filter."),
+    .p.priv_class  = &format_class,
+
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
 
     .init          = init,
     .uninit        = uninit,
 
     .priv_size     = sizeof(FormatContext),
 
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
-
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
 
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };
 #endif /* CONFIG_NOFORMAT_FILTER */
