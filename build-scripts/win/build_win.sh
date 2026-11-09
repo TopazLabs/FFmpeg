@@ -3,7 +3,7 @@
 set -e
 
 # Ensure all expected system dependencies
-pacman -S --noconfirm base-devel
+pacman -S --noconfirm --needed base-devel pkgconf
 
 # Navigate to sources directory
 cd "$(dirname "$0")/../../../"
