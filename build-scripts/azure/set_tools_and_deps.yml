@@ -30,6 +30,16 @@ steps:
         /bin/bash -c "echo '##vso[task.setvariable variable=MD_APPLE_SDK_ROOT;]'/Applications/Xcode_$XCODE_VERSION.app;sudo xcode-select --switch /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer"
       displayName: 'Select XCode $(XCODE_VERSION)'
 
+  # ffbuild/version.sh prefers a VERSION file over `git describe`, so the
+  # binary reports exactly the pipeline version (e.g. 8.1.0.18-test+1).
+  - bash: |
+      printf '%s\n' "$PIPELINE_VERSION" > "$(Build.SourcesDirectory)/FFmpeg/VERSION"
+      echo "FFmpeg VERSION set to: $(cat "$(Build.SourcesDirectory)/FFmpeg/VERSION")"
+    condition: and(succeeded(), ne(variables['VERSION'], '0.0.0'))
+    displayName: 'Write FFmpeg VERSION file'
+    env:
+      PIPELINE_VERSION: $(VERSION)
+
   - script: |
       python -m pip install pipenv conan==2.7.1 slack_sdk==3.35.0 pytz==2025.2
     displayName: 'Install Python packages'
