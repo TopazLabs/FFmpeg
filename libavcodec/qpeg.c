@@ -29,6 +29,8 @@
 #include "codec_internal.h"
 #include "decode.h"
 
+#include "libavutil/attributes.h"
+
 typedef struct QpegContext{
     AVCodecContext *avctx;
     AVFrame *ref;
@@ -297,14 +299,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     }
 
     /* make the palette available on the way out */
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-    p->palette_has_changed =
-#endif
     ff_copy_palette(a->pal, avpkt, avctx);
-#if FF_API_PALETTE_HAS_CHANGED
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     memcpy(p->data[1], a->pal, AVPALETTE_SIZE);
 
     if ((ret = av_frame_replace(ref, p)) < 0)
@@ -321,7 +316,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return avpkt->size;
 }
 
-static void decode_flush(AVCodecContext *avctx){
+static av_cold void decode_flush(AVCodecContext *avctx)
+{
     QpegContext * const a = avctx->priv_data;
     int i, pal_size;
     const uint8_t *pal_src;

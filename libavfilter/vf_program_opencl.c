@@ -145,8 +145,7 @@ static int program_opencl_run(AVFilterContext *avctx)
         if (err < 0)
             goto fail;
 
-        av_log(avctx, AV_LOG_DEBUG, "Run kernel on plane %d "
-               "(%"SIZE_SPECIFIER"x%"SIZE_SPECIFIER").\n",
+        av_log(avctx, AV_LOG_DEBUG, "Run kernel on plane %d (%zux%zu).\n",
                plane, global_work[0], global_work[1]);
 
         cle = clEnqueueNDRangeKernel(ctx->command_queue, ctx->kernel, 2, NULL,
@@ -357,18 +356,18 @@ static const AVFilterPad program_opencl_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_program_opencl = {
-    .name           = "program_opencl",
-    .description    = NULL_IF_CONFIG_SMALL("Filter video using an OpenCL program"),
-    .priv_size      = sizeof(ProgramOpenCLContext),
-    .priv_class     = &program_opencl_class,
-    .flags          = AVFILTER_FLAG_DYNAMIC_INPUTS |
+const FFFilter ff_vf_program_opencl = {
+    .p.name         = "program_opencl",
+    .p.description  = NULL_IF_CONFIG_SMALL("Filter video using an OpenCL program"),
+    .p.priv_class   = &program_opencl_class,
+    .p.flags        = AVFILTER_FLAG_DYNAMIC_INPUTS |
                       AVFILTER_FLAG_HWDEVICE,
+    .p.inputs       = NULL,
+    .priv_size      = sizeof(ProgramOpenCLContext),
     .preinit        = &program_opencl_framesync_preinit,
     .init           = &program_opencl_init,
     .uninit         = &program_opencl_uninit,
     .activate       = &program_opencl_activate,
-    .inputs         = NULL,
     FILTER_OUTPUTS(program_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
@@ -411,18 +410,18 @@ static const AVFilterPad openclsrc_outputs[] = {
     },
 };
 
-const AVFilter ff_vsrc_openclsrc = {
-    .name           = "openclsrc",
-    .description    = NULL_IF_CONFIG_SMALL("Generate video using an OpenCL program"),
+const FFFilter ff_vsrc_openclsrc = {
+    .p.name         = "openclsrc",
+    .p.description  = NULL_IF_CONFIG_SMALL("Generate video using an OpenCL program"),
+    .p.priv_class   = &openclsrc_class,
+    .p.inputs       = NULL,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(ProgramOpenCLContext),
-    .priv_class     = &openclsrc_class,
     .init           = &program_opencl_init,
     .uninit         = &program_opencl_uninit,
-    .inputs         = NULL,
     FILTER_OUTPUTS(openclsrc_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };
 
 #endif

@@ -25,6 +25,7 @@
 #include "parser.h"
 #include "mpeg12.h"
 #include "mpeg12data.h"
+#include "parser_internal.h"
 #include "startcode.h"
 
 struct MpvParseContext {
@@ -147,11 +148,6 @@ static void mpegvideo_extract_headers(AVCodecParserContext *s,
                 pc->frame_rate = avctx->framerate = ff_mpeg12_frame_rate_tab[frame_rate_index];
                 bit_rate = (buf[4]<<10) | (buf[5]<<2) | (buf[6]>>6);
                 avctx->codec_id = AV_CODEC_ID_MPEG1VIDEO;
-#if FF_API_TICKS_PER_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-                avctx->ticks_per_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
             }
             break;
         case EXT_START_CODE:
@@ -181,11 +177,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
                         avctx->framerate.num = pc->frame_rate.num * (frame_rate_ext_n + 1);
                         avctx->framerate.den = pc->frame_rate.den * (frame_rate_ext_d + 1);
                         avctx->codec_id = AV_CODEC_ID_MPEG2VIDEO;
-#if FF_API_TICKS_PER_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-                        avctx->ticks_per_frame = 2;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
                     }
                     break;
                 case 0x8: /* picture coding extension */
@@ -303,16 +294,16 @@ static int mpegvideo_parse(AVCodecParserContext *s,
     return next;
 }
 
-static int mpegvideo_parse_init(AVCodecParserContext *s)
+static av_cold int mpegvideo_parse_init(AVCodecParserContext *s)
 {
     s->pict_type = AV_PICTURE_TYPE_NONE; // first frame might be partial
     return 0;
 }
 
-const AVCodecParser ff_mpegvideo_parser = {
-    .codec_ids      = { AV_CODEC_ID_MPEG1VIDEO, AV_CODEC_ID_MPEG2VIDEO },
+const FFCodecParser ff_mpegvideo_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_MPEG1VIDEO, AV_CODEC_ID_MPEG2VIDEO),
     .priv_data_size = sizeof(struct MpvParseContext),
-    .parser_init    = mpegvideo_parse_init,
-    .parser_parse   = mpegvideo_parse,
-    .parser_close   = ff_parse_close,
+    .init           = mpegvideo_parse_init,
+    .parse          = mpegvideo_parse,
+    .close          = ff_parse_close,
 };

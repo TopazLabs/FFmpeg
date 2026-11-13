@@ -58,10 +58,7 @@ static int vp5_parse_header(VP56Context *s, const uint8_t *buf, int buf_size)
         if(vp56_rac_gets(c, 5) > 5)
             return AVERROR_INVALIDDATA;
         vp56_rac_gets(c, 2);
-        if (vpx_rac_get(c)) {
-            avpriv_report_missing_feature(s->avctx, "Interlacing");
-            return AVERROR_PATCHWELCOME;
-        }
+        s->interlaced = vp56_rac_gets(c, 1);
         rows = vp56_rac_gets(c, 8);  /* number of stored macroblock rows */
         cols = vp56_rac_gets(c, 8);  /* number of stored macroblock cols */
         if (!rows || !cols) {
@@ -78,7 +75,7 @@ static int vp5_parse_header(VP56Context *s, const uint8_t *buf, int buf_size)
         if (!s->macroblocks || /* first frame */
             16*cols != s->avctx->coded_width ||
             16*rows != s->avctx->coded_height) {
-            int ret = ff_set_dimensions(s->avctx, 16 * cols, 16 * rows);
+            ret = ff_set_dimensions(s->avctx, 16 * cols, 16 * rows);
             if (ret < 0)
                 return ret;
             return VP56_SIZE_CHANGE;
@@ -288,7 +285,7 @@ static av_cold int vp5_decode_init(AVCodecContext *avctx)
 
     if ((ret = ff_vp56_init_context(avctx, s, 1, 0)) < 0)
         return ret;
-    ff_vp5dsp_init(&s->vp56dsp);
+    ff_vp5dsp_init(&s->vp5dsp);
     s->vp56_coord_div = vp5_coord_div;
     s->parse_vector_adjustment = vp5_parse_vector_adjustment;
     s->parse_coeff = vp5_parse_coeff;

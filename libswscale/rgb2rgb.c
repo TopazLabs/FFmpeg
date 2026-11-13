@@ -56,6 +56,10 @@ void (*shuffle_bytes_2103)(const uint8_t *src, uint8_t *dst, int src_size);
 void (*shuffle_bytes_1230)(const uint8_t *src, uint8_t *dst, int src_size);
 void (*shuffle_bytes_3012)(const uint8_t *src, uint8_t *dst, int src_size);
 void (*shuffle_bytes_3210)(const uint8_t *src, uint8_t *dst, int src_size);
+void (*shuffle_bytes_3102)(const uint8_t *src, uint8_t *dst, int src_size);
+void (*shuffle_bytes_2013)(const uint8_t *src, uint8_t *dst, int src_size);
+void (*shuffle_bytes_2130)(const uint8_t *src, uint8_t *dst, int src_size);
+void (*shuffle_bytes_1203)(const uint8_t *src, uint8_t *dst, int src_size);
 
 
 void (*yv12toyuy2)(const uint8_t *ysrc, const uint8_t *usrc,
@@ -74,15 +78,11 @@ void (*yuv422ptouyvy)(const uint8_t *ysrc, const uint8_t *usrc,
                       const uint8_t *vsrc, uint8_t *dst,
                       int width, int height,
                       int lumStride, int chromStride, int dstStride);
-void (*yuy2toyv12)(const uint8_t *src, uint8_t *ydst,
-                   uint8_t *udst, uint8_t *vdst,
-                   int width, int height,
-                   int lumStride, int chromStride, int srcStride);
 void (*ff_rgb24toyv12)(const uint8_t *src, uint8_t *ydst,
                        uint8_t *udst, uint8_t *vdst,
                        int width, int height,
                        int lumStride, int chromStride, int srcStride,
-                       int32_t *rgb2yuv);
+                       const int32_t *rgb2yuv);
 void (*planar2x)(const uint8_t *src, uint8_t *dst, int width, int height,
                  int srcStride, int dstStride);
 void (*interleaveBytes)(const uint8_t *src1, const uint8_t *src2, uint8_t *dst,
@@ -91,16 +91,6 @@ void (*interleaveBytes)(const uint8_t *src1, const uint8_t *src2, uint8_t *dst,
 void (*deinterleaveBytes)(const uint8_t *src, uint8_t *dst1, uint8_t *dst2,
                           int width, int height, int srcStride,
                           int dst1Stride, int dst2Stride);
-void (*vu9_to_vu12)(const uint8_t *src1, const uint8_t *src2,
-                    uint8_t *dst1, uint8_t *dst2,
-                    int width, int height,
-                    int srcStride1, int srcStride2,
-                    int dstStride1, int dstStride2);
-void (*yvu9_to_yuy2)(const uint8_t *src1, const uint8_t *src2,
-                     const uint8_t *src3, uint8_t *dst,
-                     int width, int height,
-                     int srcStride1, int srcStride2,
-                     int srcStride3, int dstStride);
 void (*uyvytoyuv420)(uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
                      const uint8_t *src, int width, int height,
                      int lumStride, int chromStride, int srcStride);
@@ -421,3 +411,61 @@ void rgb48to64_ ## need_bswap(const uint8_t *src,                       \
 
 DEFINE_RGB48TO64(nobswap, 0)
 DEFINE_RGB48TO64(bswap, 1)
+
+#define DEFINE_X2RGB10TO16(need_bswap, swap, bits, alpha)                           \
+void x2rgb10to ## bits ## _ ## need_bswap(const uint8_t *src,                       \
+                                             uint8_t *dst, int src_size)            \
+{                                                                                   \
+    uint16_t *d = (uint16_t *)dst;                                                  \
+    const uint32_t *s = (const uint32_t *)src;                                      \
+    int i, num_pixels = src_size >> 2;                                              \
+    unsigned component;                                                             \
+                                                                                    \
+    for (i = 0; i < num_pixels; i++) {                                              \
+        unsigned p = AV_RL32(s + i);                                                \
+        component = (p >> 20) & 0x3FF;                                              \
+        d[(3 + alpha) * i + 0] = swap ? av_bswap16(component << 6 | component >> 4) \
+                                      :            component << 6 | component >> 4; \
+        component = (p >> 10) & 0x3FF;                                              \
+        d[(3 + alpha) * i + 1] = swap ? av_bswap16(component << 6 | component >> 4) \
+                                      :            component << 6 | component >> 4; \
+        component =  p        & 0x3FF;                                              \
+        d[(3 + alpha) * i + 2] = swap ? av_bswap16(component << 6 | component >> 4) \
+                                      :            component << 6 | component >> 4; \
+        if (alpha) d[(3 + alpha) * i + 3] = 0xffff;                                 \
+    }                                                                               \
+}
+
+DEFINE_X2RGB10TO16(nobswap, 0, 48, 0)
+DEFINE_X2RGB10TO16(bswap,   1, 48, 0)
+DEFINE_X2RGB10TO16(nobswap, 0, 64, 1)
+DEFINE_X2RGB10TO16(bswap,   1, 64, 1)
+
+#define DEFINE_X2RGB10TOBGR16(need_bswap, swap, bits, alpha)                        \
+void x2rgb10tobgr ## bits ## _ ## need_bswap(const uint8_t *src,                    \
+                                             uint8_t *dst, int src_size)            \
+{                                                                                   \
+    uint16_t *d = (uint16_t *)dst;                                                  \
+    const uint32_t *s = (const uint32_t *)src;                                      \
+    int i, num_pixels = src_size >> 2;                                              \
+    unsigned component;                                                             \
+                                                                                    \
+    for (i = 0; i < num_pixels; i++) {                                              \
+        unsigned p = AV_RL32(s + i);                                                \
+        component =  p        & 0x3FF;                                              \
+        d[(3 + alpha) * i + 0] = swap ? av_bswap16(component << 6 | component >> 4) \
+                                      :            component << 6 | component >> 4; \
+        component = (p >> 10) & 0x3FF;                                              \
+        d[(3 + alpha) * i + 1] = swap ? av_bswap16(component << 6 | component >> 4) \
+                                      :            component << 6 | component >> 4; \
+        component = (p >> 20) & 0x3FF;                                              \
+        d[(3 + alpha) * i + 2] = swap ? av_bswap16(component << 6 | component >> 4) \
+                                      :            component << 6 | component >> 4; \
+        if (alpha) d[(3 + alpha) * i + 3] = 0xffff;                                 \
+    }                                                                               \
+}
+
+DEFINE_X2RGB10TOBGR16(nobswap, 0, 48, 0)
+DEFINE_X2RGB10TOBGR16(bswap,   1, 48, 0)
+DEFINE_X2RGB10TOBGR16(nobswap, 0, 64, 1)
+DEFINE_X2RGB10TOBGR16(bswap,   1, 64, 1)

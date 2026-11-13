@@ -20,7 +20,6 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
@@ -29,7 +28,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "packet_internal.h"
 #include "libavutil/internal.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
@@ -128,7 +126,6 @@ static int XAVS_frame(AVCodecContext *avctx, AVPacket *pkt,
     xavs_nal_t *nal;
     int nnal, i, ret;
     xavs_picture_t pic_out;
-    int pict_type;
 
     x4->pic.img.i_csp   = XAVS_CSP_I420;
     x4->pic.img.i_plane = 3;
@@ -179,6 +176,7 @@ static int XAVS_frame(AVCodecContext *avctx, AVPacket *pkt,
     } else
         pkt->dts = pkt->pts;
 
+    enum AVPictureType pict_type;
     switch (pic_out.i_type) {
     case XAVS_TYPE_IDR:
     case XAVS_TYPE_I:
@@ -201,7 +199,7 @@ static int XAVS_frame(AVCodecContext *avctx, AVPacket *pkt,
         pkt->flags |= AV_PKT_FLAG_KEY;
     }
 
-    ff_side_data_set_encoder_stats(pkt, (pic_out.i_qpplus1 - 1) * FF_QP2LAMBDA, NULL, 0, pict_type);
+    ff_encode_add_stats_side_data(pkt, (pic_out.i_qpplus1 - 1) * FF_QP2LAMBDA, NULL, 0, pict_type);
 
     x4->out_frame_count++;
     *got_packet = ret;
@@ -434,7 +432,7 @@ const FFCodec ff_libxavs_encoder = {
     .close          = XAVS_close,
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
                       FF_CODEC_CAP_AUTO_THREADS,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
+    CODEC_PIXFMTS(AV_PIX_FMT_YUV420P),
     .color_ranges   = AVCOL_RANGE_MPEG,
     .p.priv_class   = &xavs_class,
     .defaults       = xavs_defaults,

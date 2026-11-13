@@ -36,8 +36,6 @@
 #include "libavutil/mem.h"
 #include "libavutil/time.h"
 
-#undef printf
-
 #define WIDTH 64
 #define HEIGHT 64
 
@@ -129,6 +127,10 @@ int main(int argc, char **argv)
     printf("ffmpeg motion test\n");
 
     ctx = avcodec_alloc_context3(NULL);
+    if (!ctx) {
+        return 1;
+    }
+
     ctx->flags |= AV_CODEC_FLAG_BITEXACT;
     av_force_cpu_flags(0);
     ff_me_cmp_init(&cctx, ctx);

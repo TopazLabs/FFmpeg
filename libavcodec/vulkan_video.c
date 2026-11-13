@@ -33,7 +33,6 @@ static const struct FFVkFormatMapEntry {
     { VK_FORMAT_R32_SFLOAT, AV_PIX_FMT_GRAYF32, VK_IMAGE_ASPECT_COLOR_BIT },
 
     /* RGB formats */
-    { VK_FORMAT_R16G16B16A16_UNORM,       AV_PIX_FMT_XV36,    VK_IMAGE_ASPECT_COLOR_BIT },
     { VK_FORMAT_B8G8R8A8_UNORM,           AV_PIX_FMT_BGRA,    VK_IMAGE_ASPECT_COLOR_BIT },
     { VK_FORMAT_R8G8B8A8_UNORM,           AV_PIX_FMT_RGBA,    VK_IMAGE_ASPECT_COLOR_BIT },
     { VK_FORMAT_R8G8B8_UNORM,             AV_PIX_FMT_RGB24,   VK_IMAGE_ASPECT_COLOR_BIT },
@@ -84,11 +83,16 @@ static const struct FFVkFormatMapEntry {
     { VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM, AV_PIX_FMT_YUV444P12, ASPECT_3PLANE },
     { VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM, AV_PIX_FMT_YUV444P16, ASPECT_3PLANE },
 
-    /* Single plane 422 at 8, 10 and 12 bits */
+    /* Single plane 422 at 8, 10, 12 and 16 bits */
     { VK_FORMAT_G8B8G8R8_422_UNORM,                     AV_PIX_FMT_YUYV422, VK_IMAGE_ASPECT_COLOR_BIT },
     { VK_FORMAT_B8G8R8G8_422_UNORM,                     AV_PIX_FMT_UYVY422, VK_IMAGE_ASPECT_COLOR_BIT },
     { VK_FORMAT_G10X6B10X6G10X6R10X6_422_UNORM_4PACK16, AV_PIX_FMT_Y210,    VK_IMAGE_ASPECT_COLOR_BIT },
     { VK_FORMAT_G12X4B12X4G12X4R12X4_422_UNORM_4PACK16, AV_PIX_FMT_Y212,    VK_IMAGE_ASPECT_COLOR_BIT },
+    { VK_FORMAT_G16B16G16R16_422_UNORM,                 AV_PIX_FMT_Y216,    VK_IMAGE_ASPECT_COLOR_BIT },
+
+    /* Single plane 444 at 10 and 12 bits */
+    { VK_FORMAT_A2R10G10B10_UNORM_PACK32,               AV_PIX_FMT_XV30,    VK_IMAGE_ASPECT_COLOR_BIT },
+    { VK_FORMAT_R12X4G12X4B12X4A12X4_UNORM_4PACK16,     AV_PIX_FMT_XV36,    VK_IMAGE_ASPECT_COLOR_BIT },
 };
 static const int nb_vk_format_map = FF_ARRAY_ELEMS(vk_format_map);
 
@@ -222,6 +226,37 @@ StdVideoH265LevelIdc ff_vk_h265_level_to_vk(int level_idc)
     }
 }
 
+StdVideoAV1Level ff_vk_av1_level_to_vk(int level)
+{
+    switch (level) {
+    case 20: return STD_VIDEO_AV1_LEVEL_2_0;
+    case 21: return STD_VIDEO_AV1_LEVEL_2_1;
+    case 22: return STD_VIDEO_AV1_LEVEL_2_2;
+    case 23: return STD_VIDEO_AV1_LEVEL_2_3;
+    case 30: return STD_VIDEO_AV1_LEVEL_3_0;
+    case 31: return STD_VIDEO_AV1_LEVEL_3_1;
+    case 32: return STD_VIDEO_AV1_LEVEL_3_2;
+    case 33: return STD_VIDEO_AV1_LEVEL_3_3;
+    case 40: return STD_VIDEO_AV1_LEVEL_4_0;
+    case 41: return STD_VIDEO_AV1_LEVEL_4_1;
+    case 42: return STD_VIDEO_AV1_LEVEL_4_2;
+    case 43: return STD_VIDEO_AV1_LEVEL_4_3;
+    case 50: return STD_VIDEO_AV1_LEVEL_5_0;
+    case 51: return STD_VIDEO_AV1_LEVEL_5_1;
+    case 52: return STD_VIDEO_AV1_LEVEL_5_2;
+    case 53: return STD_VIDEO_AV1_LEVEL_5_3;
+    case 60: return STD_VIDEO_AV1_LEVEL_6_0;
+    case 61: return STD_VIDEO_AV1_LEVEL_6_1;
+    case 62: return STD_VIDEO_AV1_LEVEL_6_2;
+    case 63: return STD_VIDEO_AV1_LEVEL_6_3;
+    case 70: return STD_VIDEO_AV1_LEVEL_7_0;
+    case 71: return STD_VIDEO_AV1_LEVEL_7_1;
+    case 72: return STD_VIDEO_AV1_LEVEL_7_2;
+    default:
+    case 73: return STD_VIDEO_AV1_LEVEL_7_3;
+    }
+}
+
 StdVideoH264ProfileIdc ff_vk_h264_profile_to_vk(int profile)
 {
     switch (profile) {
@@ -243,57 +278,34 @@ StdVideoH265ProfileIdc ff_vk_h265_profile_to_vk(int profile)
     }
 }
 
-int ff_vk_h264_profile_to_av(StdVideoH264ProfileIdc profile)
+StdVideoAV1Profile ff_vk_av1_profile_to_vk(int profile)
 {
     switch (profile) {
-    case STD_VIDEO_H264_PROFILE_IDC_BASELINE: return AV_PROFILE_H264_CONSTRAINED_BASELINE;
-    case STD_VIDEO_H264_PROFILE_IDC_MAIN: return AV_PROFILE_H264_MAIN;
-    case STD_VIDEO_H264_PROFILE_IDC_HIGH: return AV_PROFILE_H264_HIGH;
-    case STD_VIDEO_H264_PROFILE_IDC_HIGH_444_PREDICTIVE: return AV_PROFILE_H264_HIGH_444_PREDICTIVE;
-    default: return AV_PROFILE_UNKNOWN;
+    case AV_PROFILE_AV1_MAIN: return STD_VIDEO_AV1_PROFILE_MAIN;
+    case AV_PROFILE_AV1_HIGH: return STD_VIDEO_AV1_PROFILE_HIGH;
+    case AV_PROFILE_AV1_PROFESSIONAL: return STD_VIDEO_AV1_PROFILE_PROFESSIONAL;
+    default: return STD_VIDEO_AV1_PROFILE_INVALID;
     }
-}
-
-int ff_vk_h265_profile_to_av(StdVideoH264ProfileIdc profile)
-{
-    switch (profile) {
-    case STD_VIDEO_H265_PROFILE_IDC_MAIN: return AV_PROFILE_HEVC_MAIN;
-    case STD_VIDEO_H265_PROFILE_IDC_MAIN_10: return AV_PROFILE_HEVC_MAIN_10;
-    case STD_VIDEO_H265_PROFILE_IDC_FORMAT_RANGE_EXTENSIONS: return AV_PROFILE_HEVC_REXT;
-    default: return AV_PROFILE_UNKNOWN;
-    }
-}
-
-int ff_vk_video_qf_init(FFVulkanContext *s, FFVkQueueFamilyCtx *qf,
-                        VkQueueFlagBits family, VkVideoCodecOperationFlagBitsKHR caps)
-{
-    for (int i = 0; i < s->hwctx->nb_qf; i++) {
-        if ((s->hwctx->qf[i].flags & family) &&
-            (s->hwctx->qf[i].video_caps & caps)) {
-            qf->queue_family = s->hwctx->qf[i].idx;
-            qf->nb_queues = s->hwctx->qf[i].num;
-            return 0;
-        }
-    }
-    return AVERROR(ENOTSUP);
 }
 
 int ff_vk_create_view(FFVulkanContext *s, FFVkVideoCommon *common,
                       VkImageView *view, VkImageAspectFlags *aspect,
-                      AVVkFrame *src, VkFormat vkf, int is_dpb)
+                      AVVkFrame *src, VkFormat vkf, VkImageUsageFlags usage)
 {
     VkResult ret;
     FFVulkanFunctions *vk = &s->vkfn;
     VkImageAspectFlags aspect_mask = ff_vk_aspect_bits_from_vkfmt(vkf);
+    int is_video_dpb = usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+                                VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR);
 
-    VkSamplerYcbcrConversionInfo yuv_sampler_info = {
-        .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO,
-        .conversion = common->yuv_sampler,
+    VkImageViewUsageCreateInfo usage_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+        .usage = usage,
     };
     VkImageViewCreateInfo img_view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .pNext = &yuv_sampler_info,
-        .viewType = common->layered_dpb && is_dpb ?
+        .pNext = &usage_create_info,
+        .viewType = common->layered_dpb && is_video_dpb ?
                     VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D,
         .format = vkf,
         .image = src->img[0],
@@ -306,7 +318,7 @@ int ff_vk_create_view(FFVulkanContext *s, FFVkVideoCommon *common,
         .subresourceRange = (VkImageSubresourceRange) {
             .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseArrayLayer = 0,
-            .layerCount     = common->layered_dpb && is_dpb ?
+            .layerCount     = common->layered_dpb && is_video_dpb ?
                               VK_REMAINING_ARRAY_LAYERS : 1,
             .levelCount     = 1,
         },
@@ -339,17 +351,15 @@ av_cold void ff_vk_video_common_uninit(FFVulkanContext *s,
 
     av_freep(&common->mem);
 
-    if (common->layered_view)
+    if (common->layered_view) {
         vk->DestroyImageView(s->hwctx->act_dev, common->layered_view,
                              s->hwctx->alloc);
+        common->layered_view = VK_NULL_HANDLE;
+    }
 
     av_frame_free(&common->layered_frame);
 
     av_buffer_unref(&common->dpb_hwfc_ref);
-
-    if (common->yuv_sampler)
-        vk->DestroySamplerYcbcrConversion(s->hwctx->act_dev, common->yuv_sampler,
-                                          s->hwctx->alloc);
 }
 
 av_cold int ff_vk_video_common_init(AVCodecContext *avctx, FFVulkanContext *s,
@@ -362,30 +372,13 @@ av_cold int ff_vk_video_common_init(AVCodecContext *avctx, FFVulkanContext *s,
     VkVideoSessionMemoryRequirementsKHR *mem = NULL;
     VkBindVideoSessionMemoryInfoKHR *bind_mem = NULL;
 
-    int cxpos = 0, cypos = 0;
-    VkSamplerYcbcrConversionCreateInfo yuv_sampler_info = {
-        .sType      = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
-        .components = ff_comp_identity_map,
-        .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY,
-        .ycbcrRange = avctx->color_range == AVCOL_RANGE_MPEG, /* Ignored */
-        .format     = session_create->pictureFormat,
-    };
-
-    /* Create identity YUV sampler
-     * (VkImageViews of YUV image formats require it, even if it does nothing) */
-    av_chroma_location_enum_to_pos(&cxpos, &cypos, avctx->chroma_sample_location);
-    yuv_sampler_info.xChromaOffset = cxpos >> 7;
-    yuv_sampler_info.yChromaOffset = cypos >> 7;
-    ret = vk->CreateSamplerYcbcrConversion(s->hwctx->act_dev, &yuv_sampler_info,
-                                           s->hwctx->alloc, &common->yuv_sampler);
-    if (ret != VK_SUCCESS)
-        return AVERROR_EXTERNAL;
-
     /* Create session */
     ret = vk->CreateVideoSessionKHR(s->hwctx->act_dev, session_create,
                                     s->hwctx->alloc, &common->session);
-    if (ret != VK_SUCCESS)
-        return AVERROR_EXTERNAL;
+    if (ret != VK_SUCCESS) {
+        err = AVERROR_EXTERNAL;
+        goto fail;
+    }
 
     /* Get memory requirements */
     ret = vk->GetVideoSessionMemoryRequirementsKHR(s->hwctx->act_dev,

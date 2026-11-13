@@ -45,7 +45,7 @@ static inline av_const bool ff_rv_zbb_support(void)
  * Returns the vector size in bytes (always a power of two and at least 4).
  * This is undefined behaviour if vectors are not implemented.
  */
-static inline size_t ff_get_rv_vlenb(void)
+static inline av_const size_t ff_get_rv_vlenb(void)
 {
     size_t vlenb;
 
@@ -56,13 +56,12 @@ static inline size_t ff_get_rv_vlenb(void)
         ".option pop\n" : "=r" (vlenb));
     return vlenb;
 }
-#endif
 
 /**
  * Checks that the vector bit-size is at least the given value.
  * This is potentially undefined behaviour if vectors are not implemented.
  */
-static inline bool ff_rv_vlen_least(unsigned int bits)
+static inline av_const bool ff_rv_vlen_least(unsigned int bits)
 {
 #ifdef __riscv_v_min_vlen
     if (bits <= __riscv_v_min_vlen)
@@ -78,3 +77,4 @@ static inline bool ff_rv_vlen_least(unsigned int bits)
     return bits <= (8 * ff_get_rv_vlenb());
 }
 #endif
+#endif /* HAVE_RVV */

@@ -37,6 +37,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/dict.h"
 #include "libavutil/fifo.h"
+#include "libavutil/parseutils.h"
 #include "libavutil/samplefmt.h"
 #include "libavutil/time.h"
 #include "libavutil/bprint.h"
@@ -267,6 +268,7 @@ typedef struct VideoState {
     AVComplexFloat *rdft_data;
     int xpos;
     double last_vis_time;
+    RenderParams render_params;
     SDL_Texture *vis_texture;
     SDL_Texture *sub_texture;
     SDL_Texture *vid_texture;
@@ -350,6 +352,7 @@ static int find_stream_info = 1;
 static int filter_nbthreads = 0;
 static int enable_vulkan = 0;
 static char *vulkan_params = NULL;
+static char *video_background = NULL;
 static const char *hwaccel = NULL;
 
 /* current context */
@@ -388,7 +391,6 @@ static const struct TextureFormatEntry {
     { AV_PIX_FMT_YUV420P,        SDL_PIXELFORMAT_IYUV },
     { AV_PIX_FMT_YUYV422,        SDL_PIXELFORMAT_YUY2 },
     { AV_PIX_FMT_UYVY422,        SDL_PIXELFORMAT_UYVY },
-    { AV_PIX_FMT_NONE,           SDL_PIXELFORMAT_UNKNOWN },
 };
 
 static int opt_add_vfilter(void *optctx, const char *opt, const char *arg)
@@ -895,7 +897,7 @@ static void get_sdl_pix_fmt_and_blendmode(int format, Uint32 *sdl_pix_fmt, SDL_B
         format == AV_PIX_FMT_BGR32   ||
         format == AV_PIX_FMT_BGR32_1)
         *sdl_blendmode = SDL_BLENDMODE_BLEND;
-    for (i = 0; i < FF_ARRAY_ELEMS(sdl_texture_format_map) - 1; i++) {
+    for (i = 0; i < FF_ARRAY_ELEMS(sdl_texture_format_map); i++) {
         if (format == sdl_texture_format_map[i].format) {
             *sdl_pix_fmt = sdl_texture_format_map[i].texture_fmt;
             return;
@@ -941,7 +943,11 @@ static enum AVColorSpace sdl_supported_color_spaces[] = {
     AVCOL_SPC_BT709,
     AVCOL_SPC_BT470BG,
     AVCOL_SPC_SMPTE170M,
-    AVCOL_SPC_UNSPECIFIED,
+};
+
+static enum AVAlphaMode sdl_supported_alpha_modes[] = {
+    AVALPHA_MODE_UNSPECIFIED,
+    AVALPHA_MODE_STRAIGHT,
 };
 
 static void set_sdl_yuv_conversion_mode(AVFrame *frame)
@@ -960,15 +966,52 @@ static void set_sdl_yuv_conversion_mode(AVFrame *frame)
 #endif
 }
 
+static void draw_video_background(VideoState *is)
+{
+    const int tile_size = VIDEO_BACKGROUND_TILE_SIZE;
+    SDL_Rect *rect = &is->render_params.target_rect;
+    SDL_BlendMode blendMode;
+
+    if (!SDL_GetTextureBlendMode(is->vid_texture, &blendMode) && blendMode == SDL_BLENDMODE_BLEND) {
+        switch (is->render_params.video_background_type) {
+        case VIDEO_BACKGROUND_TILES:
+            SDL_SetRenderDrawColor(renderer, 237, 237, 237, 255);
+            fill_rectangle(rect->x, rect->y, rect->w, rect->h);
+            SDL_SetRenderDrawColor(renderer, 222, 222, 222, 255);
+            for (int x = 0; x < rect->w; x += tile_size * 2)
+                fill_rectangle(rect->x + x, rect->y, FFMIN(tile_size, rect->w - x), rect->h);
+            for (int y = 0; y < rect->h; y += tile_size * 2)
+                fill_rectangle(rect->x, rect->y + y, rect->w, FFMIN(tile_size, rect->h - y));
+            SDL_SetRenderDrawColor(renderer, 237, 237, 237, 255);
+            for (int y = 0; y < rect->h; y += tile_size * 2) {
+                int h = FFMIN(tile_size, rect->h - y);
+                for (int x = 0; x < rect->w; x += tile_size * 2)
+                    fill_rectangle(x + rect->x, y + rect->y, FFMIN(tile_size, rect->w - x), h);
+            }
+            break;
+        case VIDEO_BACKGROUND_COLOR: {
+            const uint8_t *c = is->render_params.video_background_color;
+            SDL_SetRenderDrawColor(renderer, c[0], c[1], c[2], c[3]);
+            fill_rectangle(rect->x, rect->y, rect->w, rect->h);
+            break;
+        }
+        case VIDEO_BACKGROUND_NONE:
+            SDL_SetTextureBlendMode(is->vid_texture, SDL_BLENDMODE_NONE);
+            break;
+        }
+    }
+}
+
 static void video_image_display(VideoState *is)
 {
     Frame *vp;
     Frame *sp = NULL;
-    SDL_Rect rect;
+    SDL_Rect *rect = &is->render_params.target_rect;
 
     vp = frame_queue_peek_last(&is->pictq);
+    calculate_display_rect(rect, is->xleft, is->ytop, is->width, is->height, vp->width, vp->height, vp->sar);
     if (vk_renderer) {
-        vk_renderer_display(vk_renderer, vp->frame);
+        vk_renderer_display(vk_renderer, vp->frame, &is->render_params);
         return;
     }
 
@@ -1017,7 +1060,6 @@ static void video_image_display(VideoState *is)
         }
     }
 
-    calculate_display_rect(&rect, is->xleft, is->ytop, is->width, is->height, vp->width, vp->height, vp->sar);
     set_sdl_yuv_conversion_mode(vp->frame);
 
     if (!vp->uploaded) {
@@ -1029,15 +1071,16 @@ static void video_image_display(VideoState *is)
         vp->flip_v = vp->frame->linesize[0] < 0;
     }
 
-    SDL_RenderCopyEx(renderer, is->vid_texture, NULL, &rect, 0, NULL, vp->flip_v ? SDL_FLIP_VERTICAL : 0);
+    draw_video_background(is);
+    SDL_RenderCopyEx(renderer, is->vid_texture, NULL, rect, 0, NULL, vp->flip_v ? SDL_FLIP_VERTICAL : 0);
     set_sdl_yuv_conversion_mode(NULL);
     if (sp) {
 #if USE_ONEPASS_SUBTITLE_RENDER
-        SDL_RenderCopy(renderer, is->sub_texture, NULL, &rect);
+        SDL_RenderCopy(renderer, is->sub_texture, NULL, rect);
 #else
         int i;
-        double xratio = (double)rect.w / (double)sp->width;
-        double yratio = (double)rect.h / (double)sp->height;
+        double xratio = (double)rect->w / (double)sp->width;
+        double yratio = (double)rect->h / (double)sp->height;
         for (i = 0; i < sp->sub.num_rects; i++) {
             SDL_Rect *sub_rect = (SDL_Rect*)sp->sub.rects[i];
             SDL_Rect target = {.x = rect.x + sub_rect->x * xratio,
@@ -1861,7 +1904,6 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
 {
     enum AVPixelFormat pix_fmts[FF_ARRAY_ELEMS(sdl_texture_format_map)];
     char sws_flags_str[512] = "";
-    char buffersrc_args[256];
     int ret;
     AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter = NULL;
     AVCodecParameters *codecpar = is->video_st->codecpar;
@@ -1875,14 +1917,13 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
         return AVERROR(ENOMEM);
 
     for (i = 0; i < renderer_info.num_texture_formats; i++) {
-        for (j = 0; j < FF_ARRAY_ELEMS(sdl_texture_format_map) - 1; j++) {
+        for (j = 0; j < FF_ARRAY_ELEMS(sdl_texture_format_map); j++) {
             if (renderer_info.texture_formats[i] == sdl_texture_format_map[j].texture_fmt) {
                 pix_fmts[nb_pix_fmts++] = sdl_texture_format_map[j].format;
                 break;
             }
         }
     }
-    pix_fmts[nb_pix_fmts] = AV_PIX_FMT_NONE;
 
     while ((e = av_dict_iterate(sws_dict, e))) {
         if (!strcmp(e->key, "sws_flags")) {
@@ -1895,36 +1936,55 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
 
     graph->scale_sws_opts = av_strdup(sws_flags_str);
 
-    snprintf(buffersrc_args, sizeof(buffersrc_args),
-             "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d:"
-             "colorspace=%d:range=%d",
-             frame->width, frame->height, frame->format,
-             is->video_st->time_base.num, is->video_st->time_base.den,
-             codecpar->sample_aspect_ratio.num, FFMAX(codecpar->sample_aspect_ratio.den, 1),
-             frame->colorspace, frame->color_range);
-    if (fr.num && fr.den)
-        av_strlcatf(buffersrc_args, sizeof(buffersrc_args), ":frame_rate=%d/%d", fr.num, fr.den);
 
-    if ((ret = avfilter_graph_create_filter(&filt_src,
-                                            avfilter_get_by_name("buffer"),
-                                            "ffplay_buffer", buffersrc_args, NULL,
-                                            graph)) < 0)
+    filt_src = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffer"),
+                                           "ffplay_buffer");
+    if (!filt_src) {
+        ret = AVERROR(ENOMEM);
         goto fail;
+    }
+
+    par->format              = frame->format;
+    par->time_base           = is->video_st->time_base;
+    par->width               = frame->width;
+    par->height              = frame->height;
+    par->sample_aspect_ratio = codecpar->sample_aspect_ratio;
+    par->color_space         = frame->colorspace;
+    par->color_range         = frame->color_range;
+    par->alpha_mode          = frame->alpha_mode;
+    par->frame_rate          = fr;
     par->hw_frames_ctx = frame->hw_frames_ctx;
     ret = av_buffersrc_parameters_set(filt_src, par);
     if (ret < 0)
         goto fail;
 
-    ret = avfilter_graph_create_filter(&filt_out,
-                                       avfilter_get_by_name("buffersink"),
-                                       "ffplay_buffersink", NULL, NULL, graph);
+    ret = avfilter_init_dict(filt_src, NULL);
     if (ret < 0)
         goto fail;
 
-    if ((ret = av_opt_set_int_list(filt_out, "pix_fmts", pix_fmts,  AV_PIX_FMT_NONE, AV_OPT_SEARCH_CHILDREN)) < 0)
+    filt_out = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffersink"),
+                                           "ffplay_buffersink");
+    if (!filt_out) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
+
+    if ((ret = av_opt_set_array(filt_out, "pixel_formats", AV_OPT_SEARCH_CHILDREN,
+                                0, nb_pix_fmts, AV_OPT_TYPE_PIXEL_FMT, pix_fmts)) < 0)
         goto fail;
     if (!vk_renderer &&
-        (ret = av_opt_set_int_list(filt_out, "color_spaces", sdl_supported_color_spaces,  AVCOL_SPC_UNSPECIFIED, AV_OPT_SEARCH_CHILDREN)) < 0)
+        (ret = av_opt_set_array(filt_out, "colorspaces", AV_OPT_SEARCH_CHILDREN,
+                                0, FF_ARRAY_ELEMS(sdl_supported_color_spaces),
+                                AV_OPT_TYPE_INT, sdl_supported_color_spaces)) < 0)
+        goto fail;
+
+    if ((ret = av_opt_set_array(filt_out, "alphamodes", AV_OPT_SEARCH_CHILDREN,
+                                0, FF_ARRAY_ELEMS(sdl_supported_alpha_modes),
+                                AV_OPT_TYPE_INT, sdl_supported_alpha_modes)) < 0)
+        goto fail;
+
+    ret = avfilter_init_dict(filt_out, NULL);
+    if (ret < 0)
         goto fail;
 
     last_filter = filt_out;
@@ -1994,8 +2054,6 @@ fail:
 
 static int configure_audio_filters(VideoState *is, const char *afilters, int force_output_format)
 {
-    static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_NONE };
-    int sample_rates[2] = { 0, -1 };
     AVFilterContext *filt_asrc = NULL, *filt_asink = NULL;
     char aresample_swr_opts[512] = "";
     const AVDictionaryEntry *e = NULL;
@@ -2029,30 +2087,28 @@ static int configure_audio_filters(VideoState *is, const char *afilters, int for
     if (ret < 0)
         goto end;
 
-
-    ret = avfilter_graph_create_filter(&filt_asink,
-                                       avfilter_get_by_name("abuffersink"), "ffplay_abuffersink",
-                                       NULL, NULL, is->agraph);
-    if (ret < 0)
+    filt_asink = avfilter_graph_alloc_filter(is->agraph, avfilter_get_by_name("abuffersink"),
+                                             "ffplay_abuffersink");
+    if (!filt_asink) {
+        ret = AVERROR(ENOMEM);
         goto end;
+    }
 
-    if ((ret = av_opt_set_int_list(filt_asink, "sample_fmts", sample_fmts,  AV_SAMPLE_FMT_NONE, AV_OPT_SEARCH_CHILDREN)) < 0)
-        goto end;
-    if ((ret = av_opt_set_int(filt_asink, "all_channel_counts", 1, AV_OPT_SEARCH_CHILDREN)) < 0)
+    if ((ret = av_opt_set(filt_asink, "sample_formats", "s16", AV_OPT_SEARCH_CHILDREN)) < 0)
         goto end;
 
     if (force_output_format) {
-        av_bprint_clear(&bp);
-        av_channel_layout_describe_bprint(&is->audio_tgt.ch_layout, &bp);
-        sample_rates   [0] = is->audio_tgt.freq;
-        if ((ret = av_opt_set_int(filt_asink, "all_channel_counts", 0, AV_OPT_SEARCH_CHILDREN)) < 0)
+        if ((ret = av_opt_set_array(filt_asink, "channel_layouts", AV_OPT_SEARCH_CHILDREN,
+                                    0, 1, AV_OPT_TYPE_CHLAYOUT, &is->audio_tgt.ch_layout)) < 0)
             goto end;
-        if ((ret = av_opt_set(filt_asink, "ch_layouts", bp.str, AV_OPT_SEARCH_CHILDREN)) < 0)
-            goto end;
-        if ((ret = av_opt_set_int_list(filt_asink, "sample_rates"   , sample_rates   ,  -1, AV_OPT_SEARCH_CHILDREN)) < 0)
+        if ((ret = av_opt_set_array(filt_asink, "samplerates", AV_OPT_SEARCH_CHILDREN,
+                                    0, 1, AV_OPT_TYPE_INT, &is->audio_tgt.freq)) < 0)
             goto end;
     }
 
+    ret = avfilter_init_dict(filt_asink, NULL);
+    if (ret < 0)
+        goto end;
 
     if ((ret = configure_filtergraph(is->agraph, afilters, filt_asrc, filt_asink)) < 0)
         goto end;
@@ -2607,6 +2663,11 @@ static int create_hwaccel(AVBufferRef **device_ctx)
     if (type == AV_HWDEVICE_TYPE_NONE)
         return AVERROR(ENOTSUP);
 
+    if (!vk_renderer) {
+        av_log(NULL, AV_LOG_ERROR, "Vulkan renderer is not available\n");
+        return AVERROR(ENOTSUP);
+    }
+
     ret = vk_renderer_get_hw_dev(vk_renderer, &vk_dev);
     if (ret < 0)
         return ret;
@@ -2822,6 +2883,7 @@ static int read_thread(void *arg)
     int st_index[AVMEDIA_TYPE_NB];
     AVPacket *pkt = NULL;
     int64_t stream_start_time;
+    char metadata_description[96];
     int pkt_in_play_range = 0;
     const AVDictionaryEntry *t;
     SDL_mutex *wait_mutex = SDL_CreateMutex();
@@ -2929,8 +2991,10 @@ static int read_thread(void *arg)
 
     is->realtime = is_realtime(ic);
 
-    if (show_status)
+    if (show_status) {
+        fprintf(stderr, "\x1b[2K\r");
         av_dump_format(ic, 0, is->filename, 0);
+    }
 
     for (i = 0; i < ic->nb_streams; i++) {
         AVStream *st = ic->streams[i];
@@ -2939,6 +3003,9 @@ static int read_thread(void *arg)
         if (type >= 0 && wanted_stream_spec[type] && st_index[type] == -1)
             if (avformat_match_stream_specifier(ic, st, wanted_stream_spec[type]) > 0)
                 st_index[type] = i;
+        // Clear all pre-existing metadata update flags to avoid printing
+        // initial metadata as update.
+        st->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
     }
     for (i = 0; i < AVMEDIA_TYPE_NB; i++) {
         if (wanted_stream_spec[i] && st_index[i] == -1) {
@@ -3107,6 +3174,19 @@ static int read_thread(void *arg)
         } else {
             is->eof = 0;
         }
+
+        if (show_status && ic->streams[pkt->stream_index]->event_flags &
+            AVSTREAM_EVENT_FLAG_METADATA_UPDATED) {
+            fprintf(stderr, "\x1b[2K\r");
+            snprintf(metadata_description,
+                     sizeof(metadata_description),
+                     "\r  New metadata for stream %d",
+                     pkt->stream_index);
+            dump_dictionary(NULL, ic->streams[pkt->stream_index]->metadata,
+                               metadata_description, "    ", AV_LOG_INFO);
+        }
+        ic->streams[pkt->stream_index]->event_flags &= ~AVSTREAM_EVENT_FLAG_METADATA_UPDATED;
+
         /* check if packet is in play range specified by user, then queue, otherwise discard */
         stream_start_time = ic->streams[pkt->stream_index]->start_time;
         pkt_ts = pkt->pts == AV_NOPTS_VALUE ? pkt->dts : pkt->pts;
@@ -3188,6 +3268,16 @@ static VideoState *stream_open(const char *filename,
         av_log(NULL, AV_LOG_WARNING, "-volume=%d < 0, setting to 0\n", startup_volume);
     if (startup_volume > 100)
         av_log(NULL, AV_LOG_WARNING, "-volume=%d > 100, setting to 100\n", startup_volume);
+    if (video_background) {
+        if (!strcmp(video_background, "none")) {
+            is->render_params.video_background_type = VIDEO_BACKGROUND_NONE;
+        } else if (strcmp(video_background, "tiles")) {
+            if (av_parse_color(is->render_params.video_background_color, video_background, -1, NULL) >= 0)
+                is->render_params.video_background_type = VIDEO_BACKGROUND_COLOR;
+            else
+                goto fail;
+        }
+    }
     startup_volume = av_clip(startup_volume, 0, 100);
     startup_volume = av_clip(SDL_MIX_MAXVOLUME * startup_volume / 100, 0, SDL_MIX_MAXVOLUME);
     is->audio_volume = startup_volume;
@@ -3701,6 +3791,7 @@ static const OptionDef options[] = {
     { "filter_threads",     OPT_TYPE_INT,    OPT_EXPERT, { &filter_nbthreads }, "number of filter threads per graph" },
     { "enable_vulkan",      OPT_TYPE_BOOL,            0, { &enable_vulkan }, "enable vulkan renderer" },
     { "vulkan_params",      OPT_TYPE_STRING, OPT_EXPERT, { &vulkan_params }, "vulkan configuration using a list of key=value pairs separated by ':'" },
+    { "video_bg",           OPT_TYPE_STRING, OPT_EXPERT, { &video_background }, "set video background for transparent videos" },
     { "hwaccel",            OPT_TYPE_STRING, OPT_EXPERT, { &hwaccel }, "use HW accelerated decoding" },
     { NULL, },
 };
@@ -3735,9 +3826,9 @@ void show_help_default(const char *opt, const char *arg)
            "c                   cycle program\n"
            "w                   cycle video filters or show modes\n"
            "s                   activate frame-step mode\n"
-           "left/right          seek backward/forward 10 seconds or to custom interval if -seek_interval is set\n"
+           "left/right          seek backward/forward by 10 seconds or a custom interval if -seek_interval is set\n"
            "down/up             seek backward/forward 1 minute\n"
-           "page down/page up   seek backward/forward 10 minutes\n"
+           "page down/page up   seek to previous/next chapter or backward/forward 10 minutes if no chapters\n"
            "right mouse click   seek to percentage in file corresponding to fraction of width\n"
            "left double-click   toggle full screen\n"
            );

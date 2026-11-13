@@ -95,6 +95,8 @@ const AVOutputFormat *av_guess_format(const char *short_name, const char *filena
     /* Find the proper file type. */
     score_max = 0;
     while ((fmt = av_muxer_iterate(&i))) {
+        if (fmt->flags & AVFMT_EXPERIMENTAL && !short_name)
+            continue;
         score = 0;
         if (fmt->name && short_name && av_match_name(short_name, fmt->name))
             score += 100;
@@ -170,7 +172,7 @@ const AVInputFormat *av_probe_input_format3(const AVProbeData *pd,
     if (!lpd.buf)
         lpd.buf = (unsigned char *) zerobuffer;
 
-    if (lpd.buf_size > 10 && ff_id3v2_match(lpd.buf, ID3v2_DEFAULT_MAGIC)) {
+    while (lpd.buf_size > 10 && ff_id3v2_match(lpd.buf, ID3v2_DEFAULT_MAGIC)) {
         int id3len = ff_id3v2_tag_len(lpd.buf);
         if (lpd.buf_size > id3len + 16) {
             if (lpd.buf_size < 2LL*id3len + 16)
@@ -179,8 +181,11 @@ const AVInputFormat *av_probe_input_format3(const AVProbeData *pd,
             lpd.buf_size -= id3len;
         } else if (id3len >= PROBE_BUF_MAX) {
             nodat = ID3_GREATER_MAX_PROBE;
-        } else
+            break;
+        } else {
             nodat = ID3_GREATER_PROBE;
+            break;
+        }
     }
 
     while ((fmt1 = av_demuxer_iterate(&i))) {
@@ -212,10 +217,10 @@ const AVInputFormat *av_probe_input_format3(const AVProbeData *pd,
                 score = AVPROBE_SCORE_EXTENSION;
         }
         if (av_match_name(lpd.mime_type, fmt1->mime_type)) {
-            if (AVPROBE_SCORE_MIME > score) {
-                av_log(NULL, AV_LOG_DEBUG, "Probing %s score:%d increased to %d due to MIME type\n", fmt1->name, score, AVPROBE_SCORE_MIME);
-                score = AVPROBE_SCORE_MIME;
-            }
+            int old_score = score;
+            score += AVPROBE_SCORE_MIME_BONUS;
+            if (score > AVPROBE_SCORE_MAX) score = AVPROBE_SCORE_MAX;
+            av_log(NULL, AV_LOG_DEBUG, "Probing %s score:%d increased to %d due to MIME type\n", fmt1->name, old_score, score);
         }
         if (score > score_max) {
             score_max = score;

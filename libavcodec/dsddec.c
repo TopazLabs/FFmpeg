@@ -52,7 +52,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     ff_init_dsd_data();
 
-    s = av_malloc_array(sizeof(DSDContext), avctx->ch_layout.nb_channels);
+    s = av_malloc_array(avctx->ch_layout.nb_channels, sizeof(*s));
     if (!s)
         return AVERROR(ENOMEM);
 
@@ -126,8 +126,6 @@ const FFCodec ff_ ## name_ ## _decoder = { \
     .init         = decode_init, \
     FF_CODEC_DECODE_CB(decode_frame), \
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS, \
-    .p.sample_fmts = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP, \
-                                                   AV_SAMPLE_FMT_NONE }, \
 };
 
 DSD_DECODER(DSD_LSBF, dsd_lsbf, "DSD (Direct Stream Digital), least significant bit first")

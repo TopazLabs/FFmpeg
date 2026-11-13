@@ -90,35 +90,32 @@ static const AVOption aphasemeter_options[] = {
 
 AVFILTER_DEFINE_CLASS(aphasemeter);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    AudioPhaseMeterContext *s = ctx->priv;
+    const AudioPhaseMeterContext *s = ctx->priv;
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layout = NULL;
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_FLT, AV_SAMPLE_FMT_NONE };
     static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_RGBA, AV_PIX_FMT_NONE };
+    static const AVChannelLayout layouts[] = {
+        AV_CHANNEL_LAYOUT_STEREO,
+        { .nb_channels = 0 },
+    };
     int ret;
 
-    formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref         (formats, &inlink->outcfg.formats        )) < 0 ||
-        (ret = ff_formats_ref         (formats, &outlink->incfg.formats        )) < 0 ||
-        (ret = ff_add_channel_layout  (&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO )) < 0 ||
-        (ret = ff_channel_layouts_ref (layout , &inlink->outcfg.channel_layouts)) < 0 ||
-        (ret = ff_channel_layouts_ref (layout , &outlink->incfg.channel_layouts)) < 0)
+    formats = ff_make_sample_format_list(sample_fmts);
+    if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0 ||
+        (ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0 ||
-        (ret = ff_formats_ref(formats, &outlink->incfg.samplerates)) < 0)
+    ret = ff_set_common_channel_layouts_from_list2(ctx, cfg_in, cfg_out, layouts);
+    if (ret < 0)
         return ret;
 
     if (s->do_video) {
-        AVFilterLink *outlink = ctx->outputs[1];
-
-        formats = ff_make_format_list(pix_fmts);
-        if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
+        formats = ff_make_pixel_format_list(pix_fmts);
+        if ((ret = ff_formats_ref(formats, &cfg_out[1]->formats)) < 0)
             return ret;
     }
 
@@ -174,8 +171,9 @@ static inline void add_metadata(AVFrame *insamples, const char *key, char *value
     av_dict_set(&insamples->metadata, buf, value, 0);
 }
 
-static inline void update_mono_detection(AudioPhaseMeterContext *s, AVFrame *insamples, int mono_measurement)
+static inline void update_mono_detection(AVFilterContext *ctx, AVFrame *insamples, int mono_measurement)
 {
+    AudioPhaseMeterContext *s = ctx->priv;
     int64_t mono_duration;
     if (!s->is_mono && mono_measurement) {
         s->is_mono = 1;
@@ -187,7 +185,7 @@ static inline void update_mono_detection(AudioPhaseMeterContext *s, AVFrame *ins
         mono_duration = get_duration(s->mono_idx);
         if (mono_duration >= s->duration) {
             add_metadata(insamples, "mono_start", av_ts2timestr(s->mono_idx[0], &s->time_base));
-            av_log(s, AV_LOG_INFO, "mono_start: %s\n", av_ts2timestr(s->mono_idx[0], &s->time_base));
+            av_log(ctx, AV_LOG_INFO, "mono_start: %s\n", av_ts2timestr(s->mono_idx[0], &s->time_base));
             s->start_mono_presence = 0;
         }
     }
@@ -199,14 +197,15 @@ static inline void update_mono_detection(AudioPhaseMeterContext *s, AVFrame *ins
                 add_metadata(insamples, "mono_end", av_ts2timestr(s->mono_idx[1], &s->time_base));
                 add_metadata(insamples, "mono_duration", av_ts2timestr(mono_duration, &s->time_base));
             }
-            av_log(s, AV_LOG_INFO, "mono_end: %s | mono_duration: %s\n", av_ts2timestr(s->mono_idx[1], &s->time_base), av_ts2timestr(mono_duration, &s->time_base));
+            av_log(ctx, AV_LOG_INFO, "mono_end: %s | mono_duration: %s\n", av_ts2timestr(s->mono_idx[1], &s->time_base), av_ts2timestr(mono_duration, &s->time_base));
         }
         s->is_mono = 0;
     }
 }
 
-static inline void update_out_phase_detection(AudioPhaseMeterContext *s, AVFrame *insamples, int out_phase_measurement)
+static inline void update_out_phase_detection(AVFilterContext *ctx, AVFrame *insamples, int out_phase_measurement)
 {
+    AudioPhaseMeterContext *s = ctx->priv;
     int64_t out_phase_duration;
     if (!s->is_out_phase && out_phase_measurement) {
         s->is_out_phase = 1;
@@ -218,7 +217,7 @@ static inline void update_out_phase_detection(AudioPhaseMeterContext *s, AVFrame
         out_phase_duration = get_duration(s->out_phase_idx);
         if (out_phase_duration >= s->duration) {
             add_metadata(insamples, "out_phase_start", av_ts2timestr(s->out_phase_idx[0], &s->time_base));
-            av_log(s, AV_LOG_INFO, "out_phase_start: %s\n", av_ts2timestr(s->out_phase_idx[0], &s->time_base));
+            av_log(ctx, AV_LOG_INFO, "out_phase_start: %s\n", av_ts2timestr(s->out_phase_idx[0], &s->time_base));
             s->start_out_phase_presence = 0;
         }
     }
@@ -230,7 +229,7 @@ static inline void update_out_phase_detection(AudioPhaseMeterContext *s, AVFrame
                 add_metadata(insamples, "out_phase_end", av_ts2timestr(s->out_phase_idx[1], &s->time_base));
                 add_metadata(insamples, "out_phase_duration", av_ts2timestr(out_phase_duration, &s->time_base));
             }
-            av_log(s, AV_LOG_INFO, "out_phase_end: %s | out_phase_duration: %s\n", av_ts2timestr(s->out_phase_idx[1], &s->time_base), av_ts2timestr(out_phase_duration, &s->time_base));
+            av_log(ctx, AV_LOG_INFO, "out_phase_end: %s | out_phase_duration: %s\n", av_ts2timestr(s->out_phase_idx[1], &s->time_base), av_ts2timestr(out_phase_duration, &s->time_base));
         }
         s->is_out_phase = 0;
     }
@@ -325,8 +324,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         mono_measurement = (tolerance - fphase) < FLT_EPSILON;
         out_phase_measurement = (angle - fphase) > FLT_EPSILON;
 
-        update_mono_detection(s, in, mono_measurement);
-        update_out_phase_detection(s, in, out_phase_measurement);
+        update_mono_detection(ctx, in, mono_measurement);
+        update_out_phase_detection(ctx, in, out_phase_measurement);
     }
 
     if (s->do_video)
@@ -389,8 +388,8 @@ static av_cold void uninit(AVFilterContext *ctx)
     AudioPhaseMeterContext *s = ctx->priv;
 
     if (s->do_phasing_detection) {
-        update_mono_detection(s, NULL, 0);
-        update_out_phase_detection(s, NULL, 0);
+        update_mono_detection(ctx, NULL, 0);
+        update_out_phase_detection(ctx, NULL, 0);
     }
     av_frame_free(&s->out);
 }
@@ -431,16 +430,15 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_avf_aphasemeter = {
-    .name          = "aphasemeter",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to phase meter video output."),
+const FFFilter ff_avf_aphasemeter = {
+    .p.name        = "aphasemeter",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to phase meter video output."),
+    .p.priv_class  = &aphasemeter_class,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
     .init          = init,
     .uninit        = uninit,
     .priv_size     = sizeof(AudioPhaseMeterContext),
     FILTER_INPUTS(inputs),
     .activate      = activate,
-    .outputs       = NULL,
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &aphasemeter_class,
-    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS,
+    FILTER_QUERY_FUNC2(query_formats),
 };

@@ -60,19 +60,15 @@ DECLARE_ASM_CONST(8, uint64_t, mask15r)      = 0x7C007C007C007C00ULL;
 #define mask16b mask15b
 DECLARE_ASM_CONST(8, uint64_t, mask16g)      = 0x07E007E007E007E0ULL;
 DECLARE_ASM_CONST(8, uint64_t, mask16r)      = 0xF800F800F800F800ULL;
-DECLARE_ASM_CONST(8, uint64_t, red_16mask)   = 0x0000f8000000f800ULL;
+#define red_16mask mask3215g
 DECLARE_ASM_CONST(8, uint64_t, green_16mask) = 0x000007e0000007e0ULL;
 DECLARE_ASM_CONST(8, uint64_t, blue_16mask)  = 0x0000001f0000001fULL;
 DECLARE_ASM_CONST(8, uint64_t, red_15mask)   = 0x00007c0000007c00ULL;
 DECLARE_ASM_CONST(8, uint64_t, green_15mask) = 0x000003e0000003e0ULL;
-DECLARE_ASM_CONST(8, uint64_t, blue_15mask)  = 0x0000001f0000001fULL;
+#define blue_15mask blue_16mask
 DECLARE_ASM_CONST(8, uint64_t, mul15_mid)    = 0x4200420042004200ULL;
 DECLARE_ASM_CONST(8, uint64_t, mul15_hi)     = 0x0210021002100210ULL;
 DECLARE_ASM_CONST(8, uint64_t, mul16_mid)    = 0x2080208020802080ULL;
-
-DECLARE_ALIGNED(8, extern const uint64_t, ff_bgr2YOffset);
-DECLARE_ALIGNED(8, extern const uint64_t, ff_w1111);
-DECLARE_ALIGNED(8, extern const uint64_t, ff_bgr2UVOffset);
 
 #define BY ((int)( 0.098*(1<<RGB2YUV_SHIFT)+0.5))
 #define BV ((int)(-0.071*(1<<RGB2YUV_SHIFT)+0.5))
@@ -1276,107 +1272,6 @@ static inline void yuv422ptoyuy2_mmxext(const uint8_t *ysrc, const uint8_t *usrc
     yuvPlanartoyuy2_mmxext(ysrc, usrc, vsrc, dst, width, height, lumStride, chromStride, dstStride, 1);
 }
 
-/**
- * Height should be a multiple of 2 and width should be a multiple of 16.
- * (If this is a problem for anyone then tell me, and I will fix it.)
- */
-static inline void yuy2toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
-                                      int width, int height,
-                                      int lumStride, int chromStride, int srcStride)
-{
-    const x86_reg chromWidth= width>>1;
-    for (int y = 0; y < height; y += 2) {
-        __asm__ volatile(
-            "xor              %%"FF_REG_a", %%"FF_REG_a"\n\t"
-            "pcmpeqw                 %%mm7, %%mm7       \n\t"
-            "psrlw                      $8, %%mm7       \n\t" // FF,00,FF,00...
-            ".p2align                    4              \n\t"
-            "1:                \n\t"
-            PREFETCH" 64(%0, %%"FF_REG_a", 4)           \n\t"
-            "movq    (%0, %%"FF_REG_a", 4), %%mm0       \n\t" // YUYV YUYV(0)
-            "movq   8(%0, %%"FF_REG_a", 4), %%mm1       \n\t" // YUYV YUYV(4)
-            "movq                    %%mm0, %%mm2       \n\t" // YUYV YUYV(0)
-            "movq                    %%mm1, %%mm3       \n\t" // YUYV YUYV(4)
-            "psrlw                      $8, %%mm0       \n\t" // U0V0 U0V0(0)
-            "psrlw                      $8, %%mm1       \n\t" // U0V0 U0V0(4)
-            "pand                    %%mm7, %%mm2       \n\t" // Y0Y0 Y0Y0(0)
-            "pand                    %%mm7, %%mm3       \n\t" // Y0Y0 Y0Y0(4)
-            "packuswb                %%mm1, %%mm0       \n\t" // UVUV UVUV(0)
-            "packuswb                %%mm3, %%mm2       \n\t" // YYYY YYYY(0)
-
-            MOVNTQ"                  %%mm2, (%1, %%"FF_REG_a", 2) \n\t"
-
-            "movq  16(%0, %%"FF_REG_a", 4), %%mm1       \n\t" // YUYV YUYV(8)
-            "movq  24(%0, %%"FF_REG_a", 4), %%mm2       \n\t" // YUYV YUYV(12)
-            "movq                    %%mm1, %%mm3       \n\t" // YUYV YUYV(8)
-            "movq                    %%mm2, %%mm4       \n\t" // YUYV YUYV(12)
-            "psrlw                      $8, %%mm1       \n\t" // U0V0 U0V0(8)
-            "psrlw                      $8, %%mm2       \n\t" // U0V0 U0V0(12)
-            "pand                    %%mm7, %%mm3       \n\t" // Y0Y0 Y0Y0(8)
-            "pand                    %%mm7, %%mm4       \n\t" // Y0Y0 Y0Y0(12)
-            "packuswb                %%mm2, %%mm1       \n\t" // UVUV UVUV(8)
-            "packuswb                %%mm4, %%mm3       \n\t" // YYYY YYYY(8)
-
-            MOVNTQ"                  %%mm3, 8(%1, %%"FF_REG_a", 2) \n\t"
-
-            "movq                    %%mm0, %%mm2       \n\t" // UVUV UVUV(0)
-            "movq                    %%mm1, %%mm3       \n\t" // UVUV UVUV(8)
-            "psrlw                      $8, %%mm0       \n\t" // V0V0 V0V0(0)
-            "psrlw                      $8, %%mm1       \n\t" // V0V0 V0V0(8)
-            "pand                    %%mm7, %%mm2       \n\t" // U0U0 U0U0(0)
-            "pand                    %%mm7, %%mm3       \n\t" // U0U0 U0U0(8)
-            "packuswb                %%mm1, %%mm0       \n\t" // VVVV VVVV(0)
-            "packuswb                %%mm3, %%mm2       \n\t" // UUUU UUUU(0)
-
-            MOVNTQ"                  %%mm0, (%3, %%"FF_REG_a")     \n\t"
-            MOVNTQ"                  %%mm2, (%2, %%"FF_REG_a")     \n\t"
-
-            "add                        $8, %%"FF_REG_a" \n\t"
-            "cmp                        %4, %%"FF_REG_a" \n\t"
-            " jb                        1b               \n\t"
-            ::"r"(src), "r"(ydst), "r"(udst), "r"(vdst), "g" (chromWidth)
-            : "memory", "%"FF_REG_a
-        );
-
-        ydst += lumStride;
-        src  += srcStride;
-
-        __asm__ volatile(
-            "xor              %%"FF_REG_a", %%"FF_REG_a"\n\t"
-            ".p2align                    4              \n\t"
-            "1:                                         \n\t"
-            PREFETCH" 64(%0, %%"FF_REG_a", 4)           \n\t"
-            "movq    (%0, %%"FF_REG_a", 4), %%mm0       \n\t" // YUYV YUYV(0)
-            "movq   8(%0, %%"FF_REG_a", 4), %%mm1       \n\t" // YUYV YUYV(4)
-            "movq  16(%0, %%"FF_REG_a", 4), %%mm2       \n\t" // YUYV YUYV(8)
-            "movq  24(%0, %%"FF_REG_a", 4), %%mm3       \n\t" // YUYV YUYV(12)
-            "pand                    %%mm7, %%mm0       \n\t" // Y0Y0 Y0Y0(0)
-            "pand                    %%mm7, %%mm1       \n\t" // Y0Y0 Y0Y0(4)
-            "pand                    %%mm7, %%mm2       \n\t" // Y0Y0 Y0Y0(8)
-            "pand                    %%mm7, %%mm3       \n\t" // Y0Y0 Y0Y0(12)
-            "packuswb                %%mm1, %%mm0       \n\t" // YYYY YYYY(0)
-            "packuswb                %%mm3, %%mm2       \n\t" // YYYY YYYY(8)
-
-            MOVNTQ"                  %%mm0,  (%1, %%"FF_REG_a", 2) \n\t"
-            MOVNTQ"                  %%mm2, 8(%1, %%"FF_REG_a", 2) \n\t"
-
-            "add                        $8, %%"FF_REG_a"\n\t"
-            "cmp                        %4, %%"FF_REG_a"\n\t"
-            " jb                        1b              \n\t"
-
-            ::"r"(src), "r"(ydst), "r"(udst), "r"(vdst), "g" (chromWidth)
-            : "memory", "%"FF_REG_a
-        );
-        udst += chromStride;
-        vdst += chromStride;
-        ydst += lumStride;
-        src  += srcStride;
-    }
-    __asm__ volatile(EMMS"       \n\t"
-                     SFENCE"     \n\t"
-                     :::"memory");
-}
-
 static inline void planar2x_mmxext(const uint8_t *src, uint8_t *dst, int srcWidth, int srcHeight, int srcStride, int dstStride)
 {
     dst[0]= src[0];
@@ -1481,10 +1376,14 @@ static inline void planar2x_mmxext(const uint8_t *src, uint8_t *dst, int srcWidt
  * FIXME: Write HQ version.
  */
 #if ARCH_X86_32 && HAVE_7REGS
+DECLARE_ASM_CONST(8, uint64_t, bgr2YOffset)  = 0x1010101010101010ULL;
+DECLARE_ASM_CONST(8, uint64_t, bgr2UVOffset) = 0x8080808080808080ULL;
+DECLARE_ASM_CONST(8, uint64_t, w1111)        = 0x0001000100010001ULL;
+
 static inline void rgb24toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
                                        int width, int height,
                                        int lumStride, int chromStride, int srcStride,
-                                       int32_t *rgb2yuv)
+                                       const int32_t *rgb2yuv)
 {
 #define BGR2Y_IDX "16*4+16*32"
 #define BGR2U_IDX "16*4+16*33"
@@ -1506,7 +1405,7 @@ static inline void rgb24toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t
             __asm__ volatile(
                 "mov                        %2, %%"FF_REG_a"\n\t"
                 "movq          "BGR2Y_IDX"(%3), %%mm6       \n\t"
-                "movq       "MANGLE(ff_w1111)", %%mm5       \n\t"
+                "movq          "MANGLE(w1111)", %%mm5       \n\t"
                 "pxor                    %%mm7, %%mm7       \n\t"
                 "lea (%%"FF_REG_a", %%"FF_REG_a", 2), %%"FF_REG_d" \n\t"
                 ".p2align                    4              \n\t"
@@ -1560,13 +1459,13 @@ static inline void rgb24toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t
                 "psraw                      $7, %%mm4       \n\t"
 
                 "packuswb                %%mm4, %%mm0       \n\t"
-                "paddusb "MANGLE(ff_bgr2YOffset)", %%mm0    \n\t"
+                "paddusb "MANGLE(bgr2YOffset)", %%mm0       \n\t"
 
                 MOVNTQ"                  %%mm0, (%1, %%"FF_REG_a") \n\t"
                 "add                        $8,      %%"FF_REG_a"  \n\t"
                 " js                        1b                     \n\t"
                 : : "r" (src+width*3), "r" (ydst+width), "g" ((x86_reg)-width), "r"(rgb2yuv)
-                  NAMED_CONSTRAINTS_ADD(ff_w1111,ff_bgr2YOffset)
+                  NAMED_CONSTRAINTS_ADD(w1111,bgr2YOffset)
                 : "%"FF_REG_a, "%"FF_REG_d
             );
             ydst += lumStride;
@@ -1575,7 +1474,7 @@ static inline void rgb24toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t
         src -= srcStride*2;
         __asm__ volatile(
             "mov                        %4, %%"FF_REG_a"\n\t"
-            "movq       "MANGLE(ff_w1111)", %%mm5       \n\t"
+            "movq          "MANGLE(w1111)", %%mm5       \n\t"
             "movq          "BGR2U_IDX"(%5), %%mm6       \n\t"
             "pxor                    %%mm7, %%mm7       \n\t"
             "lea (%%"FF_REG_a", %%"FF_REG_a", 2), %%"FF_REG_d" \n\t"
@@ -1653,14 +1552,14 @@ static inline void rgb24toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t
             "punpckldq               %%mm4, %%mm0           \n\t"
             "punpckhdq               %%mm4, %%mm1           \n\t"
             "packsswb                %%mm1, %%mm0           \n\t"
-            "paddb "MANGLE(ff_bgr2UVOffset)", %%mm0         \n\t"
+            "paddb  "MANGLE(bgr2UVOffset)", %%mm0           \n\t"
             "movd                    %%mm0, (%2, %%"FF_REG_a") \n\t"
             "punpckhdq               %%mm0, %%mm0              \n\t"
             "movd                    %%mm0, (%3, %%"FF_REG_a") \n\t"
             "add                        $4, %%"FF_REG_a"       \n\t"
             " js                        1b              \n\t"
             : : "r" (src+chromWidth*6), "r" (src+srcStride+chromWidth*6), "r" (udst+chromWidth), "r" (vdst+chromWidth), "g" (-chromWidth), "r"(rgb2yuv)
-              NAMED_CONSTRAINTS_ADD(ff_w1111,ff_bgr2UVOffset)
+              NAMED_CONSTRAINTS_ADD(w1111,bgr2UVOffset)
             : "%"FF_REG_a, "%"FF_REG_d
         );
 
@@ -1676,182 +1575,6 @@ static inline void rgb24toyv12_mmxext(const uint8_t *src, uint8_t *ydst, uint8_t
      ff_rgb24toyv12_c(src, ydst, udst, vdst, width, height-y, lumStride, chromStride, srcStride, rgb2yuv);
 }
 #endif /* HAVE_7REGS */
-
-static inline void vu9_to_vu12_mmxext(const uint8_t *src1, const uint8_t *src2,
-                                       uint8_t *dst1, uint8_t *dst2,
-                                       int width, int height,
-                                       int srcStride1, int srcStride2,
-                                       int dstStride1, int dstStride2)
-{
-    int w,h;
-    w=width/2; h=height/2;
-    __asm__ volatile(
-        PREFETCH" %0    \n\t"
-        PREFETCH" %1    \n\t"
-        ::"m"(*(src1+srcStride1)),"m"(*(src2+srcStride2)):"memory");
-    for (x86_reg y = 0; y < h; y++) {
-        const uint8_t* s1=src1+srcStride1*(y>>1);
-        uint8_t* d=dst1+dstStride1*y;
-        x86_reg x = 0;
-        for (;x<w-31;x+=32) {
-            __asm__ volatile(
-                PREFETCH"   32(%1,%2)        \n\t"
-                "movq         (%1,%2), %%mm0 \n\t"
-                "movq        8(%1,%2), %%mm2 \n\t"
-                "movq       16(%1,%2), %%mm4 \n\t"
-                "movq       24(%1,%2), %%mm6 \n\t"
-                "movq      %%mm0, %%mm1 \n\t"
-                "movq      %%mm2, %%mm3 \n\t"
-                "movq      %%mm4, %%mm5 \n\t"
-                "movq      %%mm6, %%mm7 \n\t"
-                "punpcklbw %%mm0, %%mm0 \n\t"
-                "punpckhbw %%mm1, %%mm1 \n\t"
-                "punpcklbw %%mm2, %%mm2 \n\t"
-                "punpckhbw %%mm3, %%mm3 \n\t"
-                "punpcklbw %%mm4, %%mm4 \n\t"
-                "punpckhbw %%mm5, %%mm5 \n\t"
-                "punpcklbw %%mm6, %%mm6 \n\t"
-                "punpckhbw %%mm7, %%mm7 \n\t"
-                MOVNTQ"    %%mm0,   (%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm1,  8(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm2, 16(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm3, 24(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm4, 32(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm5, 40(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm6, 48(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm7, 56(%0,%2,2)"
-                :: "r"(d), "r"(s1), "r"(x)
-                :"memory");
-        }
-        for (;x<w;x++) d[2*x]=d[2*x+1]=s1[x];
-    }
-    for (x86_reg y = 0; y < h; y++) {
-        const uint8_t* s2=src2+srcStride2*(y>>1);
-        uint8_t* d=dst2+dstStride2*y;
-        x86_reg x = 0;
-        for (;x<w-31;x+=32) {
-            __asm__ volatile(
-                PREFETCH"   32(%1,%2)        \n\t"
-                "movq         (%1,%2), %%mm0 \n\t"
-                "movq        8(%1,%2), %%mm2 \n\t"
-                "movq       16(%1,%2), %%mm4 \n\t"
-                "movq       24(%1,%2), %%mm6 \n\t"
-                "movq      %%mm0, %%mm1 \n\t"
-                "movq      %%mm2, %%mm3 \n\t"
-                "movq      %%mm4, %%mm5 \n\t"
-                "movq      %%mm6, %%mm7 \n\t"
-                "punpcklbw %%mm0, %%mm0 \n\t"
-                "punpckhbw %%mm1, %%mm1 \n\t"
-                "punpcklbw %%mm2, %%mm2 \n\t"
-                "punpckhbw %%mm3, %%mm3 \n\t"
-                "punpcklbw %%mm4, %%mm4 \n\t"
-                "punpckhbw %%mm5, %%mm5 \n\t"
-                "punpcklbw %%mm6, %%mm6 \n\t"
-                "punpckhbw %%mm7, %%mm7 \n\t"
-                MOVNTQ"    %%mm0,   (%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm1,  8(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm2, 16(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm3, 24(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm4, 32(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm5, 40(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm6, 48(%0,%2,2)  \n\t"
-                MOVNTQ"    %%mm7, 56(%0,%2,2)"
-                :: "r"(d), "r"(s2), "r"(x)
-                :"memory");
-        }
-        for (;x<w;x++) d[2*x]=d[2*x+1]=s2[x];
-    }
-    __asm__(
-            EMMS"       \n\t"
-            SFENCE"     \n\t"
-            ::: "memory"
-        );
-}
-
-static inline void yvu9_to_yuy2_mmxext(const uint8_t *src1, const uint8_t *src2, const uint8_t *src3,
-                                        uint8_t *dst,
-                                        int width, int height,
-                                        int srcStride1, int srcStride2,
-                                        int srcStride3, int dstStride)
-{
-    int w,h;
-    w=width/2; h=height;
-    for (int y = 0; y < h; y++) {
-        const uint8_t* yp=src1+srcStride1*y;
-        const uint8_t* up=src2+srcStride2*(y>>2);
-        const uint8_t* vp=src3+srcStride3*(y>>2);
-        uint8_t* d=dst+dstStride*y;
-        x86_reg x = 0;
-        for (;x<w-7;x+=8) {
-            __asm__ volatile(
-                PREFETCH"   32(%1, %0)          \n\t"
-                PREFETCH"   32(%2, %0)          \n\t"
-                PREFETCH"   32(%3, %0)          \n\t"
-                "movq      (%1, %0, 4), %%mm0   \n\t" /* Y0Y1Y2Y3Y4Y5Y6Y7 */
-                "movq         (%2, %0), %%mm1   \n\t" /* U0U1U2U3U4U5U6U7 */
-                "movq         (%3, %0), %%mm2   \n\t" /* V0V1V2V3V4V5V6V7 */
-                "movq            %%mm0, %%mm3   \n\t" /* Y0Y1Y2Y3Y4Y5Y6Y7 */
-                "movq            %%mm1, %%mm4   \n\t" /* U0U1U2U3U4U5U6U7 */
-                "movq            %%mm2, %%mm5   \n\t" /* V0V1V2V3V4V5V6V7 */
-                "punpcklbw       %%mm1, %%mm1   \n\t" /* U0U0 U1U1 U2U2 U3U3 */
-                "punpcklbw       %%mm2, %%mm2   \n\t" /* V0V0 V1V1 V2V2 V3V3 */
-                "punpckhbw       %%mm4, %%mm4   \n\t" /* U4U4 U5U5 U6U6 U7U7 */
-                "punpckhbw       %%mm5, %%mm5   \n\t" /* V4V4 V5V5 V6V6 V7V7 */
-
-                "movq            %%mm1, %%mm6   \n\t"
-                "punpcklbw       %%mm2, %%mm1   \n\t" /* U0V0 U0V0 U1V1 U1V1*/
-                "punpcklbw       %%mm1, %%mm0   \n\t" /* Y0U0 Y1V0 Y2U0 Y3V0*/
-                "punpckhbw       %%mm1, %%mm3   \n\t" /* Y4U1 Y5V1 Y6U1 Y7V1*/
-                MOVNTQ"          %%mm0,  (%4, %0, 8)    \n\t"
-                MOVNTQ"          %%mm3, 8(%4, %0, 8)    \n\t"
-
-                "punpckhbw       %%mm2, %%mm6   \n\t" /* U2V2 U2V2 U3V3 U3V3*/
-                "movq     8(%1, %0, 4), %%mm0   \n\t"
-                "movq            %%mm0, %%mm3   \n\t"
-                "punpcklbw       %%mm6, %%mm0   \n\t" /* Y U2 Y V2 Y U2 Y V2*/
-                "punpckhbw       %%mm6, %%mm3   \n\t" /* Y U3 Y V3 Y U3 Y V3*/
-                MOVNTQ"          %%mm0, 16(%4, %0, 8)   \n\t"
-                MOVNTQ"          %%mm3, 24(%4, %0, 8)   \n\t"
-
-                "movq            %%mm4, %%mm6   \n\t"
-                "movq    16(%1, %0, 4), %%mm0   \n\t"
-                "movq            %%mm0, %%mm3   \n\t"
-                "punpcklbw       %%mm5, %%mm4   \n\t"
-                "punpcklbw       %%mm4, %%mm0   \n\t" /* Y U4 Y V4 Y U4 Y V4*/
-                "punpckhbw       %%mm4, %%mm3   \n\t" /* Y U5 Y V5 Y U5 Y V5*/
-                MOVNTQ"          %%mm0, 32(%4, %0, 8)   \n\t"
-                MOVNTQ"          %%mm3, 40(%4, %0, 8)   \n\t"
-
-                "punpckhbw       %%mm5, %%mm6   \n\t"
-                "movq    24(%1, %0, 4), %%mm0   \n\t"
-                "movq            %%mm0, %%mm3   \n\t"
-                "punpcklbw       %%mm6, %%mm0   \n\t" /* Y U6 Y V6 Y U6 Y V6*/
-                "punpckhbw       %%mm6, %%mm3   \n\t" /* Y U7 Y V7 Y U7 Y V7*/
-                MOVNTQ"          %%mm0, 48(%4, %0, 8)   \n\t"
-                MOVNTQ"          %%mm3, 56(%4, %0, 8)   \n\t"
-
-                : "+r" (x)
-                : "r"(yp), "r" (up), "r"(vp), "r"(d)
-                :"memory");
-        }
-        for (; x<w; x++) {
-            const int x2 = x<<2;
-            d[8*x+0] = yp[x2];
-            d[8*x+1] = up[x];
-            d[8*x+2] = yp[x2+1];
-            d[8*x+3] = vp[x];
-            d[8*x+4] = yp[x2+2];
-            d[8*x+5] = up[x];
-            d[8*x+6] = yp[x2+3];
-            d[8*x+7] = vp[x];
-        }
-    }
-    __asm__(
-            EMMS"       \n\t"
-            SFENCE"     \n\t"
-            ::: "memory"
-        );
-}
 
 static void extract_even_mmxext(const uint8_t *src, uint8_t *dst, x86_reg count)
 {
@@ -2248,9 +1971,6 @@ static av_cold void rgb2rgb_init_mmxext(void)
     yv12touyvy         = yv12touyvy_mmxext;
     yuv422ptoyuy2      = yuv422ptoyuy2_mmxext;
     yuv422ptouyvy      = yuv422ptouyvy_mmxext;
-    yuy2toyv12         = yuy2toyv12_mmxext;
-    vu9_to_vu12        = vu9_to_vu12_mmxext;
-    yvu9_to_yuy2       = yvu9_to_yuy2_mmxext;
 #if ARCH_X86_32
     uyvytoyuv422       = uyvytoyuv422_mmxext;
 #endif
@@ -2348,6 +2068,10 @@ void ff_shuffle_bytes_0321_ssse3(const uint8_t *src, uint8_t *dst, int src_size)
 void ff_shuffle_bytes_1230_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
 void ff_shuffle_bytes_3012_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
 void ff_shuffle_bytes_3210_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_3102_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_2013_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_2130_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_1203_ssse3(const uint8_t *src, uint8_t *dst, int src_size);
 
 #if ARCH_X86_64
 void ff_shuffle_bytes_2103_avx2(const uint8_t *src, uint8_t *dst, int src_size);
@@ -2355,6 +2079,20 @@ void ff_shuffle_bytes_0321_avx2(const uint8_t *src, uint8_t *dst, int src_size);
 void ff_shuffle_bytes_1230_avx2(const uint8_t *src, uint8_t *dst, int src_size);
 void ff_shuffle_bytes_3012_avx2(const uint8_t *src, uint8_t *dst, int src_size);
 void ff_shuffle_bytes_3210_avx2(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_3102_avx2(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_2013_avx2(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_2130_avx2(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_1203_avx2(const uint8_t *src, uint8_t *dst, int src_size);
+
+void ff_shuffle_bytes_2103_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_0321_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_1230_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_3012_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_3210_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_3102_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_2013_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_2130_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
+void ff_shuffle_bytes_1203_avx512icl(const uint8_t *src, uint8_t *dst, int src_size);
 
 void ff_uyvytoyuv422_sse2(uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
                           const uint8_t *src, int width, int height,
@@ -2365,6 +2103,9 @@ void ff_uyvytoyuv422_avx(uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
 void ff_uyvytoyuv422_avx2(uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
                           const uint8_t *src, int width, int height,
                           int lumStride, int chromStride, int srcStride);
+void ff_uyvytoyuv422_avx512icl(uint8_t *ydst, uint8_t *udst, uint8_t *vdst,
+                               const uint8_t *src, int width, int height,
+                               int lumStride, int chromStride, int srcStride);
 #endif
 
 #define DEINTERLEAVE_BYTES(cpuext)                                            \
@@ -2424,6 +2165,10 @@ av_cold void rgb2rgb_init_x86(void)
         shuffle_bytes_1230 = ff_shuffle_bytes_1230_ssse3;
         shuffle_bytes_3012 = ff_shuffle_bytes_3012_ssse3;
         shuffle_bytes_3210 = ff_shuffle_bytes_3210_ssse3;
+        shuffle_bytes_3102 = ff_shuffle_bytes_3102_ssse3;
+        shuffle_bytes_2013 = ff_shuffle_bytes_2013_ssse3;
+        shuffle_bytes_2130 = ff_shuffle_bytes_2130_ssse3;
+        shuffle_bytes_1203 = ff_shuffle_bytes_1203_ssse3;
     }
 #if HAVE_AVX_EXTERNAL
     if (EXTERNAL_AVX(cpu_flags)) {
@@ -2437,9 +2182,27 @@ av_cold void rgb2rgb_init_x86(void)
         shuffle_bytes_1230 = ff_shuffle_bytes_1230_avx2;
         shuffle_bytes_3012 = ff_shuffle_bytes_3012_avx2;
         shuffle_bytes_3210 = ff_shuffle_bytes_3210_avx2;
+        shuffle_bytes_3102 = ff_shuffle_bytes_3102_avx2;
+        shuffle_bytes_2013 = ff_shuffle_bytes_2013_avx2;
+        shuffle_bytes_2130 = ff_shuffle_bytes_2130_avx2;
+        shuffle_bytes_1203 = ff_shuffle_bytes_1203_avx2;
+    }
+    if (EXTERNAL_AVX512ICL(cpu_flags)) {
+        shuffle_bytes_0321 = ff_shuffle_bytes_0321_avx512icl;
+        shuffle_bytes_2103 = ff_shuffle_bytes_2103_avx512icl;
+        shuffle_bytes_1230 = ff_shuffle_bytes_1230_avx512icl;
+        shuffle_bytes_3012 = ff_shuffle_bytes_3012_avx512icl;
+        shuffle_bytes_3210 = ff_shuffle_bytes_3210_avx512icl;
+        shuffle_bytes_3102 = ff_shuffle_bytes_3102_avx512icl;
+        shuffle_bytes_2013 = ff_shuffle_bytes_2013_avx512icl;
+        shuffle_bytes_2130 = ff_shuffle_bytes_2130_avx512icl;
+        shuffle_bytes_1203 = ff_shuffle_bytes_1203_avx512icl;
     }
     if (EXTERNAL_AVX2_FAST(cpu_flags)) {
         uyvytoyuv422 = ff_uyvytoyuv422_avx2;
+    }
+    if (EXTERNAL_AVX512ICL(cpu_flags)) {
+        uyvytoyuv422 = ff_uyvytoyuv422_avx512icl;
 #endif
     }
 #endif

@@ -190,6 +190,7 @@ static void jpegxl_get_bit_depth(GetBitContext *gb, FFJXLMetadata *meta)
 static int jpegxl_read_extra_channel_info(GetBitContext *gb, FFJXLMetadata *meta, int validate)
 {
     int default_alpha = get_bits1(gb);
+    int alpha_associated = 0;
     uint32_t type, name_len = 0;
 
     if (!default_alpha) {
@@ -213,7 +214,7 @@ static int jpegxl_read_extra_channel_info(GetBitContext *gb, FFJXLMetadata *meta
     skip_bits_long(gb, name_len);
 
     if (!default_alpha && type == JPEGXL_CT_ALPHA)
-        skip_bits1(gb);
+        alpha_associated = get_bits1(gb);
 
     if (type == JPEGXL_CT_SPOT_COLOR)
         skip_bits_long(gb, 16 * 4);
@@ -221,8 +222,10 @@ static int jpegxl_read_extra_channel_info(GetBitContext *gb, FFJXLMetadata *meta
     if (type == JPEGXL_CT_CFA)
         jxl_u32(gb, 1, 0, 3, 19, 0, 2, 4, 8);
 
-    if (meta && type == JPEGXL_CT_ALPHA)
+    if (meta && type == JPEGXL_CT_ALPHA) {
         meta->have_alpha = 1;
+        meta->alpha_associated = alpha_associated;
+    }
 
     return 0;
 }
@@ -450,7 +453,8 @@ int ff_jpegxl_collect_codestream_header(const uint8_t *input_buffer, int input_l
                                         uint8_t *buffer, int buflen, int *copied)
 {
     GetByteContext gb;
-    int pos = 0, last_box = 0;
+    int64_t pos = 0;
+    int last_box = 0;
     bytestream2_init(&gb, input_buffer, input_len);
 
     while (1) {
@@ -516,5 +520,5 @@ int ff_jpegxl_collect_codestream_header(const uint8_t *input_buffer, int input_l
             break;
     }
 
-    return pos;
+    return FFMIN(pos, INT_MAX);
 }

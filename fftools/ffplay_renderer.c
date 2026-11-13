@@ -43,6 +43,7 @@
 
 #include "libavutil/bprint.h"
 #include "libavutil/mem.h"
+#include "libavutil/internal.h"
 
 #endif
 
@@ -53,7 +54,7 @@ struct VkRenderer {
 
     int (*get_hw_dev)(VkRenderer *renderer, AVBufferRef **dev);
 
-    int (*display)(VkRenderer *renderer, AVFrame *frame);
+    int (*display)(VkRenderer *renderer, AVFrame *frame, RenderParams *params);
 
     int (*resize)(VkRenderer *renderer, int width, int height);
 
@@ -104,36 +105,6 @@ static void vk_log_cb(void *log_priv, enum pl_log_level level,
         av_log(log_priv, level_map[level], "%s\n", msg);
 }
 
-// Should keep sync with optional_device_exts inside hwcontext_vulkan.c
-static const char *optional_device_exts[] = {
-    /* Misc or required by other extensions */
-    VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
-    VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
-    VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
-    VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME,
-    VK_EXT_PHYSICAL_DEVICE_DRM_EXTENSION_NAME,
-    VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,
-    VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME,
-
-    /* Imports/exports */
-    VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
-    VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME,
-    VK_EXT_IMAGE_DRM_FORMAT_MODIFIER_EXTENSION_NAME,
-    VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
-    VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME,
-#ifdef _WIN32
-    VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
-    VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
-#endif
-
-    /* Video encoding/decoding */
-    VK_KHR_VIDEO_QUEUE_EXTENSION_NAME,
-    VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME,
-    VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME,
-    VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME,
-    "VK_MESA_video_decode_av1",
-};
-
 static inline int enable_debug(const AVDictionary *opt)
 {
     AVDictionaryEntry *entry = av_dict_get(opt, "debug", NULL, 0);
@@ -145,14 +116,22 @@ static void hwctx_lock_queue(void *priv, uint32_t qf, uint32_t qidx)
 {
     AVHWDeviceContext *avhwctx = priv;
     const AVVulkanDeviceContext *hwctx = avhwctx->hwctx;
+#if FF_API_VULKAN_SYNC_QUEUES
+FF_DISABLE_DEPRECATION_WARNINGS
     hwctx->lock_queue(avhwctx, qf, qidx);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 }
 
 static void hwctx_unlock_queue(void *priv, uint32_t qf, uint32_t qidx)
 {
     AVHWDeviceContext *avhwctx = priv;
     const AVVulkanDeviceContext *hwctx = avhwctx->hwctx;
+#if FF_API_VULKAN_SYNC_QUEUES
+FF_DISABLE_DEPRECATION_WARNINGS
     hwctx->unlock_queue(avhwctx, qf, qidx);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 }
 
 static int add_instance_extension(const char **ext, unsigned num_ext,
@@ -259,8 +238,8 @@ static int create_vk_by_hwcontext(VkRenderer *renderer,
 
     ctx->get_proc_addr = hwctx->get_proc_addr;
     ctx->inst = hwctx->inst;
-    ctx->placebo_vulkan = pl_vulkan_import(ctx->vk_log,
-        pl_vulkan_import_params(
+
+    struct pl_vulkan_import_params import_params = {
             .instance = hwctx->inst,
             .get_proc_addr = hwctx->get_proc_addr,
             .phys_device = hwctx->phys_dev,
@@ -272,18 +251,36 @@ static int create_vk_by_hwcontext(VkRenderer *renderer,
             .unlock_queue   = hwctx_unlock_queue,
             .queue_ctx      = dev,
             .queue_graphics = {
-                .index = hwctx->queue_family_index,
-                .count = hwctx->nb_graphics_queues,
+                .index = VK_QUEUE_FAMILY_IGNORED,
+                .count = 0,
             },
             .queue_compute = {
-                .index = hwctx->queue_family_comp_index,
-                .count = hwctx->nb_comp_queues,
+                .index = VK_QUEUE_FAMILY_IGNORED,
+                .count = 0,
             },
             .queue_transfer = {
-                .index = hwctx->queue_family_tx_index,
-                .count = hwctx->nb_tx_queues,
+                .index = VK_QUEUE_FAMILY_IGNORED,
+                .count = 0,
             },
-        ));
+    };
+    for (int i = 0; i < hwctx->nb_qf; i++) {
+        const AVVulkanDeviceQueueFamily *qf = &hwctx->qf[i];
+
+        if (qf->flags & VK_QUEUE_GRAPHICS_BIT) {
+            import_params.queue_graphics.index = qf->idx;
+            import_params.queue_graphics.count = qf->num;
+        }
+        if (qf->flags & VK_QUEUE_COMPUTE_BIT) {
+            import_params.queue_compute.index = qf->idx;
+            import_params.queue_compute.count = qf->num;
+        }
+        if (qf->flags & VK_QUEUE_TRANSFER_BIT) {
+            import_params.queue_transfer.index = qf->idx;
+            import_params.queue_transfer.count = qf->num;
+        }
+    }
+
+    ctx->placebo_vulkan = pl_vulkan_import(ctx->vk_log, &import_params);
     if (!ctx->placebo_vulkan)
         return AVERROR_EXTERNAL;
 
@@ -295,7 +292,11 @@ static void placebo_lock_queue(struct AVHWDeviceContext *dev_ctx,
 {
     RendererContext *ctx = dev_ctx->user_opaque;
     pl_vulkan vk = ctx->placebo_vulkan;
+#if FF_API_VULKAN_SYNC_QUEUES
+FF_DISABLE_DEPRECATION_WARNINGS
     vk->lock_queue(vk, queue_family, index);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 }
 
 static void placebo_unlock_queue(struct AVHWDeviceContext *dev_ctx,
@@ -304,7 +305,11 @@ static void placebo_unlock_queue(struct AVHWDeviceContext *dev_ctx,
 {
     RendererContext *ctx = dev_ctx->user_opaque;
     pl_vulkan vk = ctx->placebo_vulkan;
+#if FF_API_VULKAN_SYNC_QUEUES
+FF_DISABLE_DEPRECATION_WARNINGS
     vk->unlock_queue(vk, queue_family, index);
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 }
 
 static int get_decode_queue(VkRenderer *renderer, int *index, int *count)
@@ -356,6 +361,8 @@ static int create_vk_by_placebo(VkRenderer *renderer,
     int decode_index;
     int decode_count;
     int ret;
+    const char **dev_exts;
+    int num_dev_exts;
 
     ctx->get_proc_addr = SDL_Vulkan_GetVkGetInstanceProcAddr();
 
@@ -370,16 +377,21 @@ static int create_vk_by_placebo(VkRenderer *renderer,
     }
     ctx->inst = ctx->placebo_instance->instance;
 
+    dev_exts = av_vk_get_optional_device_extensions(&num_dev_exts);
+    if (!dev_exts)
+        return AVERROR(ENOMEM);
+
     ctx->placebo_vulkan = pl_vulkan_create(ctx->vk_log, pl_vulkan_params(
             .instance = ctx->placebo_instance->instance,
             .get_proc_addr = ctx->placebo_instance->get_proc_addr,
             .surface = ctx->vk_surface,
             .allow_software = false,
-            .opt_extensions = optional_device_exts,
-            .num_opt_extensions = FF_ARRAY_ELEMS(optional_device_exts),
+            .opt_extensions = dev_exts,
+            .num_opt_extensions = num_dev_exts,
             .extra_queues = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
             .device_name = select_device(opt),
     ));
+    av_free(dev_exts);
     if (!ctx->placebo_vulkan)
         return AVERROR_EXTERNAL;
     ctx->hw_device_ref = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VULKAN);
@@ -391,8 +403,12 @@ static int create_vk_by_placebo(VkRenderer *renderer,
     device_ctx->user_opaque = ctx;
 
     vk_dev_ctx = device_ctx->hwctx;
-    vk_dev_ctx->lock_queue = placebo_lock_queue,
-            vk_dev_ctx->unlock_queue = placebo_unlock_queue;
+#if FF_API_VULKAN_SYNC_QUEUES
+FF_DISABLE_DEPRECATION_WARNINGS
+    vk_dev_ctx->lock_queue = placebo_lock_queue;
+    vk_dev_ctx->unlock_queue = placebo_unlock_queue;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     vk_dev_ctx->get_proc_addr = ctx->placebo_instance->get_proc_addr;
 
@@ -408,21 +424,38 @@ static int create_vk_by_placebo(VkRenderer *renderer,
     vk_dev_ctx->enabled_dev_extensions = ctx->placebo_vulkan->extensions;
     vk_dev_ctx->nb_enabled_dev_extensions = ctx->placebo_vulkan->num_extensions;
 
-    vk_dev_ctx->queue_family_index = ctx->placebo_vulkan->queue_graphics.index;
-    vk_dev_ctx->nb_graphics_queues = ctx->placebo_vulkan->queue_graphics.count;
-
-    vk_dev_ctx->queue_family_tx_index = ctx->placebo_vulkan->queue_transfer.index;
-    vk_dev_ctx->nb_tx_queues = ctx->placebo_vulkan->queue_transfer.count;
-
-    vk_dev_ctx->queue_family_comp_index = ctx->placebo_vulkan->queue_compute.index;
-    vk_dev_ctx->nb_comp_queues = ctx->placebo_vulkan->queue_compute.count;
+    int nb_qf = 0;
+    vk_dev_ctx->qf[nb_qf] = (AVVulkanDeviceQueueFamily) {
+        .idx = ctx->placebo_vulkan->queue_graphics.index,
+        .num = ctx->placebo_vulkan->queue_graphics.count,
+        .flags = VK_QUEUE_GRAPHICS_BIT,
+    };
+    nb_qf++;
+    vk_dev_ctx->qf[nb_qf] = (AVVulkanDeviceQueueFamily) {
+        .idx = ctx->placebo_vulkan->queue_transfer.index,
+        .num = ctx->placebo_vulkan->queue_transfer.count,
+        .flags = VK_QUEUE_TRANSFER_BIT,
+    };
+    nb_qf++;
+    vk_dev_ctx->qf[nb_qf] = (AVVulkanDeviceQueueFamily) {
+        .idx = ctx->placebo_vulkan->queue_compute.index,
+        .num = ctx->placebo_vulkan->queue_compute.count,
+        .flags = VK_QUEUE_COMPUTE_BIT,
+    };
+    nb_qf++;
 
     ret = get_decode_queue(renderer, &decode_index, &decode_count);
     if (ret < 0)
         return ret;
 
-    vk_dev_ctx->queue_family_decode_index = decode_index;
-    vk_dev_ctx->nb_decode_queues = decode_count;
+    vk_dev_ctx->qf[nb_qf] = (AVVulkanDeviceQueueFamily) {
+        .idx = decode_index,
+        .num = decode_count,
+        .flags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+    };
+    nb_qf++;
+
+    vk_dev_ctx->nb_qf = nb_qf;
 
     ret = av_hwdevice_ctx_init(ctx->hw_device_ref);
     if (ret < 0)
@@ -690,13 +723,16 @@ static int convert_frame(VkRenderer *renderer, AVFrame *frame)
     return ret;
 }
 
-static int display(VkRenderer *renderer, AVFrame *frame)
+static int display(VkRenderer *renderer, AVFrame *frame, RenderParams *params)
 {
+    SDL_Rect *rect = &params->target_rect;
     struct pl_swapchain_frame swap_frame = {0};
     struct pl_frame pl_frame = {0};
     struct pl_frame target = {0};
+    struct pl_render_params pl_params = pl_render_default_params;
     RendererContext *ctx = (RendererContext *) renderer;
     int ret = 0;
+    struct pl_color_space hint = {0};
 
     ret = convert_frame(renderer, frame);
     if (ret < 0)
@@ -709,6 +745,8 @@ static int display(VkRenderer *renderer, AVFrame *frame)
         return AVERROR_EXTERNAL;
     }
 
+    pl_color_space_from_avframe(&hint, frame);
+    pl_swapchain_colorspace_hint(ctx->swapchain, &hint);
     if (!pl_swapchain_start_frame(ctx->swapchain, &swap_frame)) {
         av_log(NULL, AV_LOG_ERROR, "start frame failed\n");
         ret = AVERROR_EXTERNAL;
@@ -716,8 +754,26 @@ static int display(VkRenderer *renderer, AVFrame *frame)
     }
 
     pl_frame_from_swapchain(&target, &swap_frame);
-    if (!pl_render_image(ctx->renderer, &pl_frame, &target,
-                         &pl_render_default_params)) {
+
+    target.crop = (pl_rect2df){.x0 = rect->x, .x1 = rect->x + rect->w,
+                               .y0 = rect->y, .y1 = rect->y + rect->h};
+    switch (params->video_background_type) {
+    case VIDEO_BACKGROUND_TILES:
+        pl_params.background = PL_CLEAR_TILES;
+        pl_params.tile_size = VIDEO_BACKGROUND_TILE_SIZE * 2;
+        break;
+    case VIDEO_BACKGROUND_COLOR:
+        pl_params.background = PL_CLEAR_COLOR;
+        for (int i = 0; i < 3; i++)
+            pl_params.background_color[i] = params->video_background_color[i] / 255.0;
+        pl_params.background_transparency = (255 - params->video_background_color[3]) / 255.0;
+        break;
+    case VIDEO_BACKGROUND_NONE:
+        pl_frame.repr.alpha = PL_ALPHA_NONE;
+        break;
+    }
+
+    if (!pl_render_image(ctx->renderer, &pl_frame, &target, &pl_params)) {
         av_log(NULL, AV_LOG_ERROR, "pl_render_image failed\n");
         ret = AVERROR_EXTERNAL;
         goto out;
@@ -820,9 +876,9 @@ int vk_renderer_get_hw_dev(VkRenderer *renderer, AVBufferRef **dev)
     return renderer->get_hw_dev(renderer, dev);
 }
 
-int vk_renderer_display(VkRenderer *renderer, AVFrame *frame)
+int vk_renderer_display(VkRenderer *renderer, AVFrame *frame, RenderParams *render_params)
 {
-    return renderer->display(renderer, frame);
+    return renderer->display(renderer, frame, render_params);
 }
 
 int vk_renderer_resize(VkRenderer *renderer, int width, int height)

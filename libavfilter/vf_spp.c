@@ -31,7 +31,6 @@
  * ported by Clément Bœsch for FFmpeg.
  */
 
-#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
@@ -425,7 +424,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                 filter(s, out->data[1], in->data[1], out->linesize[1], in->linesize[1], cw,        ch,        qp_table, qp_stride, 0, depth);
                 filter(s, out->data[2], in->data[2], out->linesize[2], in->linesize[2], cw,        ch,        qp_table, qp_stride, 0, depth);
             }
-            emms_c();
         }
     }
 
@@ -488,9 +486,11 @@ static const AVFilterPad spp_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_spp = {
-    .name            = "spp",
-    .description     = NULL_IF_CONFIG_SMALL("Apply a simple post processing filter."),
+const FFFilter ff_vf_spp = {
+    .p.name          = "spp",
+    .p.description   = NULL_IF_CONFIG_SMALL("Apply a simple post processing filter."),
+    .p.priv_class    = &spp_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size       = sizeof(SPPContext),
     .preinit         = preinit,
     .uninit          = uninit,
@@ -498,6 +498,4 @@ const AVFilter ff_vf_spp = {
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .process_command = process_command,
-    .priv_class      = &spp_class,
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

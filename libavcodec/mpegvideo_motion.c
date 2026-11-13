@@ -29,11 +29,12 @@
 
 #include "avcodec.h"
 #include "h261.h"
+#include "h263.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "mpeg4videodec.h"
 #include "qpeldsp.h"
-#include "wmv2.h"
+#include "wmv2dec.h"
 
 static inline int hpel_motion(MpegEncContext *s,
                               uint8_t *dest, uint8_t *src,
@@ -705,11 +706,13 @@ static av_always_inline void mpv_motion_internal(MpegEncContext *s,
                         0, 0, 0,
                         ref_picture, pix_op, qpix_op,
                         s->mv[dir][0][0], s->mv[dir][0][1], 16);
-        } else if (!is_mpeg12 && (CONFIG_WMV2_DECODER || CONFIG_WMV2_ENCODER) &&
-                   s->mspel && s->codec_id == AV_CODEC_ID_WMV2) {
+#if CONFIG_WMV2_DECODER
+        } else if (!is_mpeg12 && s->mspel && s->codec_id == AV_CODEC_ID_WMV2) {
+            av_assert2(av_codec_is_decoder(s->avctx->codec));
             ff_mspel_motion(s, dest_y, dest_cb, dest_cr,
                             ref_picture, pix_op,
                             s->mv[dir][0][0], s->mv[dir][0][1], 16);
+#endif
         } else {
             mpeg_motion(s, dest_y, dest_cb, dest_cr, 0,
                         ref_picture, pix_op,
@@ -812,7 +815,8 @@ static av_always_inline void mpv_motion_internal(MpegEncContext *s,
             }
             break;
         }
-    default: av_assert2(0);
+    default:
+        av_unreachable("No other mpegvideo MV types exist");
     }
 }
 

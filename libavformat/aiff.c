@@ -40,6 +40,7 @@ const AVCodecTag ff_codec_aiff_tags[] = {
     { AV_CODEC_ID_GSM,          MKTAG('G','S','M',' ') },
     { AV_CODEC_ID_ADPCM_G722,   MKTAG('G','7','2','2') },
     { AV_CODEC_ID_ADPCM_G726LE, MKTAG('G','7','2','6') },
+    { AV_CODEC_ID_G728,         MKTAG('G','7','2','8') },
     { AV_CODEC_ID_PCM_S16BE,    MKTAG('t','w','o','s') },
     { AV_CODEC_ID_PCM_S16LE,    MKTAG('s','o','w','t') },
     { AV_CODEC_ID_ADPCM_IMA_QT, MKTAG('i','m','a','4') },
@@ -49,6 +50,7 @@ const AVCodecTag ff_codec_aiff_tags[] = {
     { AV_CODEC_ID_CBD2_DPCM,    MKTAG('C','B','D','2') },
     { AV_CODEC_ID_SDX2_DPCM,    MKTAG('S','D','X','2') },
     { AV_CODEC_ID_ADPCM_IMA_WS, MKTAG('A','D','P','4') },
+    { AV_CODEC_ID_ADPCM_N64,    MKTAG('V','A','P','C') },
     { AV_CODEC_ID_NONE,         0 },
 };
 

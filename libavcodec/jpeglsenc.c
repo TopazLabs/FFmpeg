@@ -373,7 +373,7 @@ static int encode_picture_ls(AVCodecContext *avctx, AVPacket *pkt,
 
     /* write our own JPEG header, can't use mjpeg_picture_header */
     put_marker_byteu(&pb, SOI);
-    put_marker_byteu(&pb, SOF48);
+    put_marker_byteu(&pb, SOF55);
     bytestream2_put_be16u(&pb, 8 + comps * 3); // header size depends on components
     bytestream2_put_byteu(&pb, (avctx->pix_fmt == AV_PIX_FMT_GRAY16) ? 16 : 8);  // bpp
     bytestream2_put_be16u(&pb, avctx->height);
@@ -484,10 +484,7 @@ const FFCodec ff_jpegls_encoder = {
     .init           = encode_jpegls_init,
     FF_CODEC_ENCODE_CB(encode_picture_ls),
     .close          = encode_jpegls_close,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_BGR24, AV_PIX_FMT_RGB24,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY16,
-        AV_PIX_FMT_NONE
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_BGR24, AV_PIX_FMT_RGB24,
+                  AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY16),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

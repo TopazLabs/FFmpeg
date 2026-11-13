@@ -521,10 +521,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
         ctx->fs                   = 0x10 + 2;
         break;
     default:
-        av_log(avctx, AV_LOG_ERROR, "Unsupported sample rate %d. Supported "
-                            "sample rates are 44100, 88200, 176400, 48000, "
-                            "96000, and 192000.\n", avctx->sample_rate);
-        return AVERROR(EINVAL);
+        av_unreachable("Checked via CODEC_SAMPLERATES");
     }
     ctx->coded_sample_rate[1] = -1 & 0xf;
 
@@ -547,9 +544,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
         avctx->bits_per_raw_sample = 24;
         break;
     default:
-        av_log(avctx, AV_LOG_ERROR, "Sample format not supported. "
-               "Only 16- and 24-bit samples are supported.\n");
-        return AVERROR(EINVAL);
+        av_unreachable("Checked via CODEC_SAMPLEFMTS");
     }
     ctx->coded_sample_fmt[1] = -1 & 0xf;
 
@@ -613,7 +608,7 @@ static av_cold int mlp_encode_init(AVCodecContext *avctx)
             ctx->thd_substream_info  = 0x3C;
             break;
         default:
-            av_assert1(!"AVCodec.ch_layouts needs to be updated");
+            av_unreachable("Checked via CODEC_CH_LAYOUTS");
         }
         ctx->flags = 0;
         ctx->channel_occupancy = 0;
@@ -2308,9 +2303,9 @@ const FFCodec ff_mlp_encoder = {
     FF_CODEC_ENCODE_CB(mlp_encode_frame),
     .close                  = mlp_encode_close,
     .p.priv_class           = &mlp_class,
-    .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_NONE},
-    .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-    .p.ch_layouts           = ff_mlp_ch_layouts,
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P),
+    CODEC_SAMPLERATES(44100, 48000, 88200, 96000, 176400, 192000),
+    CODEC_CH_LAYOUTS_ARRAY(ff_mlp_ch_layouts),
     .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif
@@ -2328,20 +2323,13 @@ const FFCodec ff_truehd_encoder = {
     FF_CODEC_ENCODE_CB(mlp_encode_frame),
     .close                  = mlp_encode_close,
     .p.priv_class           = &mlp_class,
-    .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_NONE},
-    .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-    .p.ch_layouts           = (const AVChannelLayout[]) {
-                                  AV_CHANNEL_LAYOUT_MONO,
-                                  AV_CHANNEL_LAYOUT_STEREO,
-                                  AV_CHANNEL_LAYOUT_2POINT1,
-                                  AV_CHANNEL_LAYOUT_SURROUND,
-                                  AV_CHANNEL_LAYOUT_3POINT1,
-                                  AV_CHANNEL_LAYOUT_4POINT0,
-                                  AV_CHANNEL_LAYOUT_4POINT1,
-                                  AV_CHANNEL_LAYOUT_5POINT0,
-                                  AV_CHANNEL_LAYOUT_5POINT1,
-                                  { 0 }
-                              },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P),
+    CODEC_SAMPLERATES(44100, 48000, 88200, 96000, 176400, 192000),
+    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO,    AV_CHANNEL_LAYOUT_STEREO,
+                     AV_CHANNEL_LAYOUT_2POINT1, AV_CHANNEL_LAYOUT_SURROUND,
+                     AV_CHANNEL_LAYOUT_3POINT1, AV_CHANNEL_LAYOUT_4POINT0,
+                     AV_CHANNEL_LAYOUT_4POINT1, AV_CHANNEL_LAYOUT_5POINT0,
+                     AV_CHANNEL_LAYOUT_5POINT1),
     .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

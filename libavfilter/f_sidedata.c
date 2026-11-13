@@ -27,10 +27,8 @@
 #include "libavutil/internal.h"
 #include "libavutil/frame.h"
 #include "libavutil/opt.h"
-#include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "video.h"
 
 enum SideDataMode {
     SIDEDATA_SELECT,
@@ -68,7 +66,8 @@ static const AVOption filt_name##_options[] = { \
     {   "SPHERICAL",                  "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_SPHERICAL                  }, 0, 0, FLAGS, .unit = "type" }, \
     {   "CONTENT_LIGHT_LEVEL",        "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_CONTENT_LIGHT_LEVEL        }, 0, 0, FLAGS, .unit = "type" }, \
     {   "ICC_PROFILE",                "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_ICC_PROFILE                }, 0, 0, FLAGS, .unit = "type" }, \
-    {   "S12M_TIMECOD",               "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_S12M_TIMECODE              }, 0, 0, FLAGS, .unit = "type" }, \
+    {   "S12M_TIMECOD",               "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_S12M_TIMECODE              }, 0, 0, FLAGS | AV_OPT_FLAG_DEPRECATED, .unit = "type" }, \
+    {   "S12M_TIMECODE",              "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_S12M_TIMECODE              }, 0, 0, FLAGS, .unit = "type" }, \
     {   "DYNAMIC_HDR_PLUS",           "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_DYNAMIC_HDR_PLUS           }, 0, 0, FLAGS, .unit = "type" }, \
     {   "REGIONS_OF_INTEREST",        "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_REGIONS_OF_INTEREST        }, 0, 0, FLAGS, .unit = "type" }, \
     {   "VIDEO_ENC_PARAMS",           "", 0,             AV_OPT_TYPE_CONST,  {.i64 = AV_FRAME_DATA_VIDEO_ENC_PARAMS           }, 0, 0, FLAGS, .unit = "type" }, \
@@ -92,6 +91,31 @@ static av_cold int init(AVFilterContext *ctx)
         av_log(ctx, AV_LOG_ERROR, "Side data type must be set\n");
         return AVERROR(EINVAL);
     }
+
+    return 0;
+}
+
+static int config_props(AVFilterLink *outlink)
+{
+    AVFilterContext *ctx = outlink->src;
+    SideDataContext *s = ctx->priv;
+    const AVFrameSideData *sd = NULL;
+
+    if (s->type != -1)
+       sd = av_frame_side_data_get(outlink->side_data, outlink->nb_side_data, s->type);
+
+    switch (s->mode) {
+    case SIDEDATA_SELECT:
+        break;
+    case SIDEDATA_DELETE:
+        if (s->type == -1)
+            av_frame_side_data_free(&outlink->side_data, &outlink->nb_side_data);
+        else if (sd)
+            av_frame_side_data_remove(&outlink->side_data, &outlink->nb_side_data, s->type);
+        break;
+    default:
+        av_assert0(0);
+    };
 
     return 0;
 }
@@ -143,16 +167,24 @@ static const AVFilterPad ainputs[] = {
     },
 };
 
-const AVFilter ff_af_asidedata = {
-    .name          = "asidedata",
-    .description   = NULL_IF_CONFIG_SMALL("Manipulate audio frame side data."),
+static const AVFilterPad aoutputs[] = {
+    {
+        .name         = "default",
+        .type         = AVMEDIA_TYPE_AUDIO,
+        .config_props = config_props,
+    },
+};
+
+const FFFilter ff_af_asidedata = {
+    .p.name        = "asidedata",
+    .p.description = NULL_IF_CONFIG_SMALL("Manipulate audio frame side data."),
+    .p.priv_class  = &asidedata_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                     AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(SideDataContext),
-    .priv_class    = &asidedata_class,
     .init          = init,
     FILTER_INPUTS(ainputs),
-    FILTER_OUTPUTS(ff_audio_default_filterpad),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
-                     AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_OUTPUTS(aoutputs),
 };
 #endif /* CONFIG_ASIDEDATA_FILTER */
 
@@ -169,15 +201,23 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_vf_sidedata = {
-    .name        = "sidedata",
-    .description = NULL_IF_CONFIG_SMALL("Manipulate video frame side data."),
+static const AVFilterPad outputs[] = {
+    {
+        .name         = "default",
+        .type         = AVMEDIA_TYPE_VIDEO,
+        .config_props = config_props,
+    },
+};
+
+const FFFilter ff_vf_sidedata = {
+    .p.name        = "sidedata",
+    .p.description = NULL_IF_CONFIG_SMALL("Manipulate video frame side data."),
+    .p.priv_class  = &sidedata_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                     AVFILTER_FLAG_METADATA_ONLY,
     .priv_size   = sizeof(SideDataContext),
-    .priv_class  = &sidedata_class,
     .init        = init,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(ff_video_default_filterpad),
-    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
-                   AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_OUTPUTS(outputs),
 };
 #endif /* CONFIG_SIDEDATA_FILTER */
