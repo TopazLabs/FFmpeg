@@ -9,6 +9,14 @@ class conanRecipe(ConanFile):
     name = "FFmpeg"
     # version
     settings = "os", "build_type", "arch"
+    options = {
+        "tensorrt_rtx": [True, False],
+        "build_linux_GPL": [True, False],
+    }
+    default_options = {
+        "tensorrt_rtx": True,
+        "build_linux_GPL": False,
+    }
 
     def configure(self):
         self.options["zimg"].shared = True
@@ -20,6 +28,13 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Windows" and self.settings.arch == "x86_64":
             self.options["libaom-av1"].shared = True
 
+        if self.settings.os == "Linux":
+            self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.options["libx264"].shared = True
+            self.options["libx265"].shared = True
+
     def build_requirements(self):
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.tool_requires("nasm/2.16.01")
@@ -28,7 +43,7 @@ class conanRecipe(ConanFile):
 
     # windows libaom-av1 build different recipe revision id for some reason...
     def requirements(self):
-        self.requires("videoai/[~2.0.0]")
+        self.requires("videoai/2.0.41-signed")
         self.requires("libvpx/1.14.1")
         self.requires("dav1d/1.5.3")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
@@ -42,6 +57,10 @@ class conanRecipe(ConanFile):
             self.requires("zlib-mt/1.2.13")
         else:
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.requires("libx264/cci.20240224")
+            self.requires("libx265/3.4")
 
     def generate(self):
         for dep in self.dependencies.values():

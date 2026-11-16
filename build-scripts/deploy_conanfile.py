@@ -5,13 +5,24 @@ import os
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
     settings = "os", "build_type", "arch"
-    options = {"tensorrt_rtx": [True, False]}
-    default_options = {"tensorrt_rtx": True}
+    options = {
+        "tensorrt_rtx": [True, False],
+        "with_cuda": [True, False],
+        "build_linux_GPL": [True, False],
+    }
+    default_options = {
+        "tensorrt_rtx": True,
+        "with_cuda": True,
+        "build_linux_GPL": False,
+    }
 
     def config_options(self):
         # tensorrt_rtx only applies on Windows/Linux; omit from package id elsewhere
         if self.settings.os not in ("Windows", "Linux"):
             del self.options.tensorrt_rtx
+        # GPL software encoders (x264/x265) are only built on Linux
+        if self.settings.os != "Linux":
+            del self.options.build_linux_GPL
 
     def configure(self):
         self.options["zimg"].shared = True
@@ -26,8 +37,12 @@ class conanRecipe(ConanFile):
         if self.settings.os == "Windows" or self.settings.os == "Linux":
             self.options["videoai"].tensorrt_rtx = self.options.tensorrt_rtx
 
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.options["libx264"].shared = True
+            self.options["libx265"].shared = True
+
     def requirements(self):
-        self.requires("videoai/[~2.0.0]", package_id_mode="minor_mode")
+        self.requires("videoai/2.0.41-signed", package_id_mode="minor_mode")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.requires("zimg/3.0.5@josh/oiio3")
         else:
@@ -38,6 +53,10 @@ class conanRecipe(ConanFile):
             self.requires("libaom-av1/3.5.0#0e3100f015c5c5fab8e10ab07c566c53")
         else:
             self.requires("libaom-av1/3.5.0#041e72afabd2cb62567a667c7f9ed08a")
+
+        if self.settings.os == "Linux" and self.options.build_linux_GPL:
+            self.requires("libx264/cci.20240224")
+            self.requires("libx265/3.4")
 
     def package(self):
 
