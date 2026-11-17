@@ -98,10 +98,12 @@ stages:
 
   - ${{ if eq(parameters.linux, true) }}:
     - job: Ubuntu22_04
+      timeoutInMinutes: 360
       workspace:
         clean: all
+      # deps are built on 24.04 (glibc 2.39, gcc-14); the UbuntuVMSS agents are 22.04
       pool:
-        name: UbuntuVMSS
+        vmImage: 'ubuntu-24.04'
       steps:
         - template: ubuntu.yml
           parameters:
@@ -110,10 +112,12 @@ stages:
 
   - ${{ if eq(parameters.linux_tensorrt_rtx, true) }}:
     - job: Ubuntu22_04_TensorRT_RTX
+      timeoutInMinutes: 360
       workspace:
         clean: all
+      # deps are built on 24.04 (glibc 2.39, gcc-14); the UbuntuVMSS agents are 22.04
       pool:
-        name: UbuntuVMSS
+        vmImage: 'ubuntu-24.04'
       steps:
         - template: ubuntu.yml
           parameters:
