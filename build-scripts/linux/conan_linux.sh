@@ -16,4 +16,4 @@ if [ "$BUILD_LINUX_GPL" = "True" ]; then
     echo "Building with GPL software encoders (libx264, libx265)"
 fi
 
-conan install ./build-scripts/conanfile.py -u -pr:b ./build-scripts/linux/profile_ubuntu24.04 -pr:h ./build-scripts/linux/profile_ubuntu24.04 --build=missing -of ./conan -o "&:tensorrt_rtx=$TENSORRT_RTX" -o "&:build_linux_GPL=$BUILD_LINUX_GPL"
+conan install ./build-scripts/conanfile.py -u -pr:b ./build-scripts/linux/profile_ubuntu24.04 -pr:h ./build-scripts/linux/profile_ubuntu24.04 -of ./conan -o "&:tensorrt_rtx=$TENSORRT_RTX" -o "&:build_linux_GPL=$BUILD_LINUX_GPL"
