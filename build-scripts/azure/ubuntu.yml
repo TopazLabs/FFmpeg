@@ -54,8 +54,12 @@ steps:
         mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
         cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
+        # export-pkg resolves videoai and its deps, which only exist as gcc-14 binaries; topaz-ffmpeg has no compiler setting so its package id is unchanged
+        cp build-scripts/linux/profile_ubuntu24.04 $(Build.SourcesDirectory)/topaz-conan-dev/_util/conan/profile_linux_x86_64
         cd $(Build.SourcesDirectory)/topaz-conan-dev
-        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }}
+        # the enterprise and rtx jobs upload the same recipe; a retry skips what the other job already uploaded
+        bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }} \
+          || bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }}
       fi
     displayName: Build FFmpeg
 
@@ -63,7 +67,8 @@ steps:
       cp "$(Build.SourcesDirectory)/pipeline-helper/dependency-manager/dependency_viewer.py" "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
       cd "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
 
-      cp ./linux/profile_ubuntu22.04 ./profile_ubuntu22.04
+      # dependency_viewer looks for profile_ubuntu22.04; deps are built with the 24.04 (gcc-14) profile
+      cp ./linux/profile_ubuntu24.04 ./profile_ubuntu22.04
 
       python dependency_viewer.py -os=LIN -ar=x86_64 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
     condition: and(succeeded(), ne(variables['PUBLISH'], ''))
