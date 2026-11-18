@@ -103,7 +103,7 @@ stages:
         clean: all
       # deps are built on 24.04 (glibc 2.39, gcc-14); the UbuntuVMSS agents are 22.04
       pool:
-        vmImage: 'ubuntu-24.04'
+        name: 'LinuxManaged'
       steps:
         - template: ubuntu.yml
           parameters:
@@ -117,7 +117,7 @@ stages:
         clean: all
       # deps are built on 24.04 (glibc 2.39, gcc-14); the UbuntuVMSS agents are 22.04
       pool:
-        vmImage: 'ubuntu-24.04'
+        name: 'LinuxManaged'
       steps:
         - template: ubuntu.yml
           parameters:
