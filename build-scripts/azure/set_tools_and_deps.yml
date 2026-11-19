@@ -64,7 +64,7 @@ steps:
     - script: |
         export DEBIAN_FRONTEND='noninteractive'
         sudo apt -y update
-        sudo apt -y install libreadline-dev libncurses-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
+        sudo apt -y install libreadline-dev libncurses-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm pkg-config make
       displayName: Install APT packages
 
     # profile_ubuntu24.04 needs gcc-14: in the archive on 24.04, from the toolchain PPA on 22.04
@@ -79,7 +79,10 @@ steps:
       displayName: Install gcc-14
   
     - script: |
-        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+        set -euo pipefail
+        # NVIDIA's repo for this Ubuntu release (ubuntu2204 / ubuntu2404)
+        . /etc/os-release
+        wget -q "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${VERSION_ID//./}/x86_64/cuda-keyring_1.1-1_all.deb"
         sudo dpkg -i cuda-keyring_1.1-1_all.deb
         rm -f cuda-keyring_1.1-1_all.deb
         sudo apt-get update
