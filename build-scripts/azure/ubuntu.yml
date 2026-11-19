@@ -7,33 +7,78 @@ parameters:
   - name: build_linux_GPL
     type: boolean
     default: false
+  # build-scripts/linux/<profile>: profile_ubuntu24.04 (gcc-14, LinuxManaged) or profile_ubuntu22.04 (gcc-11, UbuntuVMSS)
+  - name: profile
+    type: string
+    default: 'profile_ubuntu24.04'
+    values:
+      - profile_ubuntu22.04
+      - profile_ubuntu24.04
+  # True for 22.04 with publish: topaz-ffmpeg has no compiler/distro in its package id, so a 22.04 upload
+  # would replace the 24.04 binary under the same id (e.g. 8.1.0.18-signed:2d203cb845)
+  - name: publish_blocked
+    type: boolean
+    default: false
 
 steps:
   - checkout: self
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
   - checkout: pipeline-helper
-  
+
+  - ${{ if eq(parameters.publish_blocked, true) }}:
+    - bash: |
+        echo "##[error]${{ parameters.profile }} can't publish: 22.04 and 24.04 builds get the same topaz-ffmpeg Linux package id, so this upload would replace the 24.04 binary of $(VERSION). Build 22.04 with publish unchecked."
+        exit 1
+      displayName: Block publishing from ${{ parameters.profile }}
+
   - template: set_tools_and_deps.yml
     parameters:
       OS: 'linux'
       SHOULD_RESTORE_CONAN_CACHE: true
-      
+      # 24.04 keeps the original cache key (see set_tools_and_deps.yml)
+      ${{ if eq(parameters.profile, 'profile_ubuntu22.04') }}:
+        CACHE_KEY_SUFFIX: ubuntu22.04
+
   - bash: |
       cd "$(Build.SourcesDirectory)/nv-codec-headers"
       sudo make install
     displayName: Install nv-codec-headers
-      
+
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
-      bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }} ${{ parameters.build_linux_GPL }}
-    displayName: Install conan packages
-    
+      bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }} ${{ parameters.build_linux_GPL }} ${{ parameters.profile }}
+    displayName: Install conan packages (${{ parameters.profile }})
+
+  # Recipes without a compiler setting (videoai, aiengine) have one Linux binary per version, built on
+  # whichever Ubuntu published it. Fail here with a clear message instead of at configure/link time.
+  - bash: |
+      set -euo pipefail
+      cd "$(Build.SourcesDirectory)/FFmpeg/conan/lib"
+      have=$(getconf GNU_LIBC_VERSION | awk '{print $2}')
+      echo "Agent glibc: $have"
+      bad=0
+      for so in $(find . -maxdepth 1 -name '*.so*' -type f); do
+        need=$(objdump -T "$so" 2>/dev/null | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sed 's/GLIBC_//' | sort -Vu | tail -1 || true)
+        if [ -n "$need" ] && [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | tail -1)" != "$have" ]; then
+          echo "##[error]$so needs GLIBC_$need, this agent has $have: that dependency was built on a newer Ubuntu than ${{ parameters.profile }} targets"
+          bad=1
+        fi
+      done
+      exit $bad
+    displayName: Check conan libs run on this agent's glibc
+
   - bash: |
       cd "$(Build.SourcesDirectory)/FFmpeg"
       git apply ./build-scripts/configure-dav1d.patch
       # the zimg/aom changes are already committed in configure on develop
-      configure_flags="--cc=gcc-14 --cxx=g++-14 --disable-stripping --enable-libdav1d --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec"
+      # build with the compiler of the conan profile: gcc-14 on 24.04, the default gcc (11) on 22.04
+      if [ "${{ parameters.profile }}" = "profile_ubuntu24.04" ]; then
+        compiler_flags="--cc=gcc-14 --cxx=g++-14"
+      else
+        compiler_flags=""
+      fi
+      configure_flags="${compiler_flags} --disable-stripping --enable-libdav1d --enable-shared --disable-ffplay --disable-libxcb --disable-vulkan --disable-sdl2 --disable-xlib --enable-tvai --enable-libvpx --enable-libaom --enable-libzimg --enable-nvenc --enable-nvdec"
       if [ "${{ parameters.build_linux_GPL }}" = "True" ]; then
         echo "##[warning]GPL BUILD: enabling --enable-gpl --enable-libx264 --enable-libx265. This FFmpeg build is GPL-licensed, NOT LGPL."
         git apply ./build-scripts/linux/configure-x264-x265.patch
@@ -54,8 +99,8 @@ steps:
         mkdir -p $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
         cp build-scripts/deploy_conanfile.py $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/conanfile.py
         cp -Rp "output-conan"/* $(Build.SourcesDirectory)/topaz-conan-dev/prebuilt/topaz-ffmpeg/$(VERSION)/linux_x86_64/build_type\=Release/
-        # export-pkg resolves videoai and its deps, which only exist as gcc-14 binaries; topaz-ffmpeg has no compiler setting so its package id is unchanged
-        cp build-scripts/linux/profile_ubuntu24.04 $(Build.SourcesDirectory)/topaz-conan-dev/_util/conan/profile_linux_x86_64
+        # export-pkg resolves videoai and its deps with the profile this job built with; topaz-ffmpeg has no compiler setting so its package id is the same for both
+        cp build-scripts/linux/${{ parameters.profile }} $(Build.SourcesDirectory)/topaz-conan-dev/_util/conan/profile_linux_x86_64
         cd $(Build.SourcesDirectory)/topaz-conan-dev
         # the enterprise and rtx jobs upload the same recipe; a retry skips what the other job already uploaded
         bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }} \
@@ -67,8 +112,8 @@ steps:
       cp "$(Build.SourcesDirectory)/pipeline-helper/dependency-manager/dependency_viewer.py" "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
       cd "$(Build.SourcesDirectory)/FFmpeg/build-scripts"
 
-      # dependency_viewer looks for profile_ubuntu22.04; deps are built with the 24.04 (gcc-14) profile
-      cp ./linux/profile_ubuntu24.04 ./profile_ubuntu22.04
+      # dependency_viewer looks for profile_ubuntu22.04; point it at the profile this job built with
+      cp ./linux/${{ parameters.profile }} ./profile_ubuntu22.04
 
       python dependency_viewer.py -os=LIN -ar=x86_64 -v="$(VERSION)" -bn="$BUILD_NOTE" -a="$(Build.RequestedFor)" -cf="deploy_conanfile.py" -sc="C09QW35D2DR"
     condition: and(succeeded(), ne(variables['PUBLISH'], ''))

@@ -11,12 +11,21 @@ parameters:
     displayName: 'Windows (2022)'
     type: boolean
     default: true
+  # Linux: pick the Ubuntu versions, then the variants (Enterprise / RTX) built on each one
+  - name: linux_2204
+    displayName: 'Linux: Ubuntu 22.04 (UbuntuVMSS, gcc-11; build only, cannot publish)'
+    type: boolean
+    default: false
+  - name: linux_2404
+    displayName: 'Linux: Ubuntu 24.04 (LinuxManaged, gcc-14)'
+    type: boolean
+    default: true
   - name: linux
-    displayName: 'Linux (Ubuntu 22.04)'
+    displayName: 'Linux TensorRT Enterprise'
     type: boolean
     default: true
   - name: linux_tensorrt_rtx
-    displayName: 'Linux TensorRT RTX (Ubuntu 22.04)'
+    displayName: 'Linux TensorRT RTX'
     type: boolean
     default: false
   # Linux only. When checked, FFmpeg is configured with --enable-gpl and links
@@ -96,12 +105,43 @@ stages:
       steps:
         - template: win.yml
 
-  - ${{ if eq(parameters.linux, true) }}:
+  # 22.04 and 24.04 builds of one VERSION get the same topaz-ffmpeg package id (no compiler setting),
+  # so the 22.04 jobs fail on publish instead of replacing the 24.04 binary
+  - ${{ if and(eq(parameters.linux_2204, true), eq(parameters.linux, true)) }}:
     - job: Ubuntu22_04
       timeoutInMinutes: 360
       workspace:
         clean: all
-      # deps are built on 24.04 (glibc 2.39, gcc-14); the UbuntuVMSS agents are 22.04
+      pool:
+        name: UbuntuVMSS
+      steps:
+        - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: False
+            build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu22.04
+            publish_blocked: ${{ parameters.publish }}
+
+  - ${{ if and(eq(parameters.linux_2204, true), eq(parameters.linux_tensorrt_rtx, true)) }}:
+    - job: Ubuntu22_04_TensorRT_RTX
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: UbuntuVMSS
+      steps:
+        - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: True
+            build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu22.04
+            publish_blocked: ${{ parameters.publish }}
+
+  - ${{ if and(eq(parameters.linux_2404, true), eq(parameters.linux, true)) }}:
+    - job: Ubuntu24_04
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
       pool:
         name: 'LinuxManaged'
       steps:
@@ -109,13 +149,13 @@ stages:
           parameters:
             tensorrt_rtx: False
             build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu24.04
 
-  - ${{ if eq(parameters.linux_tensorrt_rtx, true) }}:
-    - job: Ubuntu22_04_TensorRT_RTX
+  - ${{ if and(eq(parameters.linux_2404, true), eq(parameters.linux_tensorrt_rtx, true)) }}:
+    - job: Ubuntu24_04_TensorRT_RTX
       timeoutInMinutes: 360
       workspace:
         clean: all
-      # deps are built on 24.04 (glibc 2.39, gcc-14); the UbuntuVMSS agents are 22.04
       pool:
         name: 'LinuxManaged'
       steps:
@@ -123,6 +163,7 @@ stages:
           parameters:
             tensorrt_rtx: True
             build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu24.04
 
   - ${{ if eq(parameters.mac, true) }}:
     - job: Mac
