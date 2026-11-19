@@ -102,6 +102,10 @@ steps:
         # export-pkg resolves videoai and its deps with the profile this job built with; topaz-ffmpeg has no compiler setting so its package id is the same for both
         cp build-scripts/linux/${{ parameters.profile }} $(Build.SourcesDirectory)/topaz-conan-dev/_util/conan/profile_linux_x86_64
         cd $(Build.SourcesDirectory)/topaz-conan-dev
+        # topaz-conan-dev's Pipfile pins python 3.11, which the Linux agents don't have (venv on the distro
+        # python3: 3.12 on noble, 3.10 on jammy). Point pipenv at the venv python; it only warns on the mismatch.
+        export PIPENV_PYTHON="$(command -v python)"
+        echo "pipenv python: $PIPENV_PYTHON ($("$PIPENV_PYTHON" -V))"
         # the enterprise and rtx jobs upload the same recipe; a retry skips what the other job already uploaded
         bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }} \
           || bash ./run_publish_prebuilt.sh --package-name topaz-ffmpeg --package-version $(VERSION) -r topaz-conan -o tensorrt_rtx=${{ parameters.tensorrt_rtx }} -o build_linux_GPL=${{ parameters.build_linux_GPL }}
