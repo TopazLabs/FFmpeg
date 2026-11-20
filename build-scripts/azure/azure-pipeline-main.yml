@@ -98,10 +98,10 @@ stages:
     - job: Windows2022
       workspace:
         clean: all
+      # WinARM is the Azure DevOps-managed Windows pool; despite its name its agents are x86_64 (Windows Server 2022).
+      # Don't pin to the self-hosted Medusa machine: when it's offline the job just waits.
       pool:
-          name: Default
-          demands:
-            - Agent.Name -equals Medusa
+        name: 'WinARM'
       steps:
         - template: win.yml
 
