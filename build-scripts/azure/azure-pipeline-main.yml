@@ -21,11 +21,11 @@ parameters:
     type: boolean
     default: false
   - name: ubuntu2204_enterprise
-    displayName: 'Ubuntu 22.04 Enterprise (UbuntuVMSS, gcc-11; build only, cannot publish)'
+    displayName: 'Ubuntu 22.04 Enterprise (UbuntuVMSS, gcc-11)'
     type: boolean
     default: false
   - name: ubuntu2204_rtx
-    displayName: 'Ubuntu 22.04 TensorRT RTX (UbuntuVMSS, gcc-11; build only, cannot publish)'
+    displayName: 'Ubuntu 22.04 TensorRT RTX (UbuntuVMSS, gcc-11)'
     type: boolean
     default: false
   # Linux only. When checked, FFmpeg is configured with --enable-gpl and links
@@ -105,8 +105,7 @@ stages:
       steps:
         - template: win.yml
 
-  # 22.04 and 24.04 builds of one VERSION get the same topaz-ffmpeg package id (no compiler setting),
-  # so the 22.04 jobs fail on publish instead of replacing the 24.04 binary
+  # 22.04 and 24.04 builds get distinct topaz-ffmpeg package ids (compiler is in the Linux package ID)
   - ${{ if eq(parameters.ubuntu2204_enterprise, true) }}:
     - job: Ubuntu22_04
       timeoutInMinutes: 360
@@ -120,7 +119,6 @@ stages:
             tensorrt_rtx: False
             build_linux_GPL: ${{ parameters.linux_GPL }}
             profile: profile_ubuntu22.04
-            publish_blocked: ${{ parameters.publish }}
 
   - ${{ if eq(parameters.ubuntu2204_rtx, true) }}:
     - job: Ubuntu22_04_TensorRT_RTX
@@ -135,7 +133,6 @@ stages:
             tensorrt_rtx: True
             build_linux_GPL: ${{ parameters.linux_GPL }}
             profile: profile_ubuntu22.04
-            publish_blocked: ${{ parameters.publish }}
 
   - ${{ if eq(parameters.ubuntu2404_enterprise, true) }}:
     - job: Ubuntu24_04

@@ -14,23 +14,12 @@ parameters:
     values:
       - profile_ubuntu22.04
       - profile_ubuntu24.04
-  # True for 22.04 with publish: topaz-ffmpeg has no compiler/distro in its package id, so a 22.04 upload
-  # would replace the 24.04 binary under the same id (e.g. 8.1.0.18-signed:2d203cb845)
-  - name: publish_blocked
-    type: boolean
-    default: false
 
 steps:
   - checkout: self
   - checkout: topaz-conan-dev
   - checkout: nv-codec-headers
   - checkout: pipeline-helper
-
-  - ${{ if eq(parameters.publish_blocked, true) }}:
-    - bash: |
-        echo "##[error]${{ parameters.profile }} can't publish: 22.04 and 24.04 builds get the same topaz-ffmpeg Linux package id, so this upload would replace the 24.04 binary of $(VERSION). Build 22.04 with publish unchecked."
-        exit 1
-      displayName: Block publishing from ${{ parameters.profile }}
 
   - template: set_tools_and_deps.yml
     parameters:
@@ -50,8 +39,9 @@ steps:
       bash ./build-scripts/linux/conan_linux.sh ${{ parameters.tensorrt_rtx }} ${{ parameters.build_linux_GPL }} ${{ parameters.profile }}
     displayName: Install conan packages (${{ parameters.profile }})
 
-  # Recipes without a compiler setting (videoai, aiengine) have one Linux binary per version, built on
-  # whichever Ubuntu published it. Fail here with a clear message instead of at configure/link time.
+  # Safety net: a dependency binary built on a newer Ubuntu (e.g. an older aiengine/videoai version published
+  # before compiler was in their Linux package ID) needs a newer glibc. Fail here with a clear message instead
+  # of at configure/link time.
   - bash: |
       set -euo pipefail
       cd "$(Build.SourcesDirectory)/FFmpeg/conan/lib"

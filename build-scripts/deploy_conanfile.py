@@ -4,7 +4,7 @@ import os
 
 class conanRecipe(ConanFile):
     name = "topaz-ffmpeg"
-    settings = "os", "build_type", "arch"
+    settings = "os", "build_type", "arch", "compiler"
     options = {
         "tensorrt_rtx": [True, False],
         "with_cuda": [True, False],
@@ -25,6 +25,14 @@ class conanRecipe(ConanFile):
             del self.options.build_linux_GPL
 
     def configure(self):
+        # Linux binaries are tied to the distro's gcc/glibc (Ubuntu 22.04 gcc-11 vs 24.04 gcc-14), so keep
+        # compiler in the package ID there only; Windows/macOS package IDs stay as before
+        if self.settings.os != "Linux":
+            self.settings.rm_safe("compiler")
+        else:
+            # FFmpeg is C; the profile's cppstd must not split the package ID
+            self.settings.rm_safe("compiler.cppstd")
+
         self.options["zimg"].shared = True
         if self.settings.os == "Macos" or self.settings.os == "Linux":
             self.options["libvpx"].shared = True

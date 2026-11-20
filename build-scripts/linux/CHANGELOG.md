@@ -1,3 +1,8 @@
+## 2026-11-20
+
+- `deploy_conanfile.py`: `compiler` is in the Linux package ID (removed off Linux, so Windows/macOS IDs are unchanged; `compiler.cppstd` removed on Linux). Ubuntu 22.04 (gcc-11) and 24.04 (gcc-14) builds now get distinct topaz-ffmpeg package IDs, e.g. 8.1.0.18-signed Enterprise: 24.04 `aa8b2cb8`, 22.04 `a94a3a32`.
+- Azure: the 22.04 jobs can publish again (the publish block is removed).
+
 ## 2026-11-19
 
 - `conan_linux.sh` takes the Conan profile as a third argument (`profile_ubuntu24.04` by default, or `profile_ubuntu22.04`).
