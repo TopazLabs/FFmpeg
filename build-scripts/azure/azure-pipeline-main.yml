@@ -11,21 +11,21 @@ parameters:
     displayName: 'Windows (2022)'
     type: boolean
     default: true
-  # Linux: pick the Ubuntu versions, then the variants (Enterprise / RTX) built on each one
-  - name: linux_2204
-    displayName: 'Linux: Ubuntu 22.04 (UbuntuVMSS, gcc-11; build only, cannot publish)'
+  # Linux: one checkbox per Ubuntu version x TensorRT variant
+  - name: ubuntu2404_enterprise
+    displayName: 'Ubuntu 24.04 Enterprise (LinuxManaged, gcc-14)'
+    type: boolean
+    default: true
+  - name: ubuntu2404_rtx
+    displayName: 'Ubuntu 24.04 TensorRT RTX (LinuxManaged, gcc-14)'
     type: boolean
     default: false
-  - name: linux_2404
-    displayName: 'Linux: Ubuntu 24.04 (LinuxManaged, gcc-14)'
+  - name: ubuntu2204_enterprise
+    displayName: 'Ubuntu 22.04 Enterprise (UbuntuVMSS, gcc-11; build only, cannot publish)'
     type: boolean
-    default: true
-  - name: linux
-    displayName: 'Linux TensorRT Enterprise'
-    type: boolean
-    default: true
-  - name: linux_tensorrt_rtx
-    displayName: 'Linux TensorRT RTX'
+    default: false
+  - name: ubuntu2204_rtx
+    displayName: 'Ubuntu 22.04 TensorRT RTX (UbuntuVMSS, gcc-11; build only, cannot publish)'
     type: boolean
     default: false
   # Linux only. When checked, FFmpeg is configured with --enable-gpl and links
@@ -107,7 +107,7 @@ stages:
 
   # 22.04 and 24.04 builds of one VERSION get the same topaz-ffmpeg package id (no compiler setting),
   # so the 22.04 jobs fail on publish instead of replacing the 24.04 binary
-  - ${{ if and(eq(parameters.linux_2204, true), eq(parameters.linux, true)) }}:
+  - ${{ if eq(parameters.ubuntu2204_enterprise, true) }}:
     - job: Ubuntu22_04
       timeoutInMinutes: 360
       workspace:
@@ -122,7 +122,7 @@ stages:
             profile: profile_ubuntu22.04
             publish_blocked: ${{ parameters.publish }}
 
-  - ${{ if and(eq(parameters.linux_2204, true), eq(parameters.linux_tensorrt_rtx, true)) }}:
+  - ${{ if eq(parameters.ubuntu2204_rtx, true) }}:
     - job: Ubuntu22_04_TensorRT_RTX
       timeoutInMinutes: 360
       workspace:
@@ -137,7 +137,7 @@ stages:
             profile: profile_ubuntu22.04
             publish_blocked: ${{ parameters.publish }}
 
-  - ${{ if and(eq(parameters.linux_2404, true), eq(parameters.linux, true)) }}:
+  - ${{ if eq(parameters.ubuntu2404_enterprise, true) }}:
     - job: Ubuntu24_04
       timeoutInMinutes: 360
       workspace:
@@ -151,7 +151,7 @@ stages:
             build_linux_GPL: ${{ parameters.linux_GPL }}
             profile: profile_ubuntu24.04
 
-  - ${{ if and(eq(parameters.linux_2404, true), eq(parameters.linux_tensorrt_rtx, true)) }}:
+  - ${{ if eq(parameters.ubuntu2404_rtx, true) }}:
     - job: Ubuntu24_04_TensorRT_RTX
       timeoutInMinutes: 360
       workspace:

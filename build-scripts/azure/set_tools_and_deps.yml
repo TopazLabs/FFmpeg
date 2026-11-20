@@ -32,8 +32,9 @@ steps:
         ${{ if or(eq(parameters.os, 'win'), eq(parameters.os, 'linux')) }}:
           versionSpec: '3.11.x'
 
-  # Linux: the LinuxManaged pool image has no hosted Python tool cache (UsePythonVersion's download
-  # can't run there), so use the distro python3 in a venv and install the tools hosted images preinstall
+  # Linux (LinuxManaged 24.04 and UbuntuVMSS 22.04): the LinuxManaged pool image has no hosted Python tool
+  # cache (UsePythonVersion's download can't run there), so every Linux job uses the distro python3 in a venv
+  # and installs the tools hosted images preinstall
   - ${{ if eq(parameters.os, 'linux') }}:
     - script: |
         set -euo pipefail
