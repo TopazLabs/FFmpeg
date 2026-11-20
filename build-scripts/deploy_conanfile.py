@@ -50,7 +50,7 @@ class conanRecipe(ConanFile):
             self.options["libx265"].shared = True
 
     def requirements(self):
-        self.requires("videoai/2.0.41-signed", package_id_mode="minor_mode")
+        self.requires("videoai/2.0.41-signed+1", package_id_mode="minor_mode")
         if self.settings.os == "Macos" and self.settings.arch == "x86_64":
             self.requires("zimg/3.0.5@josh/oiio3")
         else:
