@@ -11,12 +11,28 @@ parameters:
     displayName: 'Windows (2022)'
     type: boolean
     default: true
-  - name: linux
-    displayName: 'Linux (Ubuntu 22.04)'
+  # Linux: one checkbox per Ubuntu version x TensorRT variant
+  - name: ubuntu2404_enterprise
+    displayName: 'Ubuntu 24.04 Enterprise (LinuxManaged, gcc-14)'
     type: boolean
     default: true
-  - name: linux_tensorrt_rtx
-    displayName: 'Linux TensorRT RTX (Ubuntu 22.04)'
+  - name: ubuntu2404_rtx
+    displayName: 'Ubuntu 24.04 TensorRT RTX (LinuxManaged, gcc-14)'
+    type: boolean
+    default: false
+  - name: ubuntu2204_enterprise
+    displayName: 'Ubuntu 22.04 Enterprise (UbuntuVMSS, gcc-11)'
+    type: boolean
+    default: false
+  - name: ubuntu2204_rtx
+    displayName: 'Ubuntu 22.04 TensorRT RTX (UbuntuVMSS, gcc-11)'
+    type: boolean
+    default: false
+  # Linux only. When checked, FFmpeg is configured with --enable-gpl and links
+  # libx264/libx265 (H.264/HEVC software encoders). The resulting Linux build is
+  # GPL-licensed instead of LGPL. Has no effect on Windows or Mac.
+  - name: linux_GPL
+    displayName: 'Linux ONLY: GPL build (--enable-gpl + libx264/libx265 H.264/HEVC software encoders). Output becomes GPL-licensed, not LGPL'
     type: boolean
     default: false
   - name: mac
@@ -82,13 +98,17 @@ stages:
     - job: Windows2022
       workspace:
         clean: all
+      # WinARM is the Azure DevOps-managed Windows pool; despite its name its agents are x86_64 (Windows Server 2022).
+      # Don't pin to the self-hosted Medusa machine: when it's offline the job just waits.
       pool:
         name: 'WinARM'
       steps:
         - template: win.yml
 
-  - ${{ if eq(parameters.linux, true) }}:
+  # 22.04 and 24.04 builds get distinct topaz-ffmpeg package ids (compiler is in the Linux package ID)
+  - ${{ if eq(parameters.ubuntu2204_enterprise, true) }}:
     - job: Ubuntu22_04
+      timeoutInMinutes: 360
       workspace:
         clean: all
       pool:
@@ -96,7 +116,51 @@ stages:
       steps:
         - template: ubuntu.yml
           parameters:
-            tensorrt_rtx: ${{ parameters.linux_tensorrt_rtx }}
+            tensorrt_rtx: False
+            build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu22.04
+
+  - ${{ if eq(parameters.ubuntu2204_rtx, true) }}:
+    - job: Ubuntu22_04_TensorRT_RTX
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: UbuntuVMSS
+      steps:
+        - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: True
+            build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu22.04
+
+  - ${{ if eq(parameters.ubuntu2404_enterprise, true) }}:
+    - job: Ubuntu24_04
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: 'LinuxManaged'
+      steps:
+        - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: False
+            build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu24.04
+
+  - ${{ if eq(parameters.ubuntu2404_rtx, true) }}:
+    - job: Ubuntu24_04_TensorRT_RTX
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        name: 'LinuxManaged'
+      steps:
+        - template: ubuntu.yml
+          parameters:
+            tensorrt_rtx: True
+            build_linux_GPL: ${{ parameters.linux_GPL }}
+            profile: profile_ubuntu24.04
 
   - ${{ if eq(parameters.mac, true) }}:
     - job: Mac

@@ -15,30 +15,39 @@ parameters:
   type: string
   default: '$(Pipeline.Workspace)'
 
+# extra conan cache key part, so the 22.04 jobs don't restore the 24.04 (gcc-14) cache. Empty keeps the
+# original key: the 24.04 jobs depend on that cache (dav1d/1.5.3 gcc-14 is only there, not on the remote)
+- name: CACHE_KEY_SUFFIX
+  type: string
+  default: ''
+
 steps:
 
 #Install tools
-  - task: UsePythonVersion@0
-    inputs:
-      ${{ if eq(parameters.os, 'mac') }}:
-        versionSpec: '3.x'
-      ${{ if or(eq(parameters.os, 'win'), eq(parameters.os, 'linux')) }}:
-        versionSpec: '3.11.x'
+  - ${{ if ne(parameters.os, 'linux') }}:
+    - task: UsePythonVersion@0
+      inputs:
+        ${{ if eq(parameters.os, 'mac') }}:
+          versionSpec: '3.x'
+        ${{ if or(eq(parameters.os, 'win'), eq(parameters.os, 'linux')) }}:
+          versionSpec: '3.11.x'
+
+  # Linux (LinuxManaged 24.04 and UbuntuVMSS 22.04): the LinuxManaged pool image has no hosted Python tool
+  # cache (UsePythonVersion's download can't run there), so every Linux job uses the distro python3 in a venv
+  # and installs the tools hosted images preinstall
+  - ${{ if eq(parameters.os, 'linux') }}:
+    - script: |
+        set -euo pipefail
+        sudo apt-get update -q
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv python3-dev build-essential git curl wget unzip p7zip-full jq lsb-release ca-certificates
+        python3 -m venv "$(Agent.TempDirectory)/python"
+        echo "##vso[task.prependpath]$(Agent.TempDirectory)/python/bin"
+      displayName: 'Python (system python3 venv) and base tools'
 
   - ${{ if eq(parameters.os, 'mac') }}:
     - script: |
         /bin/bash -c "echo '##vso[task.setvariable variable=MD_APPLE_SDK_ROOT;]'/Applications/Xcode_$XCODE_VERSION.app;sudo xcode-select --switch /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer"
       displayName: 'Select XCode $(XCODE_VERSION)'
-
-  # ffbuild/version.sh prefers a VERSION file over `git describe`, so the
-  # binary reports exactly the pipeline version (e.g. 8.1.0.18-test+1).
-  - bash: |
-      printf '%s\n' "$PIPELINE_VERSION" > "$(Build.SourcesDirectory)/FFmpeg/VERSION"
-      echo "FFmpeg VERSION set to: $(cat "$(Build.SourcesDirectory)/FFmpeg/VERSION")"
-    condition: and(succeeded(), ne(variables['VERSION'], '0.0.0'))
-    displayName: 'Write FFmpeg VERSION file'
-    env:
-      PIPELINE_VERSION: $(VERSION)
 
   - script: |
       python -m pip install pipenv conan==2.7.1 slack_sdk==3.35.0 pytz==2025.2
@@ -62,13 +71,43 @@ steps:
     - script: |
         export DEBIAN_FRONTEND='noninteractive'
         sudo apt -y update
-        sudo apt -y install libreadline-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm
+        sudo apt -y install libreadline-dev libncurses-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libsystemd-dev dos2unix libgtk2.0-dev build-essential p7zip-full libglu1-mesa-dev freeglut3-dev mesa-common-dev nasm pkg-config make
       displayName: Install APT packages
+
+    # profile_ubuntu24.04 needs gcc-14 (in the noble archive); profile_ubuntu22.04 uses the default gcc-11
+    - script: |
+        export DEBIAN_FRONTEND='noninteractive'
+        . /etc/os-release
+        if [ "$VERSION_ID" = "22.04" ]; then
+          sudo apt -y install libvulkan-dev
+        else
+          sudo apt -y install gcc-14 g++-14 libvulkan-dev
+        fi
+      displayName: Install compiler (gcc-14 on 24.04)
+  
+    - script: |
+        set -euo pipefail
+        # NVIDIA's repo for this Ubuntu release (ubuntu2204 / ubuntu2404)
+        . /etc/os-release
+        wget -q "https://developer.download.nvidia.com/compute/cuda/repos/ubuntu${VERSION_ID//./}/x86_64/cuda-keyring_1.1-1_all.deb"
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        rm -f cuda-keyring_1.1-1_all.deb
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends cuda-nvcc-12-9 cuda-cudart-dev-12-9
+        sudo ln -sfn /usr/local/cuda-12.9 /usr/local/cuda
+        echo "##vso[task.prependpath]/usr/local/cuda-12.9/bin"
+        echo "##vso[task.setvariable variable=CUDA_HOME]/usr/local/cuda-12.9"
+        echo "##vso[task.setvariable variable=CUDAToolkit_ROOT]/usr/local/cuda-12.9"
+        /usr/local/cuda-12.9/bin/nvcc --version
+      displayName: Install CUDA 12.9 Toolkit
 
 #Install Dependencies
   - task: Cache@2
     inputs:
-      key: 'conan2 | "$(Agent.OS)" | $(Build.SourcesDirectory)/FFmpeg/build-scripts/conanfile.py | $(Build.SourcesDirectory)/FFmpeg/build-scripts/deploy_conanfile.py'
+      ${{ if eq(parameters.CACHE_KEY_SUFFIX, '') }}:
+        key: 'conan2 | "$(Agent.OS)" | $(Build.SourcesDirectory)/FFmpeg/build-scripts/conanfile.py | $(Build.SourcesDirectory)/FFmpeg/build-scripts/deploy_conanfile.py'
+      ${{ else }}:
+        key: 'conan2 | "$(Agent.OS)" | "${{ parameters.CACHE_KEY_SUFFIX }}" | $(Build.SourcesDirectory)/FFmpeg/build-scripts/conanfile.py | $(Build.SourcesDirectory)/FFmpeg/build-scripts/deploy_conanfile.py'
       path: '${{ parameters.CONAN_USER_HOME }}/.conan2/p'
       cacheHitVar: CONAN_CACHE_RESTORED
     condition: and(succeeded(), eq('${{ parameters.SHOULD_RESTORE_CONAN_CACHE }}', 'true'))
