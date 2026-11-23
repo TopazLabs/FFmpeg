@@ -24,6 +24,7 @@
 #include "cbs.h"
 #include "cbs_h266.h"
 #include "parser.h"
+#include "parser_internal.h"
 
 #define START_CODE 0x000001 ///< start_code_prefix_one_3bytes
 #define IS_IDR(nut)   (nut == VVC_IDR_W_RADL || nut == VVC_IDR_N_LP)
@@ -300,14 +301,14 @@ static int get_pu_info(PuInfo *info, const CodedBitstreamH266Context *h266,
     }
     info->pps = h266->pps[info->ph->ph_pic_parameter_set_id];
     if (!info->pps) {
-        av_log(logctx, AV_LOG_ERROR, "PPS id %d is not avaliable.\n",
+        av_log(logctx, AV_LOG_ERROR, "PPS id %d is not available.\n",
                info->ph->ph_pic_parameter_set_id);
         ret = AVERROR_INVALIDDATA;
         goto error;
     }
     info->sps = h266->sps[info->pps->pps_seq_parameter_set_id];
     if (!info->sps) {
-        av_log(logctx, AV_LOG_ERROR, "SPS id %d is not avaliable.\n",
+        av_log(logctx, AV_LOG_ERROR, "SPS id %d is not available.\n",
                info->pps->pps_seq_parameter_set_id);
         ret = AVERROR_INVALIDDATA;
         goto error;
@@ -357,7 +358,7 @@ static int parse_nal_units(AVCodecParserContext *s, const uint8_t *buf,
         return 1;
     }
 
-    if ((ret = ff_cbs_read(ctx->cbc, pu, buf, buf_size)) < 0) {
+    if ((ret = ff_cbs_read(ctx->cbc, pu, NULL, buf, buf_size)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to parse picture unit.\n");
         goto end;
     }
@@ -505,10 +506,10 @@ static av_cold void vvc_parser_close(AVCodecParserContext *s)
     av_freep(&ctx->pc.buffer);
 }
 
-const AVCodecParser ff_vvc_parser = {
-    .codec_ids      = { AV_CODEC_ID_VVC },
+const FFCodecParser ff_vvc_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_VVC),
     .priv_data_size = sizeof(VVCParserContext),
-    .parser_init    = vvc_parser_init,
-    .parser_close   = vvc_parser_close,
-    .parser_parse   = vvc_parser_parse,
+    .init           = vvc_parser_init,
+    .close          = vvc_parser_close,
+    .parse          = vvc_parser_parse,
 };

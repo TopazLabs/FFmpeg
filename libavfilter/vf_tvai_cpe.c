@@ -150,15 +150,15 @@ static const AVFilterPad tvai_cpe_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_tvai_cpe = {
-    .name          = "tvai_cpe",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI camera pose estimation model."),
+const FFFilter ff_vf_tvai_cpe = {
+    .p.name          = "tvai_cpe",
+    .p.description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI camera pose estimation model."),
     .priv_size     = sizeof(TVAICPEContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(tvai_cpe_inputs),
     FILTER_OUTPUTS(tvai_cpe_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &tvai_cpe_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    .p.priv_class    = &tvai_cpe_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

@@ -25,6 +25,7 @@
  * @author Stefan Gehrer <stefan.gehrer@gmx.de>
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/emms.h"
 #include "libavutil/mem.h"
@@ -1184,7 +1185,7 @@ static int decode_seq_header(AVSContext *h)
     h->profile = get_bits(&h->gb, 8);
     if (h->profile != 0x20) {
         avpriv_report_missing_feature(h->avctx,
-                                      "only supprt JiZhun profile");
+                                      "only support JiZhun profile");
         return AVERROR_PATCHWELCOME;
     }
     h->level   = get_bits(&h->gb, 8);
@@ -1230,7 +1231,7 @@ static int decode_seq_header(AVSContext *h)
     return 0;
 }
 
-static void cavs_flush(AVCodecContext * avctx)
+static av_cold void cavs_flush(AVCodecContext * avctx)
 {
     AVSContext *h = avctx->priv_data;
     h->got_keyframe = 0;

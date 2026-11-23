@@ -30,6 +30,7 @@
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
 
 #include "libavutil/mem.h"
 #include "libavutil/tx.h"
@@ -358,32 +359,23 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->frames);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
     static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVA444P, AV_PIX_FMT_NONE };
     int ret;
 
     /* set input audio formats */
-    formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0)
-        return ret;
-
-    layouts = ff_all_channel_counts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
+    formats = ff_make_sample_format_list(sample_fmts);
+    if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0)
         return ret;
 
     /* set output video format */
-    formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
+    formats = ff_make_pixel_format_list(pix_fmts);
+    if ((ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
     return 0;
@@ -501,7 +493,7 @@ static void drawtext(AVFrame *pic, int x, int y, const char *txt, int o)
     const uint8_t *font;
     int font_height;
 
-    font = avpriv_cga_font,   font_height =  8;
+    font = avpriv_cga_font_get(),   font_height =  8;
 
     for (int i = 0; txt[i]; i++) {
         int char_y, mask;
@@ -960,17 +952,13 @@ static int draw_legend(AVFilterContext *ctx, uint64_t samples)
         }
 
         for (y = 0; ch == 0 && y < h + 5; y += 25) {
-            static const char *log_fmt = "%.0f";
-            static const char *lin_fmt = "%.3f";
             const float a = av_clipf(1.f - y / (float)(h - 1), 0.f, 1.f);
             const float value = s->scale == LOG ? log10f(get_iscale(ctx, s->scale, a)) * 20.f : get_iscale(ctx, s->scale, a);
-            char *text;
+            char scale_fmt[32];
 
-            text = av_asprintf(s->scale == LOG ? log_fmt : lin_fmt, value);
-            if (!text)
-                continue;
-            drawtext(s->outpicref, s->w + s->start_x + 35, s->start_y + y - 3, text, 0);
-            av_free(text);
+            snprintf(scale_fmt, sizeof(scale_fmt),
+                     s->scale == LOG ? "%.0f" : "%.3f", value);
+            drawtext(s->outpicref, s->w + s->start_x + 35, s->start_y + y - 3, scale_fmt, 0);
         }
     }
 
@@ -1152,6 +1140,11 @@ static int config_output(AVFilterLink *outlink)
             float scale = 1.f;
 
             ret = av_tx_init(&s->fft[i], &s->tx_fn, AV_TX_FLOAT_FFT, 0, fft_size << (!!s->stop), &scale, 0);
+            if (ret < 0) {
+                av_log(ctx, AV_LOG_ERROR, "Unable to create FFT context. "
+                       "The window size might be too high.\n");
+                return ret;
+            }
             if (s->stop) {
                 ret = av_tx_init(&s->ifft[i], &s->itx_fn, AV_TX_FLOAT_FFT, 1, fft_size << (!!s->stop), &scale, 0);
                 if (ret < 0) {
@@ -1159,11 +1152,6 @@ static int config_output(AVFilterLink *outlink)
                            "The window size might be too high.\n");
                     return ret;
                 }
-            }
-            if (ret < 0) {
-                av_log(ctx, AV_LOG_ERROR, "Unable to create FFT context. "
-                       "The window size might be too high.\n");
-                return ret;
             }
         }
 
@@ -1689,17 +1677,17 @@ static const AVFilterPad showspectrum_outputs[] = {
     },
 };
 
-const AVFilter ff_avf_showspectrum = {
-    .name          = "showspectrum",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a spectrum video output."),
+const FFFilter ff_avf_showspectrum = {
+    .p.name        = "showspectrum",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to a spectrum video output."),
+    .p.priv_class  = &showspectrum_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .uninit        = uninit,
     .priv_size     = sizeof(ShowSpectrumContext),
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showspectrum_outputs),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .activate      = activate,
-    .priv_class    = &showspectrum_class,
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };
 #endif // CONFIG_SHOWSPECTRUM_FILTER
 
@@ -1876,16 +1864,16 @@ static const AVFilterPad showspectrumpic_outputs[] = {
     },
 };
 
-const AVFilter ff_avf_showspectrumpic = {
-    .name          = "showspectrumpic",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a spectrum video output single picture."),
+const FFFilter ff_avf_showspectrumpic = {
+    .p.name        = "showspectrumpic",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to a spectrum video output single picture."),
+    .p.priv_class  = &showspectrumpic_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .uninit        = uninit,
     .priv_size     = sizeof(ShowSpectrumContext),
     FILTER_INPUTS(showspectrumpic_inputs),
     FILTER_OUTPUTS(showspectrumpic_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &showspectrumpic_class,
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
 };
 
 #endif // CONFIG_SHOWSPECTRUMPIC_FILTER

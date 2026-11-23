@@ -227,8 +227,17 @@ endfunc
 // (a0) += (a1) * fa0 [0..a2-1]
 func ff_vector_dmac_scalar_rvv, zve64d, zba
         lpad    0
-NOHWD   fmv.d.x   fa0, a2
-NOHWD   mv        a2, a3
+#if __riscv_xlen >= 64
+NOHWD   fmv.d.x fa0, a2
+NOHWD   mv      a2, a3
+#else
+NOHWD   addi    sp, sp, -16
+NOHWD   sw      a2, 0(sp)
+NOHWD   sw      a3, 4(sp)
+NOHWD   mv      a2, a4
+NOHWD   fld     fa0, (sp)
+NOHWD   addi    sp, sp, 16
+#endif
 1:
         vsetvli   t0, a2, e64, m8, ta, ma
         vle64.v   v24, (a1)
@@ -246,8 +255,17 @@ endfunc
 // (a0) = (a1) * fa0 [0..a2-1]
 func ff_vector_dmul_scalar_rvv, zve64d, zba
         lpad    0
-NOHWD   fmv.d.x  fa0, a2
-NOHWD   mv       a2, a3
+#if __riscv_xlen >= 64
+NOHWD   fmv.d.x fa0, a2
+NOHWD   mv      a2, a3
+#else
+NOHWD   addi    sp, sp, -16
+NOHWD   sw      a2, 0(sp)
+NOHWD   sw      a3, 4(sp)
+NOHWD   mv      a2, a4
+NOHWD   fld     fa0, (sp)
+NOHWD   addi    sp, sp, 16
+#endif
 1:
         vsetvli  t0, a2, e64, m8, ta, ma
         vle64.v  v16, (a1)
@@ -261,7 +279,7 @@ NOHWD   mv       a2, a3
         ret
 endfunc
 
-func ff_scalarproduct_double_rvv, zve64f, zba
+func ff_scalarproduct_double_rvv, zve64d, zba
         lpad    0
         vsetvli      t0, zero, e64, m8, ta, ma
         vmv.v.x      v8, zero
@@ -279,6 +297,14 @@ func ff_scalarproduct_double_rvv, zve64f, zba
         vsetvli      t0, zero, e64, m8, ta, ma
         vfredusum.vs v0, v8, v0
         vfmv.f.s     fa0, v0
+#if __riscv_xlen >= 64
 NOHWD   fmv.x.w      a0, fa0
+#else
+NOHWD   addi    sp, sp, -16
+NOHWD   fsd     fa0, (sp)
+NOHWD   lw      a0,  (sp)
+NOHWD   lw      a1, 4(sp)
+NOHWD   addi    sp, sp, 16
+#endif
         ret
 endfunc

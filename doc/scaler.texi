@@ -68,6 +68,10 @@ Select full chroma input.
 
 @item bitexact
 Enable bitexact output.
+
+@item unstable
+Allow the use of experimental new code. May subtly affect the output or even
+produce wrong results. For testing only.
 @end table
 
 @item srcw @var{(API only)}
@@ -95,6 +99,9 @@ If value is set to @code{1}, indicates source is full range. Default value is
 @item dst_range @var{(boolean)}
 If value is set to @code{1}, enable full range for destination. Default value
 is @code{0}, which enables limited range.
+
+@item gamma @var{(boolean)}
+If value is set to @code{1}, enable gamma correct scaling. Default value is @code{0}.
 
 @anchor{sws_params}
 @item param0, param1

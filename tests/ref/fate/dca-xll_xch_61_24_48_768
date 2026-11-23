@@ -1,15 +1,46 @@
-#format: frame checksums
-#version: 2
-#hash: MD5
 #tb 0: 1/48000
 #media_type 0: audio
 #codec_id 0: pcm_s24le
 #sample_rate 0: 48000
 #channel_layout_name 0: 6.1
-#stream#, dts,        pts, duration,     size, hash
-0,          0,          0,      512,    10752, c3c5b236c266a9090378def1ad497a21
-0,        512,        512,      512,    10752, 36eb6749f8d9ce9f94860dcc447253ac
-0,       1024,       1024,      512,    10752, 586dbf42917c8353a3d3a65d4a510aa5
-0,       1536,       1536,      512,    10752, 08aa4874b4e092982cef8bd9623ebcaf
-0,       2048,       2048,      512,    10752, 809775c772fd730bbbb516cadc71406b
-0,       2560,       2560,      512,    10752, 81ef75c310c242b38787cd18203aa8c6
+0,      -1024,      -1024,      512,    10752, 0xd4320448
+0,       -512,       -512,      512,    10752, 0x00000000
+0,          0,          0,      512,    10752, 0xb0d63493
+0,        512,        512,      512,    10752, 0xb25bd689
+0,       1024,       1024,      512,    10752, 0x946292ae
+0,       1536,       1536,      512,    10752, 0x2cc3e026
+[PACKET]
+pts=0
+duration=512
+[SIDE_DATA]
+side_data_type=Skip Samples
+skip_samples=1024
+discard_padding=0
+skip_reason=0
+discard_reason=0
+[/SIDE_DATA]
+[/PACKET]
+[PACKET]
+pts=512
+duration=512
+[/PACKET]
+[PACKET]
+pts=1024
+duration=512
+[/PACKET]
+[PACKET]
+pts=1536
+duration=512
+[/PACKET]
+[PACKET]
+pts=2048
+duration=512
+[/PACKET]
+[PACKET]
+pts=2560
+duration=512
+[/PACKET]
+[STREAM]
+initial_padding=1024
+start_time=0.021333
+[/STREAM]

@@ -25,10 +25,26 @@
  * @author Niklas Haas <ffmpeg@haasn.xyz>
  */
 
+#include <stdatomic.h>
+
 #include "libavutil/avassert.h"
+#include "libavutil/bswap.h"
+#include "libavcodec/bswapdsp.h"
+#include "libavutil/crc.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/md5.h"
+#include "libavutil/mem.h"
+#include "libavutil/thread.h"
 
 #include "h274.h"
+
+typedef struct H274FilmGrainDatabase {
+    // Database of film grain patterns, lazily computed as-needed
+    int8_t db[13 /* h */][13 /* v */][64][64];
+    atomic_uint residency[6];
+} H274FilmGrainDatabase;
+
+static H274FilmGrainDatabase film_grain_db;
 
 static const int8_t Gaussian_LUT[2048+4];
 static const uint32_t Seed_LUT[256];
@@ -42,8 +58,7 @@ static void prng_shift(uint32_t *state)
     *state = (x << 1) | (feedback & 1u);
 }
 
-static void init_slice_c(int8_t out[64][64], uint8_t h, uint8_t v,
-                         int16_t tmp[64][64])
+static void init_slice_c(int8_t out[64][64], uint8_t h, uint8_t v)
 {
     static const uint8_t deblock_factors[13] = {
         64, 71, 77, 84, 90, 96, 103, 109, 116, 122, 128, 128, 128
@@ -52,6 +67,9 @@ static void init_slice_c(int8_t out[64][64], uint8_t h, uint8_t v,
     const uint8_t deblock_coeff = deblock_factors[v];
     const uint8_t freq_h = ((h + 3) << 2) - 1;
     const uint8_t freq_v = ((v + 3) << 2) - 1;
+    // Temporary buffer for slice generation
+    // FIXME: Static or not?
+    static int16_t tmp[64][64];
     uint32_t seed = Seed_LUT[h + v * 13];
 
     // Initialize with random gaussian values, using the output array as a
@@ -92,7 +110,7 @@ static void init_slice_c(int8_t out[64][64], uint8_t h, uint8_t v,
         }
     }
 
-    // Deblock horizontal edges by simple attentuation of values
+    // Deblock horizontal edges by simple attenuation of values
     for (int y = 0; y < 64; y += 8) {
         for (int x = 0; x < 64; x++) {
             out[y + 0][x] = (out[y + 0][x] * deblock_coeff) >> 7;
@@ -101,13 +119,24 @@ static void init_slice_c(int8_t out[64][64], uint8_t h, uint8_t v,
     }
 }
 
-static void init_slice(H274FilmGrainDatabase *database, uint8_t h, uint8_t v)
+static void init_slice(uint8_t h, uint8_t v)
 {
-    if (database->residency[h] & (1 << v))
+    static AVMutex mutex = AV_MUTEX_INITIALIZER;
+    unsigned bitpos = h * 13 + v;
+    unsigned res = atomic_load_explicit(&film_grain_db.residency[bitpos / 32],
+                                        memory_order_acquire);
+
+    if (res & (1U << (bitpos & 31)))
         return;
 
-    database->residency[h] |= (1 << v);
-    init_slice_c(database->db[h][v], h, v, database->slice_tmp);
+    ff_mutex_lock(&mutex);
+    res = atomic_load_explicit(&film_grain_db.residency[bitpos / 32], memory_order_relaxed);
+    if (!(res & (1U << (bitpos & 31)))) {
+        init_slice_c(film_grain_db.db[h][v], h, v);
+        atomic_store_explicit(&film_grain_db.residency[bitpos / 32],
+                              res | (1U << (bitpos & 31)), memory_order_release);
+    }
+    ff_mutex_unlock(&mutex);
 }
 
 // Computes the average of an 8x8 block
@@ -155,7 +184,6 @@ static void deblock_8x8_c(int8_t *out, const int out_stride)
 // deblocking step (note that this implies writing to the previous block).
 static av_always_inline void generate(int8_t *out, int out_stride,
                                       const uint8_t *in, int in_stride,
-                                      H274FilmGrainDatabase *database,
                                       const AVFilmGrainH274Params *h274,
                                       int c, int invert, int deblock,
                                       int y_offset, int x_offset)
@@ -193,14 +221,14 @@ static av_always_inline void generate(int8_t *out, int out_stride,
 
     h = av_clip(h274->comp_model_value[c][s][1], 2, 14) - 2;
     v = av_clip(h274->comp_model_value[c][s][2], 2, 14) - 2;
-    init_slice(database, h, v);
+    init_slice(h, v);
 
     scale = h274->comp_model_value[c][s][0];
     if (invert)
         scale = -scale;
 
     synth_grain_8x8_c(out, out_stride, scale, shift,
-                      &database->db[h][v][y_offset][x_offset]);
+                      &film_grain_db.db[h][v][y_offset][x_offset]);
 
     if (deblock)
         deblock_8x8_c(out, out_stride);
@@ -215,7 +243,6 @@ static void add_8x8_clip_c(uint8_t *out, const uint8_t *a, const int8_t *b,
 }
 
 int ff_h274_apply_film_grain(AVFrame *out_frame, const AVFrame *in_frame,
-                             H274FilmGrainDatabase *database,
                              const AVFilmGrainParams *params)
 {
     AVFilmGrainH274Params h274 = params->codec.h274;
@@ -235,7 +262,7 @@ int ff_h274_apply_film_grain(AVFrame *out_frame, const AVFrame *in_frame,
 
         uint8_t * const out = out_frame->data[c];
         const int out_stride = out_frame->linesize[c];
-        int8_t * const grain = out_frame->data[c]; // re-use output buffer for grain
+        int8_t * const grain = out_frame->data[c]; // reuse output buffer for grain
         const int grain_stride = out_stride;
         const uint8_t * const in = in_frame->data[c];
         const int in_stride = in_frame->linesize[c];
@@ -270,7 +297,7 @@ int ff_h274_apply_film_grain(AVFrame *out_frame, const AVFrame *in_frame,
                     for (int xx = 0; xx < 16 && x+xx < width; xx += 8) {
                         generate(grain + (y+yy) * grain_stride + (x+xx), grain_stride,
                                  in + (y+yy) * in_stride + (x+xx), in_stride,
-                                 database, &h274, c, invert, (x+xx) > 0,
+                                 &h274, c, invert, (x+xx) > 0,
                                  y_offset + yy, x_offset + xx);
                     }
                 }
@@ -790,3 +817,195 @@ static const int8_t R64T[64][64] = {
          17, -16,  15, -14,  13, -12,  11, -10,   9,  -8,   7,  -6,   4,  -3,   2,  -1,
     }
 };
+
+struct H274HashContext {
+    int type;
+    struct AVMD5 *ctx;
+
+#if HAVE_BIGENDIAN
+    BswapDSPContext bdsp;
+    uint8_t *buf;
+    int      buf_size;
+#endif
+};
+
+static av_always_inline void bswap16_buf_if_be(H274HashContext *s, const int ps, const uint8_t **src, const int w)
+{
+#if HAVE_BIGENDIAN
+    if (ps) {
+        s->bdsp.bswap16_buf((uint16_t *)s->buf,
+            (const uint16_t *)*src, w);
+        *src = s->buf;
+    }
+#endif
+}
+
+static int verify_plane_md5(H274HashContext *s,
+    const uint8_t *_src, const int w, const int h, const int stride,
+    const int ps, const uint8_t *expected)
+{
+#define MD5_SIZE 16
+    struct AVMD5 *ctx = s->ctx;
+    uint8_t md5[MD5_SIZE];
+
+    av_md5_init(ctx);
+    for (int j = 0; j < h; j++) {
+        const uint8_t *src = &_src[j * stride];
+        bswap16_buf_if_be(s, ps, &src, w);
+        av_md5_update(ctx, src, w << ps);
+        src += stride;
+    }
+    av_md5_final(ctx, md5);
+
+    if (memcmp(md5, expected, MD5_SIZE))
+        return AVERROR_INVALIDDATA;
+
+    return 0;
+}
+
+static int verify_plane_crc(H274HashContext *s, const uint8_t *_src, const int w, const int h, const int stride,
+    const int ps, uint16_t expected)
+{
+    uint32_t crc = 0x0F1D;     // CRC-16-CCITT-AUG
+    const AVCRC *ctx = av_crc_get_table(AV_CRC_16_CCITT);
+
+    for (int j = 0; j < h; j++) {
+        const uint8_t *src = &_src[j * stride];
+        bswap16_buf_if_be(s, ps, &src, w);
+        crc = av_crc(ctx, crc, src, w << ps);
+        src += stride;
+    }
+    crc = av_bswap16(crc);
+
+    if (crc != expected)
+        return AVERROR_INVALIDDATA;
+
+    return 0;
+}
+
+#define CAL_CHECKSUM(pixel) ((pixel) ^ xor_mask)
+static int verify_plane_checksum(const uint8_t *src, const int w, const int h, const int stride, const int ps,
+    uint32_t expected)
+{
+    uint32_t checksum = 0;
+    expected = av_le2ne32(expected);
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            const int xor_mask = (x & 0xFF) ^ (y & 0xFF) ^ (x >> 8) ^ (y >> 8);
+            checksum += CAL_CHECKSUM(src[x << ps]);
+            if (ps)
+                checksum += CAL_CHECKSUM(src[(x << ps) + 1]);
+        }
+        src += stride;
+    }
+
+    if (checksum != expected)
+        return AVERROR_INVALIDDATA;
+
+    return 0;
+}
+
+enum {
+    HASH_MD5SUM,
+    HASH_CRC,
+    HASH_CHECKSUM,
+    HASH_LAST = HASH_CHECKSUM,
+};
+
+void ff_h274_hash_freep(H274HashContext **ctx)
+{
+    if (*ctx) {
+        H274HashContext *c = *ctx;
+        if (c->ctx)
+            av_free(c->ctx);
+        av_freep(ctx);
+#if HAVE_BIGENDIAN
+        av_freep(&c->buf);
+#endif
+    }
+}
+
+int ff_h274_hash_init(H274HashContext **ctx, const int type)
+{
+    H274HashContext *c;
+
+    if (type > HASH_LAST || !ctx)
+        return AVERROR(EINVAL);
+
+    c = *ctx;
+    if (c) {
+        if (c->type != type) {
+            if (c->type == HASH_MD5SUM)
+                av_freep(&c->ctx);
+            c->type = type;
+        }
+    } else {
+        c = av_mallocz(sizeof(H274HashContext));
+        if (!c)
+            return AVERROR(ENOMEM);
+        c->type = type;
+        *ctx = c;
+    }
+
+    if (type == HASH_MD5SUM && !c->ctx) {
+        c->ctx = av_md5_alloc();
+        if (!c->ctx)
+            return AVERROR(ENOMEM);
+    }
+
+#if HAVE_BIGENDIAN
+    ff_bswapdsp_init(&c->bdsp);
+#endif
+
+    return 0;
+}
+
+int ff_h274_hash_verify(H274HashContext *c, const H274SEIPictureHash *hash,
+    const AVFrame *frame, const int coded_width, const int coded_height)
+{
+    const AVPixFmtDescriptor *desc;
+    int err = 0;
+
+    if (!c || !hash || !frame)
+        return AVERROR(EINVAL);
+
+    if (c->type != hash->hash_type)
+        return AVERROR(EINVAL);
+
+    desc = av_pix_fmt_desc_get(frame->format);
+    if (!desc)
+        return AVERROR(EINVAL);
+
+    for (int i = 0; i < desc->nb_components; i++) {
+        const int w        = i ? (coded_width  >> desc->log2_chroma_w) : coded_width;
+        const int h        = i ? (coded_height >> desc->log2_chroma_h) : coded_height;
+        const int ps       = desc->comp[i].step - 1;
+        const uint8_t *src = frame->data[i];
+        const int stride   = frame->linesize[i];
+
+#if HAVE_BIGENDIAN
+        if (c->type != HASH_CHECKSUM) {
+            if (ps) {
+                av_fast_malloc(&c->buf, &c->buf_size,
+                    FFMAX3(frame->linesize[0], frame->linesize[1],
+                        frame->linesize[2]));
+                if (!c->buf)
+                    return AVERROR(ENOMEM);
+            }
+        }
+#endif
+
+        if (c->type == HASH_MD5SUM)
+            err = verify_plane_md5(c, src, w, h, stride, ps, hash->md5[i]);
+        else if (c->type == HASH_CRC)
+            err = verify_plane_crc(c, src, w, h, stride, ps, hash->crc[i]);
+        else if (c->type == HASH_CHECKSUM)
+            err = verify_plane_checksum(src, w, h, stride, ps, hash->checksum[i]);
+        if (err < 0)
+            goto fail;
+    }
+
+fail:
+    return err;
+}

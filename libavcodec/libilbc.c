@@ -99,8 +99,7 @@ static int ilbc_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 #if LIBILBC_VERSION_MAJOR < 3
         av_log(avctx, AV_LOG_ERROR, "iLBC frame too short (%u, should be %u)\n",
 #else
-        av_log(avctx, AV_LOG_ERROR, "iLBC frame too short (%u, should be "
-                                    "%"SIZE_SPECIFIER")\n",
+        av_log(avctx, AV_LOG_ERROR, "iLBC frame too short (%u, should be %zu)\n",
 #endif
                buf_size, s->decoder.no_of_bytes);
         return AVERROR_INVALIDDATA;
@@ -210,8 +209,7 @@ const FFCodec ff_libilbc_encoder = {
     .priv_data_size = sizeof(ILBCEncContext),
     .init           = ilbc_encode_init,
     FF_CODEC_ENCODE_CB(ilbc_encode_frame),
-    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
-                                                     AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
     .defaults       = ilbc_encode_defaults,
     .p.priv_class   = &ilbc_enc_class,
     .p.wrapper_name = "libbilbc",

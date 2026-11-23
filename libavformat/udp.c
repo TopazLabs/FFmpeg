@@ -36,6 +36,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 #include "libavutil/time.h"
+#include "internal.h"
 #include "network.h"
 #include "os_support.h"
 #include "url.h"
@@ -78,6 +79,12 @@
 #define UDP_MAX_PKT_SIZE 65536
 #define UDP_HEADER_SIZE 8
 
+typedef struct UDPQueuedPacketHeader {
+    int pkt_size;
+    struct sockaddr_storage addr;
+    socklen_t addr_len;
+} UDPQueuedPacketHeader;
+
 typedef struct UDPContext {
     const AVClass *class;
     int udp_fd;
@@ -96,7 +103,8 @@ typedef struct UDPContext {
 
     /* Circular Buffer variables for use in UDP receive code */
     int circular_buffer_size;
-    AVFifo *fifo;
+    AVFifo *rx_fifo;
+    AVFifo *tx_fifo;
     int circular_buffer_error;
     int64_t bitrate; /* number of bits to send per second */
     int64_t burst_bits;
@@ -107,14 +115,17 @@ typedef struct UDPContext {
     pthread_cond_t cond;
     int thread_started;
 #endif
-    uint8_t tmp[UDP_MAX_PKT_SIZE+4];
+    uint8_t tmp[UDP_MAX_PKT_SIZE + sizeof(UDPQueuedPacketHeader)];
     int remaining_in_dg;
     char *localaddr;
     int timeout;
+    int dscp;
     struct sockaddr_storage local_addr_storage;
     char *sources;
     char *block;
     IPSourceFilters filters;
+    struct sockaddr_storage last_recv_addr;
+    socklen_t last_recv_addr_len;
 } UDPContext;
 
 #define OFFSET(x) offsetof(UDPContext, x)
@@ -133,8 +144,9 @@ static const AVOption options[] = {
     { "reuse_socket",   "explicitly allow reusing UDP sockets",            OFFSET(reuse_socket),   AV_OPT_TYPE_BOOL,   { .i64 = -1 },    -1, 1,       .flags = D|E },
     { "broadcast", "explicitly allow or disallow broadcast destination",   OFFSET(is_broadcast),   AV_OPT_TYPE_BOOL,   { .i64 = 0  },     0, 1,       E },
     { "ttl",            "Time to live (multicast only)",                   OFFSET(ttl),            AV_OPT_TYPE_INT,    { .i64 = 16 },     0, 255,     E },
+    { "dscp",           "DSCP class for outgoing packets",                 OFFSET(dscp),           AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, 63,      E },
     { "connect",        "set if connect() should be called on socket",     OFFSET(is_connected),   AV_OPT_TYPE_BOOL,   { .i64 =  0 },     0, 1,       .flags = D|E },
-    { "fifo_size",      "set the UDP receiving circular buffer size, expressed as a number of packets with size of 188 bytes", OFFSET(circular_buffer_size), AV_OPT_TYPE_INT, {.i64 = 7*4096}, 0, INT_MAX, D },
+    { "fifo_size",      "set the UDP circular buffer size (in 188-byte packets)", OFFSET(circular_buffer_size), AV_OPT_TYPE_INT, {.i64 = HAVE_PTHREAD_CANCEL ? 7*4096 : 0}, 0, INT_MAX, D },
     { "overrun_nonfatal", "survive in case of UDP receiving circular buffer overrun", OFFSET(overrun_nonfatal), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1,    D },
     { "timeout",        "set raise error timeout, in microseconds (only in read mode)",OFFSET(timeout),         AV_OPT_TYPE_INT,  {.i64 = 0}, 0, INT_MAX, D },
     { "sources",        "Source list",                                     OFFSET(sources),        AV_OPT_TYPE_STRING, { .str = NULL },               .flags = D|E },
@@ -271,14 +283,12 @@ static int udp_set_multicast_sources(URLContext *h,
                                      struct sockaddr_storage *sources,
                                      int nb_sources, int include)
 {
-    int i;
     if (addr->sa_family != AF_INET) {
 #if HAVE_STRUCT_GROUP_SOURCE_REQ && defined(MCAST_BLOCK_SOURCE)
         /* For IPv4 prefer the old approach, as that alone works reliably on
          * Windows and it also supports supplying the interface based on its
          * address. */
-        int i;
-        for (i = 0; i < nb_sources; i++) {
+        for (int i = 0; i < nb_sources; i++) {
             struct group_source_req mreqs;
             int level = addr->sa_family == AF_INET ? IPPROTO_IP : IPPROTO_IPV6;
 
@@ -305,7 +315,7 @@ static int udp_set_multicast_sources(URLContext *h,
 #endif
     }
 #if HAVE_STRUCT_IP_MREQ_SOURCE && defined(IP_BLOCK_SOURCE)
-    for (i = 0; i < nb_sources; i++) {
+    for (int i = 0; i < nb_sources; i++) {
         struct ip_mreq_source mreqs;
         if (sources[i].ss_family != AF_INET) {
             av_log(h, AV_LOG_ERROR, "Source/block address %d is of incorrect protocol family\n", i + 1);
@@ -457,6 +467,36 @@ int ff_udp_set_remote_url(URLContext *h, const char *uri)
 }
 
 /**
+ * This function is identical to ff_udp_set_remote_url, except that it takes a sockaddr directly.
+ */
+int ff_udp_set_remote_addr(URLContext *h, const struct sockaddr *dest_addr, socklen_t dest_addr_len, int do_connect)
+{
+    UDPContext *s = h->priv_data;
+
+    /* set the destination address */
+    if ((size_t)dest_addr_len > sizeof(s->dest_addr))
+        return AVERROR(EIO);
+    s->dest_addr_len = dest_addr_len;
+    memcpy(&s->dest_addr, dest_addr, dest_addr_len);
+
+    s->is_multicast = ff_is_multicast_address((struct sockaddr*) &s->dest_addr);
+    if (do_connect >= 0) {
+        int was_connected = s->is_connected;
+        s->is_connected = do_connect;
+        if (s->is_connected && !was_connected) {
+            if (connect(s->udp_fd, (struct sockaddr *) &s->dest_addr,
+                        s->dest_addr_len)) {
+                s->is_connected = 0;
+                ff_log_net_error(h, AV_LOG_ERROR, "connect");
+                return AVERROR(EIO);
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
  * Return the local port used by the UDP connection
  * @param h media file context
  * @return the local port number
@@ -465,6 +505,13 @@ int ff_udp_get_local_port(URLContext *h)
 {
     UDPContext *s = h->priv_data;
     return s->local_port;
+}
+
+void ff_udp_get_last_recv_addr(URLContext *h, struct sockaddr_storage *addr, socklen_t *addr_len)
+{
+    UDPContext *s = h->priv_data;
+    *addr = s->last_recv_addr;
+    *addr_len = s->last_recv_addr_len;
 }
 
 /**
@@ -495,30 +542,29 @@ static void *circular_buffer_task_rx( void *_URLContext)
         goto end;
     }
     while(1) {
-        int len;
-        struct sockaddr_storage addr;
-        socklen_t addr_len = sizeof(addr);
+        UDPQueuedPacketHeader pkt_header;
+        pkt_header.addr_len = sizeof(pkt_header.addr);
 
         pthread_mutex_unlock(&s->mutex);
         /* Blocking operations are always cancellation points;
-           see "General Information" / "Thread Cancelation Overview"
+           see "General Information" / "Thread Cancellation Overview"
            in Single Unix. */
         pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &old_cancelstate);
-        len = recvfrom(s->udp_fd, s->tmp+4, sizeof(s->tmp)-4, 0, (struct sockaddr *)&addr, &addr_len);
+        pkt_header.pkt_size = recvfrom(s->udp_fd, s->tmp + sizeof(pkt_header), sizeof(s->tmp) - sizeof(pkt_header), 0, (struct sockaddr *)&pkt_header.addr, &pkt_header.addr_len);
         pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &old_cancelstate);
         pthread_mutex_lock(&s->mutex);
-        if (len < 0) {
+        if (pkt_header.pkt_size < 0) {
             if (ff_neterrno() != AVERROR(EAGAIN) && ff_neterrno() != AVERROR(EINTR)) {
                 s->circular_buffer_error = ff_neterrno();
                 goto end;
             }
             continue;
         }
-        if (ff_ip_check_source_lists(&addr, &s->filters))
+        if (ff_ip_check_source_lists(&pkt_header.addr, &s->filters))
             continue;
-        AV_WL32(s->tmp, len);
+        memcpy(s->tmp, &pkt_header, sizeof(pkt_header));
 
-        if (av_fifo_can_write(s->fifo) < len + 4) {
+        if (av_fifo_can_write(s->rx_fifo) < pkt_header.pkt_size + sizeof(pkt_header)) {
             /* No Space left */
             if (s->overrun_nonfatal) {
                 av_log(h, AV_LOG_WARNING, "Circular buffer overrun. "
@@ -532,7 +578,7 @@ static void *circular_buffer_task_rx( void *_URLContext)
                 goto end;
             }
         }
-        av_fifo_write(s->fifo, s->tmp, len + 4);
+        av_fifo_write(s->rx_fifo, s->tmp, pkt_header.pkt_size + sizeof(pkt_header));
         pthread_cond_signal(&s->cond);
     }
 
@@ -568,22 +614,22 @@ static void *circular_buffer_task_tx( void *_URLContext)
         uint8_t tmp[4];
         int64_t timestamp;
 
-        len = av_fifo_can_read(s->fifo);
+        len = av_fifo_can_read(s->tx_fifo);
 
         while (len<4) {
             if (s->close_req)
                 goto end;
             pthread_cond_wait(&s->cond, &s->mutex);
-            len = av_fifo_can_read(s->fifo);
+            len = av_fifo_can_read(s->tx_fifo);
         }
 
-        av_fifo_read(s->fifo, tmp, 4);
+        av_fifo_read(s->tx_fifo, tmp, 4);
         len = AV_RL32(tmp);
 
         av_assert0(len >= 0);
         av_assert0(len <= sizeof(s->tmp));
 
-        av_fifo_read(s->fifo, s->tmp, len);
+        av_fifo_read(s->tx_fifo, s->tmp, len);
 
         pthread_mutex_unlock(&s->mutex);
 
@@ -647,14 +693,14 @@ end:
 static int udp_open(URLContext *h, const char *uri, int flags)
 {
     char hostname[1024];
-    int port, udp_fd = -1, tmp, bind_ret = -1, dscp = -1;
+    int port, udp_fd = -1, tmp, bind_ret = -1;
     UDPContext *s = h->priv_data;
     int is_output;
     const char *p;
-    char buf[256];
     struct sockaddr_storage my_addr;
     socklen_t len;
     int ret;
+    const char *bind_addr = NULL;
 
     h->is_streamed = 1;
 
@@ -662,100 +708,31 @@ static int udp_open(URLContext *h, const char *uri, int flags)
     if (s->buffer_size < 0)
         s->buffer_size = is_output ? UDP_TX_BUF_SIZE : UDP_RX_BUF_SIZE;
 
+    p = strchr(uri, '?');
+    if (p) {
+        ret = ff_parse_opts_from_query_string(s, p, 1);
+        if (ret < 0)
+            goto fail;
+    }
+    if (!HAVE_PTHREAD_CANCEL) {
+        int64_t      optvals[] = {s->overrun_nonfatal, s->bitrate, s->circular_buffer_size};
+        const char* optnames[] = {  "overrun_nonfatal",  "bitrate",  "fifo_size"};
+        for (unsigned i = 0; i < FF_ARRAY_ELEMS(optvals); i++) {
+            if (optvals[i])
+                av_log(h, AV_LOG_WARNING,
+                       "'%s' option was set but it is not supported "
+                       "on this build (pthread support is required)\n", optnames[i]);
+        }
+    }
     if (s->sources) {
         if ((ret = ff_ip_parse_sources(h, s->sources, &s->filters)) < 0)
             goto fail;
     }
-
     if (s->block) {
         if ((ret = ff_ip_parse_blocks(h, s->block, &s->filters)) < 0)
             goto fail;
     }
 
-    p = strchr(uri, '?');
-    if (p) {
-        if (av_find_info_tag(buf, sizeof(buf), "reuse", p)) {
-            char *endptr = NULL;
-            s->reuse_socket = strtol(buf, &endptr, 10);
-            /* assume if no digits were found it is a request to enable it */
-            if (buf == endptr)
-                s->reuse_socket = 1;
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "overrun_nonfatal", p)) {
-            char *endptr = NULL;
-            s->overrun_nonfatal = strtol(buf, &endptr, 10);
-            /* assume if no digits were found it is a request to enable it */
-            if (buf == endptr)
-                s->overrun_nonfatal = 1;
-            if (!HAVE_PTHREAD_CANCEL)
-                av_log(h, AV_LOG_WARNING,
-                       "'overrun_nonfatal' option was set but it is not supported "
-                       "on this build (pthread support is required)\n");
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "ttl", p)) {
-            s->ttl = strtol(buf, NULL, 10);
-            if (s->ttl < 0 || s->ttl > 255) {
-                av_log(h, AV_LOG_ERROR, "ttl(%d) should be in range [0,255]\n", s->ttl);
-                ret = AVERROR(EINVAL);
-                goto fail;
-            }
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "udplite_coverage", p)) {
-            s->udplite_coverage = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "localport", p)) {
-            s->local_port = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "pkt_size", p)) {
-            s->pkt_size = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "buffer_size", p)) {
-            s->buffer_size = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "connect", p)) {
-            s->is_connected = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "dscp", p)) {
-            dscp = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "fifo_size", p)) {
-            s->circular_buffer_size = strtol(buf, NULL, 10);
-            if (!HAVE_PTHREAD_CANCEL)
-                av_log(h, AV_LOG_WARNING,
-                       "'circular_buffer_size' option was set but it is not supported "
-                       "on this build (pthread support is required)\n");
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "bitrate", p)) {
-            s->bitrate = strtoll(buf, NULL, 10);
-            if (!HAVE_PTHREAD_CANCEL)
-                av_log(h, AV_LOG_WARNING,
-                       "'bitrate' option was set but it is not supported "
-                       "on this build (pthread support is required)\n");
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "burst_bits", p)) {
-            s->burst_bits = strtoll(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "localaddr", p)) {
-            av_freep(&s->localaddr);
-            s->localaddr = av_strdup(buf);
-            if (!s->localaddr) {
-                ret = AVERROR(ENOMEM);
-                goto fail;
-            }
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "sources", p)) {
-            if ((ret = ff_ip_parse_sources(h, buf, &s->filters)) < 0)
-                goto fail;
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "block", p)) {
-            if ((ret = ff_ip_parse_blocks(h, buf, &s->filters)) < 0)
-                goto fail;
-        }
-        if (!is_output && av_find_info_tag(buf, sizeof(buf), "timeout", p))
-            s->timeout = strtol(buf, NULL, 10);
-        if (is_output && av_find_info_tag(buf, sizeof(buf), "broadcast", p))
-            s->is_broadcast = strtol(buf, NULL, 10);
-    }
     /* handling needed to support options picking from both AVOption and URL */
     s->circular_buffer_size *= 188;
     if (flags & AVIO_FLAG_WRITE) {
@@ -780,10 +757,15 @@ static int udp_open(URLContext *h, const char *uri, int flags)
             goto fail;
     }
 
-    if ((s->is_multicast || s->local_port <= 0) && (h->flags & AVIO_FLAG_READ))
+    if ((s->is_multicast || s->local_port < 0) && (h->flags & AVIO_FLAG_READ))
         s->local_port = port;
 
-    udp_fd = udp_socket_create(h, &my_addr, &len, s->localaddr);
+    if (!s->is_multicast && (s->localaddr == NULL || s->localaddr[0] == '\0') && h->flags == AVIO_FLAG_READ)
+        bind_addr = hostname;
+    else
+        bind_addr = s->localaddr;
+
+    udp_fd = udp_socket_create(h, &my_addr, &len, bind_addr);
     if (udp_fd < 0) {
         ret = AVERROR(EIO);
         goto fail;
@@ -826,8 +808,8 @@ static int udp_open(URLContext *h, const char *uri, int flags)
             av_log(h, AV_LOG_WARNING, "socket option UDPLITE_RECV_CSCOV not available");
     }
 
-    if (dscp >= 0) {
-        dscp <<= 2;
+    if (s->dscp >= 0) {
+        int dscp = s->dscp << 2;
         if (setsockopt (udp_fd, IPPROTO_IP, IP_TOS, &dscp, sizeof(dscp)) != 0) {
             ret = ff_neterrno();
             goto fail;
@@ -935,11 +917,15 @@ static int udp_open(URLContext *h, const char *uri, int flags)
 
     if ((!is_output && s->circular_buffer_size) || (is_output && s->bitrate && s->circular_buffer_size)) {
         /* start the task going */
-        s->fifo = av_fifo_alloc2(s->circular_buffer_size, 1, 0);
-        if (!s->fifo) {
+        AVFifo *fifo = av_fifo_alloc2(s->circular_buffer_size, 1, 0);
+        if (!fifo) {
             ret = AVERROR(ENOMEM);
             goto fail;
         }
+        if (is_output)
+            s->tx_fifo = fifo;
+        else
+            s->rx_fifo = fifo;
         ret = pthread_mutex_init(&s->mutex, NULL);
         if (ret != 0) {
             av_log(h, AV_LOG_ERROR, "pthread_mutex_init failed : %s\n", strerror(ret));
@@ -972,7 +958,8 @@ static int udp_open(URLContext *h, const char *uri, int flags)
  fail:
     if (udp_fd >= 0)
         closesocket(udp_fd);
-    av_fifo_freep2(&s->fifo);
+    av_fifo_freep2(&s->rx_fifo);
+    av_fifo_freep2(&s->tx_fifo);
     ff_ip_reset_filters(&s->filters);
     return ret;
 }
@@ -991,27 +978,29 @@ static int udp_read(URLContext *h, uint8_t *buf, int size)
 {
     UDPContext *s = h->priv_data;
     int ret;
-    struct sockaddr_storage addr;
-    socklen_t addr_len = sizeof(addr);
 #if HAVE_PTHREAD_CANCEL
     int avail, nonblock = h->flags & AVIO_FLAG_NONBLOCK;
 
-    if (s->fifo) {
+    if (s->rx_fifo) {
         pthread_mutex_lock(&s->mutex);
         do {
-            avail = av_fifo_can_read(s->fifo);
+            avail = av_fifo_can_read(s->rx_fifo);
             if (avail) { // >=size) {
-                uint8_t tmp[4];
+                UDPQueuedPacketHeader header;
 
-                av_fifo_read(s->fifo, tmp, 4);
-                avail = AV_RL32(tmp);
+                av_fifo_read(s->rx_fifo, &header, sizeof(header));
+
+                s->last_recv_addr = header.addr;
+                s->last_recv_addr_len = header.addr_len;
+
+                avail = header.pkt_size;
                 if(avail > size){
                     av_log(h, AV_LOG_WARNING, "Part of datagram lost due to insufficient buffer size\n");
                     avail = size;
                 }
 
-                av_fifo_read(s->fifo, buf, avail);
-                av_fifo_drain2(s->fifo, AV_RL32(tmp) - avail);
+                av_fifo_read(s->rx_fifo, buf, avail);
+                av_fifo_drain2(s->rx_fifo, header.pkt_size - avail);
                 pthread_mutex_unlock(&s->mutex);
                 return avail;
             } else if(s->circular_buffer_error){
@@ -1043,10 +1032,11 @@ static int udp_read(URLContext *h, uint8_t *buf, int size)
         if (ret < 0)
             return ret;
     }
-    ret = recvfrom(s->udp_fd, buf, size, 0, (struct sockaddr *)&addr, &addr_len);
+    s->last_recv_addr_len = sizeof(s->last_recv_addr);
+    ret = recvfrom(s->udp_fd, buf, size, 0, (struct sockaddr *)&s->last_recv_addr, &s->last_recv_addr_len);
     if (ret < 0)
         return ff_neterrno();
-    if (ff_ip_check_source_lists(&addr, &s->filters))
+    if (ff_ip_check_source_lists(&s->last_recv_addr, &s->filters))
         return AVERROR(EINTR);
     return ret;
 }
@@ -1057,7 +1047,7 @@ static int udp_write(URLContext *h, const uint8_t *buf, int size)
     int ret;
 
 #if HAVE_PTHREAD_CANCEL
-    if (s->fifo) {
+    if (s->tx_fifo) {
         uint8_t tmp[4];
 
         pthread_mutex_lock(&s->mutex);
@@ -1072,14 +1062,14 @@ static int udp_write(URLContext *h, const uint8_t *buf, int size)
             return err;
         }
 
-        if (av_fifo_can_write(s->fifo) < size + 4) {
+        if (av_fifo_can_write(s->tx_fifo) < size + 4) {
             /* What about a partial packet tx ? */
             pthread_mutex_unlock(&s->mutex);
             return AVERROR(ENOMEM);
         }
         AV_WL32(tmp, size);
-        av_fifo_write(s->fifo, tmp, 4); /* size of packet */
-        av_fifo_write(s->fifo, buf, size); /* the data */
+        av_fifo_write(s->tx_fifo, tmp, 4); /* size of packet */
+        av_fifo_write(s->tx_fifo, buf, size); /* the data */
         pthread_cond_signal(&s->cond);
         pthread_mutex_unlock(&s->mutex);
         return size;
@@ -1141,7 +1131,8 @@ static int udp_close(URLContext *h)
     }
 #endif
     closesocket(s->udp_fd);
-    av_fifo_freep2(&s->fifo);
+    av_fifo_freep2(&s->rx_fifo);
+    av_fifo_freep2(&s->tx_fifo);
     ff_ip_reset_filters(&s->filters);
     return 0;
 }

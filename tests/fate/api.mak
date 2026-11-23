@@ -8,7 +8,7 @@ fate-api-band: $(APITESTSDIR)/api-band-test$(EXESUF)
 fate-api-band: CMD = run $(APITESTSDIR)/api-band-test$(EXESUF) $(TARGET_SAMPLES)/mpeg4/resize_down-up.h263
 fate-api-band: CMP = null
 
-FATE_API_SAMPLES_LIBAVFORMAT-$(call DEMDEC, H264, H264) += fate-api-h264
+FATE_API_SAMPLES_LIBAVFORMAT-$(call DEMDEC, H264, H264, H264_PARSER) += fate-api-h264
 fate-api-h264: $(APITESTSDIR)/api-h264-test$(EXESUF)
 fate-api-h264: CMD = run $(APITESTSDIR)/api-h264-test$(EXESUF) $(TARGET_SAMPLES)/h264-conformance/SVA_NL2_E.264
 
@@ -19,6 +19,7 @@ fate-api-h264-slice: CMD = run $(APITESTSDIR)/api-h264-slice-test$(EXESUF) 2 $(T
 FATE_API_LIBAVFORMAT-yes += $(if $(findstring fate-lavf-flv,$(FATE_LAVF_CONTAINER)),fate-api-seek)
 fate-api-seek: $(APITESTSDIR)/api-seek-test$(EXESUF) fate-lavf-flv
 fate-lavf-flv: KEEP_FILES ?= 1
+fate-lavf-flv: CMP =
 fate-api-seek: CMD = run $(APITESTSDIR)/api-seek-test$(EXESUF) $(TARGET_PATH)/tests/data/lavf/lavf.flv 0 720
 fate-api-seek: CMP = null
 

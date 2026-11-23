@@ -184,7 +184,7 @@ int ff_vorbis_comment(AVFormatContext *as, AVDictionary **m,
 
     if (p != end)
         av_log(as, AV_LOG_INFO,
-               "%"PTRDIFF_SPECIFIER" bytes of comment header remain\n", end - p);
+               "%td bytes of comment header remain\n", end - p);
     if (n > 0)
         av_log(as, AV_LOG_INFO,
                "truncated comment header, %i comments not found\n", n);
@@ -215,6 +215,12 @@ struct oggvorbis_private {
     AVVorbisParseContext *vp;
     int64_t final_pts;
     int final_duration;
+    uint8_t *header;
+    int header_size;
+    uint8_t *comment;
+    int comment_size;
+    uint8_t *setup;
+    int setup_size;
 };
 
 static int fixup_vorbis_headers(AVFormatContext *as,
@@ -260,23 +266,23 @@ static void vorbis_cleanup(AVFormatContext *s, int idx)
         av_vorbis_parse_free(&priv->vp);
         for (i = 0; i < 3; i++)
             av_freep(&priv->packet[i]);
+
+        av_freep(&priv->header);
+        av_freep(&priv->comment);
+        av_freep(&priv->setup);
     }
 }
 
-static int vorbis_update_metadata(AVFormatContext *s, int idx)
+int ff_vorbis_update_metadata(AVFormatContext *s, AVStream *st,
+                              const uint8_t *buf, int size)
 {
     struct ogg *ogg = s->priv_data;
-    struct ogg_stream *os = ogg->streams + idx;
-    AVStream *st = s->streams[idx];
+    struct ogg_stream *os = ogg->streams + st->index;
     int ret;
-
-    if (os->psize <= 8)
-        return 0;
 
     /* New metadata packet; release old data. */
     av_dict_free(&st->metadata);
-    ret = ff_vorbis_stream_comment(s, st, os->buf + os->pstart + 7,
-                                   os->psize - 8);
+    ret = ff_vorbis_stream_comment(s, st, buf, size);
     if (ret < 0)
         return ret;
 
@@ -291,6 +297,75 @@ static int vorbis_update_metadata(AVFormatContext *s, int idx)
     }
 
     return ret;
+}
+
+static int vorbis_parse_header(AVFormatContext *s, AVStream *st,
+                               const uint8_t *p, unsigned int psize)
+{
+    unsigned blocksize, bs0, bs1;
+    int srate;
+    int channels;
+
+    if (psize != 30)
+        return AVERROR_INVALIDDATA;
+
+    p += 7; /* skip "\001vorbis" tag */
+
+    if (bytestream_get_le32(&p) != 0) /* vorbis_version */
+        return AVERROR_INVALIDDATA;
+
+    channels = bytestream_get_byte(&p);
+    if (st->codecpar->ch_layout.nb_channels &&
+        channels != st->codecpar->ch_layout.nb_channels) {
+        av_log(s, AV_LOG_ERROR, "Channel change is not supported\n");
+        return AVERROR_PATCHWELCOME;
+    }
+    st->codecpar->ch_layout.nb_channels = channels;
+    srate               = bytestream_get_le32(&p);
+    p += 4; // skip maximum bitrate
+    st->codecpar->bit_rate = bytestream_get_le32(&p); // nominal bitrate
+    p += 4; // skip minimum bitrate
+
+    blocksize = bytestream_get_byte(&p);
+    bs0       = blocksize & 15;
+    bs1       = blocksize >> 4;
+
+    if (bs0 > bs1)
+        return AVERROR_INVALIDDATA;
+    if (bs0 < 6 || bs1 > 13)
+        return AVERROR_INVALIDDATA;
+
+    if (bytestream_get_byte(&p) != 1) /* framing_flag */
+        return AVERROR_INVALIDDATA;
+
+    st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
+    st->codecpar->codec_id   = AV_CODEC_ID_VORBIS;
+
+    if (srate > 0) {
+        if (st->codecpar->sample_rate &&
+            srate != st->codecpar->sample_rate) {
+            av_log(s, AV_LOG_ERROR, "Sample rate change is not supported\n");
+            return AVERROR_PATCHWELCOME;
+        }
+
+        st->codecpar->sample_rate = srate;
+        avpriv_set_pts_info(st, 64, 1, srate);
+    }
+
+    return 1;
+}
+
+static int vorbis_update_metadata(AVFormatContext *s, int idx)
+{
+    struct ogg *ogg = s->priv_data;
+    struct ogg_stream *os = ogg->streams + idx;
+    AVStream *st = s->streams[idx];
+
+    if (os->psize <= 8)
+        return 0;
+
+    return ff_vorbis_update_metadata(s, st, os->buf + os->pstart + 7,
+                                     os->psize - 8);
 }
 
 static int vorbis_header(AVFormatContext *s, int idx)
@@ -329,50 +404,10 @@ static int vorbis_header(AVFormatContext *s, int idx)
     priv->packet[pkt_type >> 1] = av_memdup(os->buf + os->pstart, os->psize);
     if (!priv->packet[pkt_type >> 1])
         return AVERROR(ENOMEM);
-    if (os->buf[os->pstart] == 1) {
-        const uint8_t *p = os->buf + os->pstart + 7; /* skip "\001vorbis" tag */
-        unsigned blocksize, bs0, bs1;
-        int srate;
-        int channels;
+    if (pkt_type == 1)
+        return vorbis_parse_header(s, st, os->buf + os->pstart, os->psize);
 
-        if (os->psize != 30)
-            return AVERROR_INVALIDDATA;
-
-        if (bytestream_get_le32(&p) != 0) /* vorbis_version */
-            return AVERROR_INVALIDDATA;
-
-        channels = bytestream_get_byte(&p);
-        if (st->codecpar->ch_layout.nb_channels &&
-            channels != st->codecpar->ch_layout.nb_channels) {
-            av_log(s, AV_LOG_ERROR, "Channel change is not supported\n");
-            return AVERROR_PATCHWELCOME;
-        }
-        st->codecpar->ch_layout.nb_channels = channels;
-        srate               = bytestream_get_le32(&p);
-        p += 4; // skip maximum bitrate
-        st->codecpar->bit_rate = bytestream_get_le32(&p); // nominal bitrate
-        p += 4; // skip minimum bitrate
-
-        blocksize = bytestream_get_byte(&p);
-        bs0       = blocksize & 15;
-        bs1       = blocksize >> 4;
-
-        if (bs0 > bs1)
-            return AVERROR_INVALIDDATA;
-        if (bs0 < 6 || bs1 > 13)
-            return AVERROR_INVALIDDATA;
-
-        if (bytestream_get_byte(&p) != 1) /* framing_flag */
-            return AVERROR_INVALIDDATA;
-
-        st->codecpar->codec_type = AVMEDIA_TYPE_AUDIO;
-        st->codecpar->codec_id   = AV_CODEC_ID_VORBIS;
-
-        if (srate > 0) {
-            st->codecpar->sample_rate = srate;
-            avpriv_set_pts_info(st, 64, 1, srate);
-        }
-    } else if (os->buf[os->pstart] == 3) {
+    if (pkt_type == 3) {
         if (vorbis_update_metadata(s, idx) >= 0 && priv->len[1] > 10) {
             unsigned new_len;
 
@@ -418,6 +453,9 @@ static int vorbis_packet(AVFormatContext *s, int idx)
     struct ogg_stream *os = ogg->streams + idx;
     struct oggvorbis_private *priv = os->private;
     int duration, flags = 0;
+    int skip_packet = 0;
+    int ret, new_extradata_size;
+    PutByteContext pb;
 
     if (!priv->vp)
         return AVERROR_INVALIDDATA;
@@ -480,10 +518,50 @@ static int vorbis_packet(AVFormatContext *s, int idx)
         if (duration < 0) {
             os->pflags |= AV_PKT_FLAG_CORRUPT;
             return 0;
-        } else if (flags & VORBIS_FLAG_COMMENT) {
-            vorbis_update_metadata(s, idx);
-            flags = 0;
         }
+
+        if (flags & VORBIS_FLAG_HEADER) {
+            ret = vorbis_parse_header(s, s->streams[idx], os->buf + os->pstart, os->psize);
+            if (ret < 0)
+                return ret;
+
+            ret = av_reallocp(&priv->header, os->psize);
+            if (ret < 0)
+                return ret;
+
+            memcpy(priv->header, os->buf + os->pstart, os->psize);
+            priv->header_size = os->psize;
+
+            skip_packet = 1;
+        }
+
+        if (flags & VORBIS_FLAG_COMMENT) {
+            ret = vorbis_update_metadata(s, idx);
+            if (ret < 0)
+                return ret;
+
+            ret = av_reallocp(&priv->comment, os->psize);
+            if (ret < 0)
+                return ret;
+
+            memcpy(priv->comment, os->buf + os->pstart, os->psize);
+            priv->comment_size = os->psize;
+
+            flags = 0;
+            skip_packet = 1;
+        }
+
+        if (flags & VORBIS_FLAG_SETUP) {
+            ret = av_reallocp(&priv->setup, os->psize);
+            if (ret < 0)
+                return ret;
+
+            memcpy(priv->setup, os->buf + os->pstart, os->psize);
+            priv->setup_size = os->psize;
+
+            skip_packet = 1;
+        }
+
         os->pduration = duration;
     }
 
@@ -505,7 +583,31 @@ static int vorbis_packet(AVFormatContext *s, int idx)
         priv->final_duration += os->pduration;
     }
 
-    return 0;
+    if (priv->header && priv->comment && priv->setup) {
+        new_extradata_size = priv->header_size + priv->comment_size + priv->setup_size + 6;
+
+        ret = av_reallocp(&os->new_extradata, new_extradata_size);
+        if (ret < 0)
+            return ret;
+
+        os->new_extradata_size = new_extradata_size;
+        bytestream2_init_writer(&pb, os->new_extradata, new_extradata_size);
+        bytestream2_put_be16(&pb, priv->header_size);
+        bytestream2_put_buffer(&pb, priv->header, priv->header_size);
+        bytestream2_put_be16(&pb, priv->comment_size);
+        bytestream2_put_buffer(&pb, priv->comment, priv->comment_size);
+        bytestream2_put_be16(&pb, priv->setup_size);
+        bytestream2_put_buffer(&pb, priv->setup, priv->setup_size);
+
+        av_freep(&priv->header);
+        priv->header_size = 0;
+        av_freep(&priv->comment);
+        priv->comment_size = 0;
+        av_freep(&priv->setup);
+        priv->setup_size = 0;
+    }
+
+    return skip_packet;
 }
 
 const struct ogg_codec ff_vorbis_codec = {

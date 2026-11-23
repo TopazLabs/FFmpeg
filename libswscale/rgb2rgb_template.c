@@ -359,6 +359,10 @@ static void shuffle_bytes_##name (const uint8_t *src,                   \
 DEFINE_SHUFFLE_BYTES(1230_c, 1, 2, 3, 0)
 DEFINE_SHUFFLE_BYTES(3012_c, 3, 0, 1, 2)
 DEFINE_SHUFFLE_BYTES(3210_c, 3, 2, 1, 0)
+DEFINE_SHUFFLE_BYTES(3102_c, 3, 1, 0, 2)
+DEFINE_SHUFFLE_BYTES(2013_c, 2, 0, 1, 3)
+DEFINE_SHUFFLE_BYTES(2130_c, 2, 1, 3, 0)
+DEFINE_SHUFFLE_BYTES(1203_c, 1, 2, 0, 3)
 
 static inline void rgb24tobgr24_c(const uint8_t *src, uint8_t *dst, int src_size)
 {
@@ -466,11 +470,11 @@ static inline void yuvPlanartouyvy_c(const uint8_t *ysrc, const uint8_t *usrc,
 
         for (i = 0; i < chromWidth; i++) {
 #if HAVE_BIGENDIAN
-            *idst++ = (uc[0] << 24) + (yc[0] << 16) +
+            *idst++ = ((unsigned)uc[0] << 24) + (yc[0] << 16) +
                       (vc[0] <<  8) + (yc[1] <<  0);
 #else
             *idst++ = uc[0] + (yc[0] << 8) +
-                      (vc[0] << 16) + (yc[1] << 24);
+                      (vc[0] << 16) + ((unsigned)yc[1] << 24);
 #endif
             yc += 2;
             uc++;
@@ -524,40 +528,6 @@ static inline void yuv422ptoyuy2_c(const uint8_t *ysrc, const uint8_t *usrc,
                       chromStride, dstStride, 1);
 }
 
-/**
- * Height should be a multiple of 2 and width should be a multiple of 16.
- * (If this is a problem for anyone then tell me, and I will fix it.)
- */
-static inline void yuy2toyv12_c(const uint8_t *src, uint8_t *ydst,
-                                uint8_t *udst, uint8_t *vdst,
-                                int width, int height, int lumStride,
-                                int chromStride, int srcStride)
-{
-    int y;
-    const int chromWidth = width >> 1;
-
-    for (y = 0; y < height; y += 2) {
-        int i;
-        for (i = 0; i < chromWidth; i++) {
-            ydst[2 * i + 0] = src[4 * i + 0];
-            udst[i]         = src[4 * i + 1];
-            ydst[2 * i + 1] = src[4 * i + 2];
-            vdst[i]         = src[4 * i + 3];
-        }
-        ydst += lumStride;
-        src  += srcStride;
-
-        for (i = 0; i < chromWidth; i++) {
-            ydst[2 * i + 0] = src[4 * i + 0];
-            ydst[2 * i + 1] = src[4 * i + 2];
-        }
-        udst += chromStride;
-        vdst += chromStride;
-        ydst += lumStride;
-        src  += srcStride;
-    }
-}
-
 static inline void planar2x_c(const uint8_t *src, uint8_t *dst, int srcWidth,
                               int srcHeight, int srcStride, int dstStride)
 {
@@ -604,48 +574,12 @@ static inline void planar2x_c(const uint8_t *src, uint8_t *dst, int srcWidth,
 }
 
 /**
- * Height should be a multiple of 2 and width should be a multiple of 16.
- * (If this is a problem for anyone then tell me, and I will fix it.)
- * Chrominance data is only taken from every second line, others are ignored.
- * FIXME: Write HQ version.
- */
-static inline void uyvytoyv12_c(const uint8_t *src, uint8_t *ydst,
-                                uint8_t *udst, uint8_t *vdst,
-                                int width, int height, int lumStride,
-                                int chromStride, int srcStride)
-{
-    int y;
-    const int chromWidth = width >> 1;
-
-    for (y = 0; y < height; y += 2) {
-        int i;
-        for (i = 0; i < chromWidth; i++) {
-            udst[i]         = src[4 * i + 0];
-            ydst[2 * i + 0] = src[4 * i + 1];
-            vdst[i]         = src[4 * i + 2];
-            ydst[2 * i + 1] = src[4 * i + 3];
-        }
-        ydst += lumStride;
-        src  += srcStride;
-
-        for (i = 0; i < chromWidth; i++) {
-            ydst[2 * i + 0] = src[4 * i + 1];
-            ydst[2 * i + 1] = src[4 * i + 3];
-        }
-        udst += chromStride;
-        vdst += chromStride;
-        ydst += lumStride;
-        src  += srcStride;
-    }
-}
-
-/**
- * Height should be a multiple of 2 and width should be a multiple of 2.
+ * width should be a multiple of 2.
  * (If this is a problem for anyone then tell me, and I will fix it.)
  */
 void ff_rgb24toyv12_c(const uint8_t *src, uint8_t *ydst, uint8_t *udst,
                    uint8_t *vdst, int width, int height, int lumStride,
-                   int chromStride, int srcStride, int32_t *rgb2yuv)
+                   int chromStride, int srcStride, const int32_t *rgb2yuv)
 {
     int32_t ry = rgb2yuv[RY_IDX], gy = rgb2yuv[GY_IDX], by = rgb2yuv[BY_IDX];
     int32_t ru = rgb2yuv[RU_IDX], gu = rgb2yuv[GU_IDX], bu = rgb2yuv[BU_IDX];
@@ -659,6 +593,11 @@ void ff_rgb24toyv12_c(const uint8_t *src, uint8_t *ydst, uint8_t *udst,
 
     for (y = 0; y < height; y += 2) {
         int i;
+        if (y + 1 == height) {
+            ydst2 = ydst1;
+            src2  = src1;
+        }
+
         for (i = 0; i < chromWidth; i++) {
             unsigned int b11 = src1[6 * i + 0];
             unsigned int g11 = src1[6 * i + 1];
@@ -734,59 +673,6 @@ static void deinterleaveBytes_c(const uint8_t *src, uint8_t *dst1, uint8_t *dst2
         src  += srcStride;
         dst1 += dst1Stride;
         dst2 += dst2Stride;
-    }
-}
-
-static inline void vu9_to_vu12_c(const uint8_t *src1, const uint8_t *src2,
-                                 uint8_t *dst1, uint8_t *dst2,
-                                 int width, int height,
-                                 int srcStride1, int srcStride2,
-                                 int dstStride1, int dstStride2)
-{
-    int x, y;
-    int w = width  / 2;
-    int h = height / 2;
-
-    for (y = 0; y < h; y++) {
-        const uint8_t *s1 = src1 + srcStride1 * (y >> 1);
-        uint8_t *d        = dst1 + dstStride1 *  y;
-        for (x = 0; x < w; x++)
-            d[2 * x] = d[2 * x + 1] = s1[x];
-    }
-    for (y = 0; y < h; y++) {
-        const uint8_t *s2 = src2 + srcStride2 * (y >> 1);
-        uint8_t *d        = dst2 + dstStride2 *  y;
-        for (x = 0; x < w; x++)
-            d[2 * x] = d[2 * x + 1] = s2[x];
-    }
-}
-
-static inline void yvu9_to_yuy2_c(const uint8_t *src1, const uint8_t *src2,
-                                  const uint8_t *src3, uint8_t *dst,
-                                  int width, int height,
-                                  int srcStride1, int srcStride2,
-                                  int srcStride3, int dstStride)
-{
-    int x, y;
-    int w = width / 2;
-    int h = height;
-
-    for (y = 0; y < h; y++) {
-        const uint8_t *yp = src1 + srcStride1 *  y;
-        const uint8_t *up = src2 + srcStride2 * (y >> 2);
-        const uint8_t *vp = src3 + srcStride3 * (y >> 2);
-        uint8_t *d        = dst  + dstStride  *  y;
-        for (x = 0; x < w; x++) {
-            const int x2 = x << 2;
-            d[8 * x + 0] = yp[x2];
-            d[8 * x + 1] = up[x];
-            d[8 * x + 2] = yp[x2 + 1];
-            d[8 * x + 3] = vp[x];
-            d[8 * x + 4] = yp[x2 + 2];
-            d[8 * x + 5] = up[x];
-            d[8 * x + 6] = yp[x2 + 3];
-            d[8 * x + 7] = vp[x];
-        }
     }
 }
 
@@ -965,19 +851,20 @@ static av_cold void rgb2rgb_init_c(void)
     shuffle_bytes_1230 = shuffle_bytes_1230_c;
     shuffle_bytes_3012 = shuffle_bytes_3012_c;
     shuffle_bytes_3210 = shuffle_bytes_3210_c;
+    shuffle_bytes_3102 = shuffle_bytes_3102_c;
+    shuffle_bytes_2013 = shuffle_bytes_2013_c;
+    shuffle_bytes_2130 = shuffle_bytes_2130_c;
+    shuffle_bytes_1203 = shuffle_bytes_1203_c;
     rgb32tobgr16       = rgb32tobgr16_c;
     rgb32tobgr15       = rgb32tobgr15_c;
     yv12toyuy2         = yv12toyuy2_c;
     yv12touyvy         = yv12touyvy_c;
     yuv422ptoyuy2      = yuv422ptoyuy2_c;
     yuv422ptouyvy      = yuv422ptouyvy_c;
-    yuy2toyv12         = yuy2toyv12_c;
     planar2x           = planar2x_c;
     ff_rgb24toyv12     = ff_rgb24toyv12_c;
     interleaveBytes    = interleaveBytes_c;
     deinterleaveBytes  = deinterleaveBytes_c;
-    vu9_to_vu12        = vu9_to_vu12_c;
-    yvu9_to_yuy2       = yvu9_to_yuy2_c;
 
     uyvytoyuv420       = uyvytoyuv420_c;
     uyvytoyuv422       = uyvytoyuv422_c;

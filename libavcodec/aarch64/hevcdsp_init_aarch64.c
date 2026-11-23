@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 #include "libavutil/attributes.h"
+#include "libavutil/avassert.h"
 #include "libavutil/cpu.h"
 #include "libavutil/aarch64/cpu.h"
 #include "libavcodec/aarch64/h26x/dsp.h"
@@ -91,7 +92,59 @@ void ff_hevc_idct_4x4_dc_10_neon(int16_t *coeffs);
 void ff_hevc_idct_8x8_dc_10_neon(int16_t *coeffs);
 void ff_hevc_idct_16x16_dc_10_neon(int16_t *coeffs);
 void ff_hevc_idct_32x32_dc_10_neon(int16_t *coeffs);
+void ff_hevc_idct_4x4_dc_12_neon(int16_t *coeffs);
+void ff_hevc_idct_8x8_dc_12_neon(int16_t *coeffs);
+void ff_hevc_idct_16x16_dc_12_neon(int16_t *coeffs);
+void ff_hevc_idct_32x32_dc_12_neon(int16_t *coeffs);
 void ff_hevc_transform_luma_4x4_neon_8(int16_t *coeffs);
+
+void ff_hevc_dequant_4x4_8_neon(int16_t *coeffs);
+void ff_hevc_dequant_8x8_8_neon(int16_t *coeffs);
+void ff_hevc_dequant_16x16_8_neon(int16_t *coeffs);
+void ff_hevc_dequant_32x32_8_neon(int16_t *coeffs);
+
+void ff_hevc_dequant_4x4_10_neon(int16_t *coeffs);
+void ff_hevc_dequant_8x8_10_neon(int16_t *coeffs);
+void ff_hevc_dequant_16x16_10_neon(int16_t *coeffs);
+void ff_hevc_dequant_32x32_10_neon(int16_t *coeffs);
+
+void ff_hevc_dequant_4x4_12_neon(int16_t *coeffs);
+void ff_hevc_dequant_8x8_12_neon(int16_t *coeffs);
+void ff_hevc_dequant_16x16_12_neon(int16_t *coeffs);
+void ff_hevc_dequant_32x32_12_neon(int16_t *coeffs);
+
+static void hevc_dequant_8_neon(int16_t *coeffs, int16_t log2_size)
+{
+    switch (log2_size) {
+    case 2: ff_hevc_dequant_4x4_8_neon(coeffs); break;
+    case 3: ff_hevc_dequant_8x8_8_neon(coeffs); break;
+    case 4: ff_hevc_dequant_16x16_8_neon(coeffs); break;
+    case 5: ff_hevc_dequant_32x32_8_neon(coeffs); break;
+    default: av_unreachable("log2_size must be 2, 3, 4 or 5");
+    }
+}
+
+static void hevc_dequant_10_neon(int16_t *coeffs, int16_t log2_size)
+{
+    switch (log2_size) {
+    case 2: ff_hevc_dequant_4x4_10_neon(coeffs); break;
+    case 3: ff_hevc_dequant_8x8_10_neon(coeffs); break;
+    case 4: ff_hevc_dequant_16x16_10_neon(coeffs); break;
+    case 5: ff_hevc_dequant_32x32_10_neon(coeffs); break;
+    default: av_unreachable("log2_size must be 2, 3, 4 or 5");
+    }
+}
+
+static void hevc_dequant_12_neon(int16_t *coeffs, int16_t log2_size)
+{
+    switch (log2_size) {
+    case 2: ff_hevc_dequant_4x4_12_neon(coeffs); break;
+    case 3: ff_hevc_dequant_8x8_12_neon(coeffs); break;
+    case 4: ff_hevc_dequant_16x16_12_neon(coeffs); break;
+    case 5: ff_hevc_dequant_32x32_12_neon(coeffs); break;
+    default: av_unreachable("log2_size must be 2, 3, 4 or 5");
+    }
+}
 
 #define NEON8_FNASSIGN(member, v, h, fn, ext) \
         member[1][v][h] = ff_hevc_put_hevc_##fn##4_8_neon##ext;  \
@@ -130,6 +183,17 @@ void ff_hevc_transform_luma_4x4_neon_8(int16_t *coeffs);
         member[7][v][h] = ff_hevc_put_hevc_##fn##32_8_neon##ext; \
         member[9][v][h] = ff_hevc_put_hevc_##fn##64_8_neon##ext;
 
+#define NEON8_FNASSIGN_PARTIAL_6(member, v, h, fn, ext) \
+        member[1][v][h] = ff_hevc_put_hevc_##fn##4_8_neon##ext;  \
+        member[2][v][h] = ff_hevc_put_hevc_##fn##6_8_neon##ext;  \
+        member[3][v][h] = ff_hevc_put_hevc_##fn##8_8_neon##ext;  \
+        member[4][v][h] = ff_hevc_put_hevc_##fn##12_8_neon##ext; \
+        member[5][v][h] = ff_hevc_put_hevc_##fn##16_8_neon##ext; \
+        member[6][v][h] = ff_hevc_put_hevc_##fn##24_8_neon##ext; \
+        member[7][v][h] = ff_hevc_put_hevc_##fn##32_8_neon##ext; \
+        member[8][v][h] = ff_hevc_put_hevc_##fn##24_8_neon##ext; \
+        member[9][v][h] = ff_hevc_put_hevc_##fn##32_8_neon##ext;
+
 av_cold void ff_hevc_dsp_init_aarch64(HEVCDSPContext *c, const int bit_depth)
 {
     int cpu_flags = av_get_cpu_flags();
@@ -153,11 +217,12 @@ av_cold void ff_hevc_dsp_init_aarch64(HEVCDSPContext *c, const int bit_depth)
         c->idct_dc[2]                  = ff_hevc_idct_16x16_dc_8_neon;
         c->idct_dc[3]                  = ff_hevc_idct_32x32_dc_8_neon;
         c->transform_4x4_luma          = ff_hevc_transform_luma_4x4_neon_8;
-        c->sao_band_filter[0]          =
+        c->dequant                     = hevc_dequant_8_neon;
+        c->sao_band_filter[0]          = ff_h26x_sao_band_filter_8x8_8_neon;
         c->sao_band_filter[1]          =
         c->sao_band_filter[2]          =
         c->sao_band_filter[3]          =
-        c->sao_band_filter[4]          = ff_h26x_sao_band_filter_8x8_8_neon;
+        c->sao_band_filter[4]          = ff_h26x_sao_band_filter_16x16_8_neon;
         c->sao_edge_filter[0]          = ff_hevc_sao_edge_filter_8x8_8_neon;
         c->sao_edge_filter[1]          =
         c->sao_edge_filter[2]          =
@@ -200,6 +265,8 @@ av_cold void ff_hevc_dsp_init_aarch64(HEVCDSPContext *c, const int bit_depth)
         NEON8_FNASSIGN(c->put_hevc_epel_bi, 1, 0, epel_bi_v,);
         NEON8_FNASSIGN(c->put_hevc_qpel_bi, 0, 0, pel_bi_pixels,);
         NEON8_FNASSIGN(c->put_hevc_qpel_bi, 1, 0, qpel_bi_v,);
+        NEON8_FNASSIGN_PARTIAL_6(c->put_hevc_qpel_bi_w, 0, 0, pel_bi_w_pixels,);
+        NEON8_FNASSIGN_PARTIAL_6(c->put_hevc_epel_bi_w, 0, 0, pel_bi_w_pixels,);
         NEON8_FNASSIGN(c->put_hevc_epel_uni, 0, 0, pel_uni_pixels,);
         NEON8_FNASSIGN(c->put_hevc_epel_uni, 1, 0, epel_uni_v,);
         NEON8_FNASSIGN(c->put_hevc_qpel_uni, 0, 0, pel_uni_pixels,);
@@ -257,6 +324,7 @@ av_cold void ff_hevc_dsp_init_aarch64(HEVCDSPContext *c, const int bit_depth)
         c->idct_dc[1]                  = ff_hevc_idct_8x8_dc_10_neon;
         c->idct_dc[2]                  = ff_hevc_idct_16x16_dc_10_neon;
         c->idct_dc[3]                  = ff_hevc_idct_32x32_dc_10_neon;
+        c->dequant                     = hevc_dequant_10_neon;
     }
     if (bit_depth == 12) {
         c->hevc_h_loop_filter_luma     = ff_hevc_h_loop_filter_luma_12_neon;
@@ -267,5 +335,10 @@ av_cold void ff_hevc_dsp_init_aarch64(HEVCDSPContext *c, const int bit_depth)
         c->add_residual[1]             = ff_hevc_add_residual_8x8_12_neon;
         c->add_residual[2]             = ff_hevc_add_residual_16x16_12_neon;
         c->add_residual[3]             = ff_hevc_add_residual_32x32_12_neon;
+        c->idct_dc[0]                  = ff_hevc_idct_4x4_dc_12_neon;
+        c->idct_dc[1]                  = ff_hevc_idct_8x8_dc_12_neon;
+        c->idct_dc[2]                  = ff_hevc_idct_16x16_dc_12_neon;
+        c->idct_dc[3]                  = ff_hevc_idct_32x32_dc_12_neon;
+        c->dequant                     = hevc_dequant_12_neon;
     }
 }

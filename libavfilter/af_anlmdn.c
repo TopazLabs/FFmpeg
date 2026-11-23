@@ -116,7 +116,7 @@ void ff_anlmdn_init(AudioNLMDNDSPContext *dsp)
     dsp->compute_distance_ssd = compute_distance_ssd_c;
     dsp->compute_cache        = compute_cache_c;
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_anlmdn_init_x86(dsp);
 #endif
 }
@@ -349,17 +349,17 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_af_anlmdn = {
-    .name          = "anlmdn",
-    .description   = NULL_IF_CONFIG_SMALL("Reduce broadband noise from stream using Non-Local Means."),
+const FFFilter ff_af_anlmdn = {
+    .p.name        = "anlmdn",
+    .p.description = NULL_IF_CONFIG_SMALL("Reduce broadband noise from stream using Non-Local Means."),
+    .p.priv_class  = &anlmdn_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(AudioNLMeansContext),
-    .priv_class    = &anlmdn_class,
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
     .process_command = process_command,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                     AVFILTER_FLAG_SLICE_THREADS,
 };

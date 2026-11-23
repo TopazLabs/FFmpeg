@@ -22,6 +22,7 @@
 #include "checkasm.h"
 #include "libavcodec/h264dsp.h"
 #include "libavcodec/h264data.h"
+#include "libavcodec/h264idct.h"
 #include "libavcodec/h264_parse.h"
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
@@ -193,8 +194,8 @@ static void check_idct(void)
             for (sz = 4; sz <= 8; sz += 4) {
                 void (*idct)(uint8_t *, int16_t *, int) = NULL;
                 const char fmts[3][28] = {
-                    "h264_idct%d_add_%dbpp", "h264_idct%d_dc_add_%dbpp",
-                    "h264_add_pixels%d_%dbpp",
+                    "idct%d_add_%dbpp", "idct%d_dc_add_%dbpp",
+                    "add_pixels%d_%dbpp",
                 };
 
                 randomize_buffers(i);
@@ -205,12 +206,12 @@ static void check_idct(void)
                     dct8x8(coef, bit_depth);
 
                 switch ((sz << 2) | dc) {
-                case (4 << 2) | 0: idct = h.h264_idct_add; break;
-                case (4 << 2) | 1: idct = h.h264_idct_dc_add; break;
-                case (4 << 2) | 2: idct = h.h264_add_pixels4_clear; break;
-                case (8 << 2) | 0: idct = h.h264_idct8_add; break;
-                case (8 << 2) | 1: idct = h.h264_idct8_dc_add; break;
-                case (8 << 2) | 2: idct = h.h264_add_pixels8_clear; break;
+                case (4 << 2) | 0: idct = h.idct_add; break;
+                case (4 << 2) | 1: idct = h.idct_dc_add; break;
+                case (4 << 2) | 2: idct = h.add_pixels4_clear; break;
+                case (8 << 2) | 0: idct = h.idct8_add; break;
+                case (8 << 2) | 1: idct = h.idct8_dc_add; break;
+                case (8 << 2) | 2: idct = h.add_pixels8_clear; break;
                 }
 
                 if (check_func(idct, fmts[dc], sz, bit_depth)) {
@@ -260,17 +261,17 @@ static void check_idct_multiple(void)
             int block_offset[16] = { 0 };
             switch (func) {
             case 0:
-                idct = h.h264_idct_add16;
-                name = "h264_idct_add16";
+                idct = h.idct_add16;
+                name = "idct_add16";
                 break;
             case 1:
-                idct = h.h264_idct_add16intra;
-                name = "h264_idct_add16intra";
+                idct = h.idct_add16intra;
+                name = "idct_add16intra";
                 intra = 1;
                 break;
             case 2:
-                idct = h.h264_idct8_add4;
-                name = "h264_idct8_add4";
+                idct = h.idct8_add4;
+                name = "idct8_add4";
                 sz = 8;
                 break;
             }
@@ -324,27 +325,75 @@ static void check_idct_multiple(void)
     }
 }
 
+static void check_idct_dequant(void)
+{
+    static const int depths[5] = { 8, 9, 10, 12, 14 };
+    LOCAL_ALIGNED_16(int16_t, src16, [16]);
+    LOCAL_ALIGNED_16(int32_t, src32, [16]);
+    LOCAL_ALIGNED_16(int16_t, dst0_16, [16 * 16]);
+    LOCAL_ALIGNED_16(int16_t, dst1_16, [16 * 16]);
+    LOCAL_ALIGNED_16(int32_t, dst0_32, [16 * 16]);
+    LOCAL_ALIGNED_16(int32_t, dst1_32, [16 * 16]);
+    H264DSPContext h;
+    int bit_depth, i, qmul;
+    declare_func(void, int16_t *output, int16_t *input, int qmul);
+
+    qmul = rnd() % 4096;
+
+    for (i = 0; i < FF_ARRAY_ELEMS(depths); i++) {
+        bit_depth = depths[i];
+        ff_h264dsp_init(&h, bit_depth, 1);
+
+        void *src, *dst_ref, *dst_new;
+        if (bit_depth == 8) {
+            src     = src16;
+            dst_ref = dst0_16;
+            dst_new = dst1_16;
+            for (int j = 0; j < 16; j++)
+                src16[j] = (rnd() % 512) - 256;
+        } else {
+            src     = src32;
+            dst_ref = dst0_32;
+            dst_new = dst1_32;
+            for (int j = 0; j < 16; j++)
+                src32[j] = (rnd() % (1 << (bit_depth + 1))) - (1 << bit_depth);
+        }
+        memset(dst_ref, 0, 16 * 16 * SIZEOF_COEF);
+        memset(dst_new, 0, 16 * 16 * SIZEOF_COEF);
+
+        if (check_func(h.luma_dc_dequant_idct, "luma_dc_dequant_idct_%d", bit_depth)) {
+
+            call_ref(dst_ref, src, qmul);
+            call_new(dst_new, src, qmul);
+            checkasm_check_dctcoef(dst0, 16*SIZEOF_COEF, dst1, 16*SIZEOF_COEF, 16, 16, "dst");
+            bench_new(dst_new, src, qmul);
+        }
+    }
+}
+
 
 static void check_loop_filter(void)
 {
+    enum {
+        N = 35,
+    };
     LOCAL_ALIGNED_16(uint8_t, dst, [32 * 16 * 2]);
     LOCAL_ALIGNED_16(uint8_t, dst0, [32 * 16 * 2]);
     LOCAL_ALIGNED_16(uint8_t, dst1, [32 * 16 * 2]);
     H264DSPContext h;
     int bit_depth;
-    int alphas[36], betas[36];
-    int8_t tc0[36][4];
+    int alphas[N], betas[N];
+    int8_t tc0[N][4];
 
     declare_func_emms(AV_CPU_FLAG_MMX, void, uint8_t *pix, ptrdiff_t stride,
                       int alpha, int beta, int8_t *tc0);
 
     for (bit_depth = 8; bit_depth <= 10; bit_depth++) {
-        int i, j, a, c;
         uint32_t mask = pixel_mask_lf[bit_depth - 8];
         ff_h264dsp_init(&h, bit_depth, 1);
-        for (i = 35, a = 255, c = 250; i >= 0; i--) {
+        for (int i = N, a = 255, c = 250; --i >= 0;) {
             alphas[i] = a << (bit_depth - 8);
-            betas[i]  = (i + 1) / 2 << (bit_depth - 8);
+            betas[i]  = (i + 2) / 2 << (bit_depth - 8);
             tc0[i][0] = tc0[i][3] = (c + 6) / 10;
             tc0[i][1] = (c + 7) / 15;
             tc0[i][2] = (c + 9) / 20;
@@ -355,9 +404,9 @@ static void check_loop_filter(void)
 #define CHECK_LOOP_FILTER(name, align, idc)                             \
         do {                                                            \
             if (check_func(h.name, #name #idc "_%dbpp", bit_depth)) {   \
-                for (j = 0; j < 36; j++) {                              \
+                for (int j = 0; j < N; ++j) {                           \
                     intptr_t off = 8 * 32 + (j & 15) * 4 * !align;      \
-                    for (i = 0; i < 1024; i+=4) {                       \
+                    for (int i = 0; i < 1024; i += 4) {                 \
                         AV_WN32A(dst + i, rnd() & mask);                \
                     }                                                   \
                     memcpy(dst0, dst, 32 * 16 * 2);                     \
@@ -376,48 +425,50 @@ static void check_loop_filter(void)
             }                                                           \
         } while (0)
 
-        CHECK_LOOP_FILTER(h264_v_loop_filter_luma, 1,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_luma, 0,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_luma_mbaff, 0,);
-        CHECK_LOOP_FILTER(h264_v_loop_filter_chroma, 1,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma, 0,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma_mbaff, 0,);
+        CHECK_LOOP_FILTER(v_loop_filter_luma, 1,);
+        CHECK_LOOP_FILTER(h_loop_filter_luma, 0,);
+        CHECK_LOOP_FILTER(h_loop_filter_luma_mbaff, 0,);
+        CHECK_LOOP_FILTER(v_loop_filter_chroma, 1,);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma, 0,);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma_mbaff, 0,);
 
         ff_h264dsp_init(&h, bit_depth, 2);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma, 0, 422);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma_mbaff, 0, 422);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma, 0, 422);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma_mbaff, 0, 422);
 #undef CHECK_LOOP_FILTER
     }
 }
 
 static void check_loop_filter_intra(void)
 {
+    enum {
+        N = 35,
+    };
     LOCAL_ALIGNED_16(uint8_t, dst, [32 * 16 * 2]);
     LOCAL_ALIGNED_16(uint8_t, dst0, [32 * 16 * 2]);
     LOCAL_ALIGNED_16(uint8_t, dst1, [32 * 16 * 2]);
     H264DSPContext h;
     int bit_depth;
-    int alphas[36], betas[36];
+    int alphas[N], betas[N];
 
     declare_func_emms(AV_CPU_FLAG_MMX, void, uint8_t *pix, ptrdiff_t stride,
                       int alpha, int beta);
 
     for (bit_depth = 8; bit_depth <= 10; bit_depth++) {
-        int i, j, a;
         uint32_t mask = pixel_mask_lf[bit_depth - 8];
         ff_h264dsp_init(&h, bit_depth, 1);
-        for (i = 35, a = 255; i >= 0; i--) {
+        for (int i = N, a = 255; --i >= 0;) {
             alphas[i] = a << (bit_depth - 8);
-            betas[i]  = (i + 1) / 2 << (bit_depth - 8);
+            betas[i]  = (i + 2) / 2 << (bit_depth - 8);
             a = a*9/10;
         }
 
 #define CHECK_LOOP_FILTER(name, align, idc)                             \
         do {                                                            \
             if (check_func(h.name, #name #idc "_%dbpp", bit_depth)) {   \
-                for (j = 0; j < 36; j++) {                              \
+                for (int j = 0; j < N; ++j) {                           \
                     intptr_t off = 8 * 32 + (j & 15) * 4 * !align;      \
-                    for (i = 0; i < 1024; i+=4) {                       \
+                    for (int i = 0; i < 1024; i += 4) {                 \
                         AV_WN32A(dst + i, rnd() & mask);                \
                     }                                                   \
                     memcpy(dst0, dst, 32 * 16 * 2);                     \
@@ -435,16 +486,16 @@ static void check_loop_filter_intra(void)
             }                                                           \
         } while (0)
 
-        CHECK_LOOP_FILTER(h264_v_loop_filter_luma_intra, 1,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_luma_intra, 0,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_luma_mbaff_intra, 0,);
-        CHECK_LOOP_FILTER(h264_v_loop_filter_chroma_intra, 1,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma_intra, 0,);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma_mbaff_intra, 0,);
+        CHECK_LOOP_FILTER(v_loop_filter_luma_intra, 1,);
+        CHECK_LOOP_FILTER(h_loop_filter_luma_intra, 0,);
+        CHECK_LOOP_FILTER(h_loop_filter_luma_mbaff_intra, 0,);
+        CHECK_LOOP_FILTER(v_loop_filter_chroma_intra, 1,);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma_intra, 0,);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma_mbaff_intra, 0,);
 
         ff_h264dsp_init(&h, bit_depth, 2);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma_intra, 0, 422);
-        CHECK_LOOP_FILTER(h264_h_loop_filter_chroma_mbaff_intra, 0, 422);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma_intra, 0, 422);
+        CHECK_LOOP_FILTER(h_loop_filter_chroma_mbaff_intra, 0, 422);
 #undef CHECK_LOOP_FILTER
     }
 }
@@ -453,6 +504,7 @@ void checkasm_check_h264dsp(void)
 {
     check_idct();
     check_idct_multiple();
+    check_idct_dequant();
     report("idct");
 
     check_loop_filter();

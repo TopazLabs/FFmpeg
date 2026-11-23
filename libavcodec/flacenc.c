@@ -57,7 +57,7 @@ enum CodingMode {
 typedef struct CompressionOptions {
     int compression_level;
     int block_time_ms;
-    enum FFLPCType lpc_type;
+    int /* enum FFLPCType */ lpc_type;
     int lpc_passes;
     int lpc_coeff_precision;
     int min_prediction_order;
@@ -1172,7 +1172,7 @@ static int encode_residual_ch(FlacEncodeContext *s, int ch)
 
 static int count_frame_header(FlacEncodeContext *s)
 {
-    uint8_t av_unused tmp;
+    av_unused uint8_t tmp;
     int count;
 
     /*
@@ -1760,9 +1760,7 @@ const FFCodec ff_flac_encoder = {
     .init           = flac_encode_init,
     FF_CODEC_ENCODE_CB(flac_encode_frame),
     .close          = flac_encode_close,
-    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
-                                                     AV_SAMPLE_FMT_S32,
-                                                     AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32),
     .p.priv_class   = &flac_encoder_class,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_EOF_FLUSH,
 };

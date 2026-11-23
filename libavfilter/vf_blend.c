@@ -40,7 +40,8 @@ typedef struct BlendContext {
     int hsub, vsub;             ///< chroma subsampling values
     int nb_planes;
     char *all_expr;
-    enum BlendMode all_mode;
+    /* enum BlendMode */
+    int all_mode;
     double all_opacity;
 
     int depth;
@@ -428,9 +429,11 @@ static const AVFilterPad blend_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_blend = {
-    .name          = "blend",
-    .description   = NULL_IF_CONFIG_SMALL("Blend two video frames into each other."),
+const FFFilter ff_vf_blend = {
+    .p.name        = "blend",
+    .p.description = NULL_IF_CONFIG_SMALL("Blend two video frames into each other."),
+    .p.priv_class  = &blend_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .preinit       = blend_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
@@ -439,8 +442,6 @@ const AVFilter ff_vf_blend = {
     FILTER_INPUTS(blend_inputs),
     FILTER_OUTPUTS(blend_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &blend_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
 
@@ -479,17 +480,17 @@ static const AVFilterPad tblend_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_tblend = {
-    .name          = "tblend",
-    .description   = NULL_IF_CONFIG_SMALL("Blend successive frames."),
+const FFFilter ff_vf_tblend = {
+    .p.name        = "tblend",
+    .p.description = NULL_IF_CONFIG_SMALL("Blend successive frames."),
+    .p.priv_class  = &tblend_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(BlendContext),
-    .priv_class    = &tblend_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(tblend_inputs),
     FILTER_OUTPUTS(blend_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };
 

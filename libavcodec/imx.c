@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/common.h"
 #include "avcodec.h"
 #include "bytestream.h"
@@ -58,19 +59,9 @@ static int imx_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
         return ret;
 
     if (ff_copy_palette(imx->pal, avpkt, avctx)) {
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-        frame->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         frame->flags |= AV_FRAME_FLAG_KEY;
     } else {
         frame->flags &= ~AV_FRAME_FLAG_KEY;
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-        frame->palette_has_changed = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     }
 
     bytestream2_init(&gb, avpkt->data, avpkt->size);
@@ -168,7 +159,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return avpkt->size;
 }
 
-static void imx_decode_flush(AVCodecContext *avctx)
+static av_cold void imx_decode_flush(AVCodecContext *avctx)
 {
     SimbiosisIMXContext *imx = avctx->priv_data;
 
@@ -178,7 +169,7 @@ static void imx_decode_flush(AVCodecContext *avctx)
     memset(imx->history, 0, sizeof(imx->history));
 }
 
-static int imx_decode_close(AVCodecContext *avctx)
+static av_cold int imx_decode_close(AVCodecContext *avctx)
 {
     SimbiosisIMXContext *imx = avctx->priv_data;
 

@@ -526,7 +526,7 @@ static void reverse_matrixing(float *su1, float *su2, int *prev_code,
             }
             break;
         default:
-            av_assert1(0);
+            av_unreachable("curr_code/matrix_coeff_index_* values are stored in two bits");
         }
     }
 }
@@ -616,7 +616,7 @@ static int decode_channel_sound_unit(ATRAC3Context *q, GetBitContext *gb,
 
     /* calculate number of used MLT/QMF bands according to the amount of coded
        spectral lines */
-    num_bands = (subband_tab[num_subbands] - 1) >> 8;
+    num_bands = (subband_tab[num_subbands + 1] - 1) >> 8;
     if (last_tonal >= 0)
         num_bands = FFMAX((last_tonal + 256) >> 8, num_bands);
 
@@ -1027,13 +1027,7 @@ const FFCodec ff_atrac3_decoder = {
     .init             = atrac3_decode_init,
     .close            = atrac3_decode_close,
     FF_CODEC_DECODE_CB(atrac3_decode_frame),
-    .p.capabilities   =
-#if FF_API_SUBFRAMES
-                        AV_CODEC_CAP_SUBFRAMES |
-#endif
-                        AV_CODEC_CAP_DR1,
-    .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
-                                                        AV_SAMPLE_FMT_NONE },
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };
 
@@ -1046,12 +1040,6 @@ const FFCodec ff_atrac3al_decoder = {
     .init             = atrac3_decode_init,
     .close            = atrac3_decode_close,
     FF_CODEC_DECODE_CB(atrac3al_decode_frame),
-    .p.capabilities   =
-#if FF_API_SUBFRAMES
-                        AV_CODEC_CAP_SUBFRAMES |
-#endif
-                        AV_CODEC_CAP_DR1,
-    .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
-                                                        AV_SAMPLE_FMT_NONE },
+    .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

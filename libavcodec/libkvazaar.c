@@ -29,7 +29,6 @@
 #include "libavutil/dict.h"
 #include "libavutil/error.h"
 #include "libavutil/imgutils.h"
-#include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
@@ -38,7 +37,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "packet_internal.h"
 
 typedef struct LibkvazaarContext {
     const AVClass *class;
@@ -86,13 +84,7 @@ static av_cold int libkvazaar_init(AVCodecContext *avctx)
         cfg->framerate_denom = avctx->framerate.den;
     } else {
         cfg->framerate_num   = avctx->time_base.den;
-FF_DISABLE_DEPRECATION_WARNINGS
-        cfg->framerate_denom = avctx->time_base.num
-#if FF_API_TICKS_PER_FRAME
-            * avctx->ticks_per_frame
-#endif
-            ;
-FF_ENABLE_DEPRECATION_WARNINGS
+        cfg->framerate_denom = avctx->time_base.num;
     }
     cfg->target_bitrate = avctx->bit_rate;
     cfg->vui.sar_width  = avctx->sample_aspect_ratio.num;
@@ -180,7 +172,6 @@ static int libkvazaar_encode(AVCodecContext *avctx,
     kvz_data_chunk *data_out = NULL;
     uint32_t len_out = 0;
     int retval = 0;
-    int pict_type;
 
     *got_packet_ptr = 0;
 
@@ -274,6 +265,7 @@ static int libkvazaar_encode(AVCodecContext *avctx,
             avpkt->flags |= AV_PKT_FLAG_KEY;
         }
 
+        enum AVPictureType pict_type;
         switch (frame_info.slice_type) {
         case KVZ_SLICE_I:
             pict_type = AV_PICTURE_TYPE_I;
@@ -289,7 +281,7 @@ static int libkvazaar_encode(AVCodecContext *avctx,
             return AVERROR_EXTERNAL;
         }
 
-        ff_side_data_set_encoder_stats(avpkt, frame_info.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
+        ff_encode_add_stats_side_data(avpkt, frame_info.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
 
         *got_packet_ptr = 1;
     }
@@ -333,7 +325,7 @@ const FFCodec ff_libkvazaar_encoder = {
     .p.id             = AV_CODEC_ID_HEVC,
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
                         AV_CODEC_CAP_OTHER_THREADS,
-    .p.pix_fmts       = pix_fmts,
+    CODEC_PIXFMTS_ARRAY(pix_fmts),
     .color_ranges     = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
 
     .p.priv_class     = &class,

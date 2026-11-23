@@ -702,7 +702,7 @@ static int query_formats(const AVFilterContext *ctx,
     AVFilterChannelLayouts *layouts;
     static const enum AVSampleFormat sample_fmts[] = {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
-    int ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    int ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -810,16 +810,15 @@ static const AVFilterPad ladspa_outputs[] = {
     },
 };
 
-const AVFilter ff_af_ladspa = {
-    .name          = "ladspa",
-    .description   = NULL_IF_CONFIG_SMALL("Apply LADSPA effect."),
+const FFFilter ff_af_ladspa = {
+    .p.name        = "ladspa",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply LADSPA effect."),
+    .p.priv_class  = &ladspa_class,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_INPUTS,
     .priv_size     = sizeof(LADSPAContext),
-    .priv_class    = &ladspa_class,
     .init          = init,
     .uninit        = uninit,
     .process_command = process_command,
-    .inputs        = 0,
     FILTER_OUTPUTS(ladspa_outputs),
     FILTER_QUERY_FUNC2(query_formats),
-    .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS,
 };

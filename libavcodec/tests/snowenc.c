@@ -20,10 +20,6 @@
 
 #include "libavcodec/snowenc.c"
 
-#undef malloc
-#undef free
-#undef printf
-
 #include "libavutil/lfg.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/mem.h"
@@ -45,7 +41,8 @@ int main(void){
 
     if (!s.temp_dwt_buffer || !s.temp_idwt_buffer) {
         fprintf(stderr, "Failed to allocate memory\n");
-        return 1;
+        ret = 1;
+        goto end;
     }
 
     av_lfg_init(&prng, 1);
@@ -145,5 +142,9 @@ int main(void){
         }
 
     }
+
+end:
+    av_free(s.temp_dwt_buffer);
+    av_free(s.temp_idwt_buffer);
     return ret;
 }

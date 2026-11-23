@@ -28,7 +28,9 @@
  */
 
 #include "config.h"
+#include "config_components.h"
 
+#include "libavutil/avassert.h"
 #include "libavutil/thread.h"
 #if ARCH_X86
 #include "libavutil/x86/asm.h"
@@ -36,11 +38,13 @@
 
 #include "avcodec.h"
 #include "idctdsp.h"
+#include "mathops.h"
 #include "mpegvideo.h"
 #include "msmpeg4.h"
 #include "mpeg4videodata.h"
 #include "msmpeg4data.h"
 #include "msmpeg4_vc1_data.h"
+#include "wmv2dsp.h"
 
 /*
  * You can also call this codec: MPEG-4 with a twist!
@@ -114,11 +118,15 @@ static av_cold void msmpeg4_common_init_static(void)
     init_h263_dc_for_msmpeg4();
 }
 
-av_cold void ff_msmpeg4_common_init(MpegEncContext *s)
+av_cold void ff_msmpeg4_common_init(MPVContext *const s,
+                                    uint8_t permutated_intra_h_scantable[64],
+                                    uint8_t permutated_intra_v_scantable[64])
 {
     static AVOnce init_static_once = AV_ONCE_INIT;
 
     switch(s->msmpeg4_version){
+    default:
+        av_unreachable("ff_msmpeg4_common_init only called by MSMP4 1-3 and WMV1/2");
     case MSMP4_V1:
     case MSMP4_V2:
         // Correct *_dc_scale_tables (ff_mpeg1_dc_scale_table) is the default
@@ -132,22 +140,22 @@ av_cold void ff_msmpeg4_common_init(MpegEncContext *s)
             s->c_dc_scale_table= ff_mpeg4_c_dc_scale_table;
         }
         break;
-    case MSMP4_WMV1:
+#if CONFIG_WMV2_DECODER || CONFIG_WMV2_ENCODER
     case MSMP4_WMV2:
+        ff_wmv2dsp_init(&s->idsp);
+        // fallthrough
+#endif
+    case MSMP4_WMV1:
         s->y_dc_scale_table= ff_wmv1_y_dc_scale_table;
         s->c_dc_scale_table= ff_wmv1_c_dc_scale_table;
-        break;
-    }
-
-    if (s->msmpeg4_version >= MSMP4_WMV1) {
         ff_init_scantable(s->idsp.idct_permutation, &s->intra_scantable,   ff_wmv1_scantable[1]);
         ff_init_scantable(s->idsp.idct_permutation, &s->inter_scantable,   ff_wmv1_scantable[0]);
-        ff_permute_scantable(s->permutated_intra_h_scantable, ff_wmv1_scantable[2],
+        ff_permute_scantable(permutated_intra_h_scantable, ff_wmv1_scantable[2],
                              s->idsp.idct_permutation);
-        ff_permute_scantable(s->permutated_intra_v_scantable, ff_wmv1_scantable[3],
+        ff_permute_scantable(permutated_intra_v_scantable, ff_wmv1_scantable[3],
                              s->idsp.idct_permutation);
+        break;
     }
-    //Note the default tables are set in common_init in mpegvideo.c
 
     ff_thread_once(&init_static_once, msmpeg4_common_init_static);
 }
@@ -197,7 +205,7 @@ int ff_msmpeg4_pred_dc(MpegEncContext *s, int n,
                        int16_t **dc_val_ptr, int *dir_ptr)
 {
     int a, b, c, wrap, pred, scale;
-    int16_t *dc_val;
+    int16_t *const dc_val = s->dc_val + s->block_index[n];
 
     /* find prediction */
     if (n < 4) {
@@ -207,7 +215,6 @@ int ff_msmpeg4_pred_dc(MpegEncContext *s, int n,
     }
 
     wrap = s->block_wrap[n];
-    dc_val= s->dc_val[0] + s->block_index[n];
 
     /* B C
      * A X
@@ -336,4 +343,3 @@ int ff_msmpeg4_pred_dc(MpegEncContext *s, int n,
     *dc_val_ptr = &dc_val[0];
     return pred;
 }
-

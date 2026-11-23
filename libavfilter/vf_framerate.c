@@ -262,7 +262,7 @@ void ff_framerate_init(FrameRateContext *s)
         s->blend_factor_max = 1 << BLEND_FACTOR_DEPTH(16);
         s->blend = blend_frames16_c;
     }
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_framerate_init_x86(s);
 #endif
 }
@@ -282,7 +282,7 @@ static int config_input(AVFilterLink *inlink)
 
     s->bitdepth = pix_desc->comp[0].depth;
 
-    s->sad = ff_scene_sad_get_fn(s->bitdepth == 8 ? 8 : 16);
+    s->sad = ff_scene_sad_get_fn(s->bitdepth);
     if (!s->sad)
         return AVERROR(EINVAL);
 
@@ -432,16 +432,16 @@ static const AVFilterPad framerate_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_framerate = {
-    .name          = "framerate",
-    .description   = NULL_IF_CONFIG_SMALL("Upsamples or downsamples progressive source between specified frame rates."),
+const FFFilter ff_vf_framerate = {
+    .p.name        = "framerate",
+    .p.description = NULL_IF_CONFIG_SMALL("Upsamples or downsamples progressive source between specified frame rates."),
+    .p.priv_class  = &framerate_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(FrameRateContext),
-    .priv_class    = &framerate_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(framerate_inputs),
     FILTER_OUTPUTS(framerate_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
     .activate      = activate,
 };

@@ -187,15 +187,15 @@ static const AVFilterPad tvai_fi_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_tvai_fi = {
-    .name          = "tvai_fi",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI frame interpolation models."),
+const FFFilter ff_vf_tvai_fi = {
+    .p.name          = "tvai_fi",
+    .p.description   = NULL_IF_CONFIG_SMALL("Apply Topaz Video AI frame interpolation models."),
     .priv_size     = sizeof(TVAIFIContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(tvai_fi_inputs),
     FILTER_OUTPUTS(tvai_fi_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &tvai_fi_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    .p.priv_class    = &tvai_fi_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

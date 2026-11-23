@@ -95,13 +95,13 @@ static int query_formats(const AVFilterContext *ctx,
     int ret;
 
     if (s->response) {
-        formats = ff_make_format_list(pix_fmts);
+        formats = ff_make_pixel_format_list(pix_fmts);
         if ((ret = ff_formats_ref(formats, &cfg_out[1]->formats)) < 0)
             return ret;
     }
 
     sample_fmts[0] = s->sample_format;
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -1038,7 +1038,7 @@ static void drawtext(AVFrame *pic, int x, int y, const char *txt, uint32_t color
     int font_height;
     int i;
 
-    font = avpriv_cga_font, font_height = 8;
+    font = avpriv_cga_font_get(), font_height = 8;
 
     for (i = 0; txt[i]; i++) {
         int char_y, mask;
@@ -1560,15 +1560,15 @@ static const AVOption aiir_options[] = {
 
 AVFILTER_DEFINE_CLASS(aiir);
 
-const AVFilter ff_af_aiir = {
-    .name          = "aiir",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Infinite Impulse Response filter with supplied coefficients."),
+const FFFilter ff_af_aiir = {
+    .p.name        = "aiir",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply Infinite Impulse Response filter with supplied coefficients."),
+    .p.priv_class  = &aiir_class,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(AudioIIRContext),
-    .priv_class    = &aiir_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
     FILTER_QUERY_FUNC2(query_formats),
-    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
-                     AVFILTER_FLAG_SLICE_THREADS,
 };

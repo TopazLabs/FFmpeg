@@ -25,7 +25,6 @@
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/error.h"
-#include "libavutil/internal.h"
 #include "libavutil/macros.h"
 #include "libavutil/mem.h"
 
@@ -41,7 +40,7 @@
     func_name ## _bprint(BPRINT_ARGS ## ARG_ORDER((bp), __VA_ARGS__));     \
     if (strlen((bp)->str) != (bp)->len) {                                  \
         printf("strlen of AVBPrint-string returned by "#func_name"_bprint" \
-               " differs from AVBPrint.len: %"SIZE_SPECIFIER" vs. %u\n",   \
+               " differs from AVBPrint.len: %zu vs. %u\n",                 \
                strlen((bp)->str), (bp)->len);                              \
         break;                                                             \
     }                                                                      \
@@ -118,7 +117,7 @@ static const char* channel_order_names[]  = {"UNSPEC", "NATIVE", "CUSTOM", "AMBI
 
 static void describe_type(AVBPrint *bp, AVChannelLayout *layout)
 {
-    if (layout->order >= 0 && layout->order < FF_ARRAY_ELEMS(channel_order_names)) {
+    if ((unsigned)layout->order < FF_ARRAY_ELEMS(channel_order_names)) {
         av_bprintf(bp, "%-6s (", channel_order_names[layout->order]);
         av_channel_layout_describe_bprint(layout, bp);
         av_bprintf(bp, ")");

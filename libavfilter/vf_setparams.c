@@ -42,6 +42,7 @@ typedef struct SetParamsContext {
     int color_trc;
     int colorspace;
     int chroma_location;
+    int alpha_mode;
 } SetParamsContext;
 
 #define OFFSET(x) offsetof(SetParamsContext, x)
@@ -65,7 +66,7 @@ static const AVOption setparams_options[] = {
     {"pc",                           NULL,   0, AV_OPT_TYPE_CONST, {.i64=AVCOL_RANGE_JPEG},         0, 0, FLAGS, .unit = "range"},
     {"jpeg",                         NULL,   0, AV_OPT_TYPE_CONST, {.i64=AVCOL_RANGE_JPEG},         0, 0, FLAGS, .unit = "range"},
 
-    {"color_primaries", "select color primaries", OFFSET(color_primaries), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_PRI_NB-1, FLAGS, .unit = "color_primaries"},
+    {"color_primaries", "select color primaries", OFFSET(color_primaries), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_PRI_EXT_NB-1, FLAGS, .unit = "color_primaries"},
     {"auto", "keep the same color primaries",  0, AV_OPT_TYPE_CONST, {.i64=-1},                     0, 0, FLAGS, .unit = "color_primaries"},
     {"bt709",                           NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_BT709},        0, 0, FLAGS, .unit = "color_primaries"},
     {"unknown",                         NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_UNSPECIFIED},  0, 0, FLAGS, .unit = "color_primaries"},
@@ -80,8 +81,9 @@ static const AVOption setparams_options[] = {
     {"smpte432",                        NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_SMPTE432},     0, 0, FLAGS, .unit = "color_primaries"},
     {"jedec-p22",                       NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_JEDEC_P22},    0, 0, FLAGS, .unit = "color_primaries"},
     {"ebu3213",                         NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_EBU3213},      0, 0, FLAGS, .unit = "color_primaries"},
+    {"vgamut",                          NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_V_GAMUT},      0, 0, FLAGS, .unit = "color_primaries"},
 
-    {"color_trc", "select color transfer", OFFSET(color_trc), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_TRC_NB-1, FLAGS, .unit = "color_trc"},
+    {"color_trc", "select color transfer", OFFSET(color_trc), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_TRC_EXT_NB-1, FLAGS, .unit = "color_trc"},
     {"auto", "keep the same color transfer",  0, AV_OPT_TYPE_CONST, {.i64=-1},                     0, 0, FLAGS, .unit = "color_trc"},
     {"bt709",                          NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_BT709},        0, 0, FLAGS, .unit = "color_trc"},
     {"unknown",                        NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_UNSPECIFIED},  0, 0, FLAGS, .unit = "color_trc"},
@@ -100,6 +102,7 @@ static const AVOption setparams_options[] = {
     {"smpte2084",                      NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_SMPTE2084},    0, 0, FLAGS, .unit = "color_trc"},
     {"smpte428",                       NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_SMPTE428},     0, 0, FLAGS, .unit = "color_trc"},
     {"arib-std-b67",                   NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_ARIB_STD_B67}, 0, 0, FLAGS, .unit = "color_trc"},
+    {"vlog",                           NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_V_LOG},        0, 0, FLAGS, .unit = "color_trc"},
 
     {"colorspace", "select colorspace", OFFSET(colorspace), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_SPC_NB-1, FLAGS, .unit = "colorspace"},
     {"auto", "keep the same colorspace",  0, AV_OPT_TYPE_CONST, {.i64=-1},                          0, 0, FLAGS, .unit = "colorspace"},
@@ -131,27 +134,42 @@ static const AVOption setparams_options[] = {
     {"top",                              NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVCHROMA_LOC_TOP},         0, 0, FLAGS, .unit = "chroma_location"},
     {"bottomleft",                       NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVCHROMA_LOC_BOTTOMLEFT},  0, 0, FLAGS, .unit = "chroma_location"},
     {"bottom",                           NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVCHROMA_LOC_BOTTOM},      0, 0, FLAGS, .unit = "chroma_location"},
+
+    {"alpha_mode", "select alpha moda", OFFSET(alpha_mode), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVALPHA_MODE_NB-1, FLAGS, .unit = "alpha_mode"},
+    {"auto", "keep the same alpha mode",  0, AV_OPT_TYPE_CONST, {.i64=-1},                              0, 0, FLAGS, .unit = "alpha_mode"},
+    {"unspecified",                      NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_UNSPECIFIED},   0, 0, FLAGS, .unit = "alpha_mode"},
+    {"unknown",                          NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_UNSPECIFIED},   0, 0, FLAGS, .unit = "alpha_mode"},
+    {"premultiplied",                    NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_PREMULTIPLIED}, 0, 0, FLAGS, .unit = "alpha_mode"},
+    {"straight",                         NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_STRAIGHT},      0, 0, FLAGS, .unit = "alpha_mode"},
     {NULL}
 };
 
 AVFILTER_DEFINE_CLASS(setparams);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    SetParamsContext *s = ctx->priv;
-    AVFilterLink *outlink = ctx->outputs[0];
+    const SetParamsContext *s = ctx->priv;
     int ret;
 
     if (s->colorspace >= 0) {
         ret = ff_formats_ref(ff_make_formats_list_singleton(s->colorspace),
-                             &outlink->incfg.color_spaces);
+                             &cfg_out[0]->color_spaces);
         if (ret < 0)
             return ret;
     }
 
     if (s->color_range >= 0) {
         ret = ff_formats_ref(ff_make_formats_list_singleton(s->color_range),
-                             &outlink->incfg.color_ranges);
+                             &cfg_out[0]->color_ranges);
+        if (ret < 0)
+            return ret;
+    }
+
+    if (s->alpha_mode >= 0) {
+        ret = ff_formats_ref(ff_make_formats_list_singleton(s->alpha_mode),
+                             &cfg_out[0]->alpha_modes);
         if (ret < 0)
             return ret;
     }
@@ -166,19 +184,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     /* set field */
     if (s->field_mode == MODE_PROG) {
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        frame->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         frame->flags &= ~AV_FRAME_FLAG_INTERLACED;
     } else if (s->field_mode != MODE_AUTO) {
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        frame->interlaced_frame = 1;
-        frame->top_field_first = s->field_mode;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         frame->flags |= AV_FRAME_FLAG_INTERLACED;
         if (s->field_mode)
             frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
@@ -197,6 +204,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
         frame->colorspace = s->colorspace;
     if (s->chroma_location >= 0)
         frame->chroma_location = s->chroma_location;
+    if (s->alpha_mode >= 0)
+        frame->alpha_mode = s->alpha_mode;
 
     return ff_filter_frame(ctx->outputs[0], frame);
 }
@@ -209,15 +218,15 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_vf_setparams = {
-    .name        = "setparams",
-    .description = NULL_IF_CONFIG_SMALL("Force field, or color property for the output video frame."),
+const FFFilter ff_vf_setparams = {
+    .p.name        = "setparams",
+    .p.description = NULL_IF_CONFIG_SMALL("Force field, or color property for the output video frame."),
+    .p.priv_class  = &setparams_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size   = sizeof(SetParamsContext),
-    .priv_class  = &setparams_class,
-    .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };
 
 #if CONFIG_SETRANGE_FILTER
@@ -246,19 +255,21 @@ static av_cold int init_setrange(AVFilterContext *ctx)
     s->color_primaries = -1;
     s->color_trc       = -1;
     s->colorspace      = -1;
+    s->chroma_location = -1;
+    s->alpha_mode      = -1;
     return 0;
 }
 
-const AVFilter ff_vf_setrange = {
-    .name        = "setrange",
-    .description = NULL_IF_CONFIG_SMALL("Force color range for the output video frame."),
+const FFFilter ff_vf_setrange = {
+    .p.name        = "setrange",
+    .p.description = NULL_IF_CONFIG_SMALL("Force color range for the output video frame."),
+    .p.priv_class  = &setrange_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size   = sizeof(SetParamsContext),
     .init        = init_setrange,
-    .priv_class  = &setrange_class,
-    .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };
 #endif /* CONFIG_SETRANGE_FILTER */
 
@@ -282,16 +293,18 @@ static av_cold int init_setfield(AVFilterContext *ctx)
     s->color_primaries = -1;
     s->color_trc       = -1;
     s->colorspace      = -1;
+    s->chroma_location = -1;
+    s->alpha_mode      = -1;
     return 0;
 }
 
-const AVFilter ff_vf_setfield = {
-    .name        = "setfield",
-    .description = NULL_IF_CONFIG_SMALL("Force field for the output video frame."),
+const FFFilter ff_vf_setfield = {
+    .p.name        = "setfield",
+    .p.description = NULL_IF_CONFIG_SMALL("Force field for the output video frame."),
+    .p.priv_class  = &setfield_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size   = sizeof(SetParamsContext),
     .init        = init_setfield,
-    .priv_class  = &setfield_class,
-    .flags       = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
 };

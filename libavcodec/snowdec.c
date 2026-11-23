@@ -481,14 +481,16 @@ static int decode_header(SnowContext *s){
             }else if(s->chroma_h_shift == 2 && s->chroma_v_shift==2){
                 s->avctx->pix_fmt= AV_PIX_FMT_YUV410P;
             } else {
-                av_log(s, AV_LOG_ERROR, "unsupported color subsample mode %d %d\n", s->chroma_h_shift, s->chroma_v_shift);
+                av_log(s->avctx, AV_LOG_ERROR,
+                       "unsupported color subsample mode %d %d\n",
+                       s->chroma_h_shift, s->chroma_v_shift);
                 s->chroma_h_shift = s->chroma_v_shift = 1;
                 s->avctx->pix_fmt= AV_PIX_FMT_YUV420P;
                 return AVERROR_INVALIDDATA;
             }
             s->nb_planes = 3;
         } else {
-            av_log(s, AV_LOG_ERROR, "unsupported color space\n");
+            av_log(s->avctx, AV_LOG_ERROR, "unsupported color space\n");
             s->chroma_h_shift = s->chroma_v_shift = 1;
             s->avctx->pix_fmt= AV_PIX_FMT_YUV420P;
             return AVERROR_INVALIDDATA;
@@ -603,14 +605,16 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
     if ((res = decode_header(s)) < 0)
         return res;
 
-    if (!s->mconly_picture->data[0]) {
+    if (avctx->debug & 2048) {
+        av_frame_unref(s->mconly_picture);
         res = ff_get_buffer(avctx, s->mconly_picture, AV_GET_BUFFER_FLAG_REF);
         if (res < 0)
             return res;
     }
-    if (s->mconly_picture->format != avctx->pix_fmt) {
+
+    if (s->current_picture->data[0] && s->current_picture->format != avctx->pix_fmt) {
         av_log(avctx, AV_LOG_ERROR, "pixel format changed\n");
-        return AVERROR_INVALIDDATA;
+        return AVERROR_PATCHWELCOME;
     }
 
     if ((res=ff_snow_common_init_after_header(avctx)) < 0)
@@ -779,7 +783,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
 
     emms_c();
 
-    ff_snow_release_buffer(avctx);
+    av_frame_unref(s->last_picture[s->max_ref_frames - 1]);
 
     if(!(s->avctx->debug&2048))
         res = av_frame_ref(picture, s->current_picture);

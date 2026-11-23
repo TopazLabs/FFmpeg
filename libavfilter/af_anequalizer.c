@@ -230,12 +230,12 @@ static int query_formats(const AVFilterContext *ctx,
     int ret;
 
     if (s->draw_curves) {
-        ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
+        ret = ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
         if (ret < 0)
             return ret;
     }
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -752,18 +752,18 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_anequalizer = {
-    .name          = "anequalizer",
-    .description   = NULL_IF_CONFIG_SMALL("Apply high-order audio parametric multi band equalizer."),
+const FFFilter ff_af_anequalizer = {
+    .p.name        = "anequalizer",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply high-order audio parametric multi band equalizer."),
+    .p.priv_class  = &anequalizer_class,
+    .p.outputs     = NULL,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
+                     AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(AudioNEqualizerContext),
-    .priv_class    = &anequalizer_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    .outputs       = NULL,
     FILTER_QUERY_FUNC2(query_formats),
     .process_command = process_command,
-    .flags         = AVFILTER_FLAG_DYNAMIC_OUTPUTS |
-                     AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                     AVFILTER_FLAG_SLICE_THREADS,
 };

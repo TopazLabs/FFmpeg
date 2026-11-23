@@ -283,7 +283,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 
 static int config_props(AVFilterLink *inlink)
 {
-    VignetteContext *s = inlink->dst->priv;
+    AVFilterContext * ctx = inlink->dst;
+    VignetteContext *s = ctx->priv;
     FilterLink *l = ff_filter_link(inlink);
     AVRational sar = inlink->sample_aspect_ratio;
 
@@ -304,7 +305,7 @@ static int config_props(AVFilterLink *inlink)
         s->xscale = 1;
     }
     s->dmax = hypot(inlink->w / 2., inlink->h / 2.);
-    av_log(s, AV_LOG_DEBUG, "xscale=%f yscale=%f dmax=%f\n",
+    av_log(ctx, AV_LOG_DEBUG, "xscale=%f yscale=%f dmax=%f\n",
            s->xscale, s->yscale, s->dmax);
 
     s->fmap_linesize = FFALIGN(inlink->w, 32);
@@ -327,15 +328,15 @@ static const AVFilterPad vignette_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_vignette = {
-    .name          = "vignette",
-    .description   = NULL_IF_CONFIG_SMALL("Make or reverse a vignette effect."),
+const FFFilter ff_vf_vignette = {
+    .p.name        = "vignette",
+    .p.description = NULL_IF_CONFIG_SMALL("Make or reverse a vignette effect."),
+    .p.priv_class  = &vignette_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size     = sizeof(VignetteContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(vignette_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &vignette_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

@@ -50,7 +50,7 @@ typedef struct HEVCDSPContext {
 
     void (*add_residual[4])(uint8_t *dst, const int16_t *res, ptrdiff_t stride);
 
-    void (*dequant)(int16_t *coeffs, int16_t log2_size);
+    void (*dequant)(int16_t *coeffs /* align 32 */, int16_t log2_size);
 
     void (*transform_rdpcm)(int16_t *coeffs, int16_t log2_size, int mode);
 
@@ -133,6 +133,8 @@ extern const int8_t ff_hevc_qpel_filters[4][16];
 void ff_hevc_dsp_init_aarch64(HEVCDSPContext *c, const int bit_depth);
 void ff_hevc_dsp_init_arm(HEVCDSPContext *c, const int bit_depth);
 void ff_hevc_dsp_init_ppc(HEVCDSPContext *c, const int bit_depth);
+void ff_hevc_dsp_init_riscv(HEVCDSPContext *c, const int bit_depth);
+void ff_hevc_dsp_init_wasm(HEVCDSPContext *c, const int bit_depth);
 void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth);
 void ff_hevc_dsp_init_mips(HEVCDSPContext *c, const int bit_depth);
 void ff_hevc_dsp_init_loongarch(HEVCDSPContext *c, const int bit_depth);

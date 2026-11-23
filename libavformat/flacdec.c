@@ -25,6 +25,7 @@
 #include "libavcodec/bytestream.h"
 #include "libavcodec/flac.h"
 #include "avformat.h"
+#include "avio_internal.h"
 #include "demux.h"
 #include "flac_picture.h"
 #include "internal.h"
@@ -80,8 +81,13 @@ static int flac_read_header(AVFormatContext *s)
 
     /* process metadata blocks */
     while (!avio_feof(s->pb) && !metadata_last) {
-        if (avio_read(s->pb, header, 4) != 4)
-            return AVERROR_INVALIDDATA;
+        ret = avio_read(s->pb, header, 4);
+        if (ret < 0) {
+            return ret;
+        } else if (ret != 4) {
+            return AVERROR_EOF;
+        }
+
         flac_parse_block_header(header, &metadata_last, &metadata_type,
                                    &metadata_size);
         switch (metadata_type) {
@@ -95,9 +101,10 @@ static int flac_read_header(AVFormatContext *s)
             if (!buffer) {
                 return AVERROR(ENOMEM);
             }
-            if (avio_read(s->pb, buffer, metadata_size) != metadata_size) {
-                RETURN_ERROR(AVERROR(EIO));
-            }
+            ret = ffio_read_size(s->pb, buffer, metadata_size);
+            if (ret < 0)
+                goto fail;
+
             break;
         /* skip metadata block for unsupported types */
         default:
@@ -269,7 +276,7 @@ static int flac_probe(const AVProbeData *p)
     return 0;
 }
 
-static av_unused int64_t flac_read_timestamp(AVFormatContext *s, int stream_index,
+av_unused static int64_t flac_read_timestamp(AVFormatContext *s, int stream_index,
                                              int64_t *ppos, int64_t pos_limit)
 {
     FLACDecContext *flac = s->priv_data;
@@ -378,4 +385,5 @@ const FFInputFormat ff_flac_demuxer = {
     .read_timestamp = flac_read_timestamp,
     .raw_codec_id   = AV_CODEC_ID_FLAC,
     .priv_data_size = sizeof(FLACDecContext),
+    .flags_internal = FF_INFMT_FLAG_ID3V2_AUTO,
 };

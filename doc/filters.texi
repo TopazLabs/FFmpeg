@@ -216,7 +216,7 @@ filter input and output pads of all the filterchains are connected.
 
 Leading and trailing whitespaces (space, tabs, or line feeds) separating tokens
 in the filtergraph specification are ignored. This means that the filtergraph
-can be expressed using empty lines and spaces to improve redability.
+can be expressed using empty lines and spaces to improve readability.
 
 For example, the filtergraph:
 @example
@@ -577,6 +577,11 @@ The cross fade is applied for specified duration near the end of first stream.
 The filter accepts the following options:
 
 @table @option
+@item inputs, n
+Specify the number of inputs to crossfade. When crossfading multiple inputs,
+each input will be concatenated and crossfaded in sequence, similar to the
+@ref{concat filter}. Default is 2.
+
 @item nb_samples, ns
 Specify the number of samples for which the cross fade effect has to last.
 At the end of the cross fade effect the first input audio will be completely
@@ -614,6 +619,11 @@ ffmpeg -i first.flac -i second.flac -filter_complex acrossfade=d=10:c1=exp:c2=ex
 Cross fade from one input to another but without overlapping:
 @example
 ffmpeg -i first.flac -i second.flac -filter_complex acrossfade=d=10:o=0:c1=exp:c2=exp output.flac
+@end example
+
+Concatenate multiple inputs with cross fade between each:
+@example
+ffmpeg -i first.flac -i second.flac -i third.flac -filter_complex acrossfade=n=3 output.flac
 @end example
 @end itemize
 
@@ -2426,6 +2436,11 @@ Only used if option named @var{start} is set to @code{-1}.
 
 Merge two or more audio streams into a single multi-channel stream.
 
+All inputs must have the same sample rate, and format.
+
+If inputs do not have the same duration, the output will stop with the
+shortest.
+
 The filter accepts the following options:
 
 @table @option
@@ -2433,15 +2448,25 @@ The filter accepts the following options:
 @item inputs
 Set the number of inputs. Default is 2.
 
-@end table
+@item layout_mode
 
-If the channel layouts of the inputs are disjoint, and therefore compatible,
-the channel layout of the output will be set accordingly and the channels
-will be reordered as necessary. If the channel layouts of the inputs are not
-disjoint, the output will have all the channels of the first input then all
-the channels of the second input, in that order, and the channel layout of
-the output will be the default value corresponding to the total number of
-channels.
+This option controls how the output channel layout is determined and if the
+audio channels are reordered during merge.
+
+@table @option
+
+@item legacy
+
+This is the mode how the filter behaved historically so it is the default.
+
+If the channel layouts of the inputs are known and disjoint, and therefore
+compatible, the channel layout of the output will be set accordingly and the
+channels will be reordered as necessary. If the channel layouts of the inputs
+are not disjoint, some of them are unknown, or they are using special channel
+layouts, such as ambisonics, the output will have all the channels of the first
+input then all the channels of the second input, in that order, and the channel
+layout of the output will be the default value corresponding to the total
+number of channels.
 
 For example, if the first input is in 2.1 (FL+FR+LF) and the second input
 is FC+BL+BR, then the output will be in 5.1, with the channels in the
@@ -2452,10 +2477,22 @@ On the other hand, if both input are in stereo, the output channels will be
 in the default order: a1, a2, b1, b2, and the channel layout will be
 arbitrarily set to 4.0, which may or may not be the expected value.
 
-All inputs must have the same sample rate, and format.
+@item reset
+This mode ignores the input channel layouts and does no channel reordering.
+The output will have all the channels of the first input, then all the channels
+of the second input, in that order, and so on.
 
-If inputs do not have the same duration, the output will stop with the
-shortest.
+The output channel layout will only specify the total channel count.
+
+@item normal
+This mode keeps channel name and designation information from the input
+channels and does no channel reordering. The output will have all the channels
+of the first input, then all the channels of the second input, in that order,
+and so on.
+
+@end table
+
+@end table
 
 @subsection Examples
 
@@ -3383,7 +3420,7 @@ where applicable, an overall figure is also given.
 It accepts the following option:
 @table @option
 @item length
-Short window length in seconds, used for peak and trough RMS measurement.
+Short window length in seconds, used for peak and through RMS measurement.
 Default is @code{0.05} (50 milliseconds). Allowed range is @code{[0 - 10]}.
 
 @item metadata
@@ -3544,7 +3581,7 @@ standard RMS level measured in dBFS
 
 @item RMS_peak
 @item RMS_trough
-peak and trough values for RMS level measured over a short window,
+peak and through values for RMS level measured over a short window,
 measured in dBFS.
 
 @item Zero crossings
@@ -4376,7 +4413,7 @@ Add a chorus effect to the audio.
 Can make a single vocal sound like a chorus, but can also be applied to instrumentation.
 
 Chorus resembles an echo effect with a short delay, but whereas with echo the delay is
-constant, with chorus, it is varied using using sinusoidal or triangular modulation.
+constant, with chorus, it is varied using sinusoidal or triangular modulation.
 The modulation depth defines the range the modulated delay is played before or after
 the delay. Hence the delayed sound will sound slower or faster, that is the delayed
 sound tuned around the original one, like in a chorus where some vocals are slightly
@@ -5877,6 +5914,11 @@ Options are true or false. Default is false.
 @item print_format
 Set print format for stats. Options are summary, json, or none.
 Default value is none.
+
+@item stats_file
+Write stats to specified file. Format is controlled by @option{print_format},
+which must be set. Specify @code{-} to write to standard output.
+Default is unset.
 @end table
 
 @section lowpass
@@ -7682,6 +7724,119 @@ There are 6 samples at -4 dB, 62 at -5 dB, 286 at -6 dB, etc.
 In other words, raising the volume by +4 dB does not cause any clipping,
 raising it by +5 dB causes clipping for 6 samples, etc.
 
+@anchor{whisper}
+@section whisper
+
+It runs automatic speech recognition using the OpenAI's Whisper model.
+
+It requires the whisper.cpp library (https://github.com/ggml-org/whisper.cpp)
+as a prerequisite. After installing the library it can be enabled using:
+@code{./configure --enable-whisper}.
+
+The filter has following options:
+
+@table @option
+@item model
+The file path of the downloaded whisper.cpp model (mandatory).
+
+@item language
+The language to use for transcription ('auto' for auto-detect).
+Default value: @code{"auto"}
+
+@item queue
+The maximum size that will be queued into the filter before processing the audio
+with whisper. Using a small value the audio stream will be processed more often,
+but the transcription quality will be lower and the required processing power
+will be higher. Using a large value (e.g. 10-20s) will produce more accurate
+results using less CPU (as using the whisper-cli tool), but the transcription
+latency will be higher, thus not useful to process real-time streams.
+Consider using the vad_model option associated with a large queue value.
+Default value: @code{"3"}
+
+@item use_gpu
+If the GPU support should be enabled.
+Default value: @code{"true"}
+
+@item gpu_device
+The GPU device index to use.
+Default value: @code{"0"}
+
+@item destination
+If set, the transcription output will be sent to the specified file or URL
+(use one of the FFmpeg AVIO protocols); otherwise, the output will be logged as
+info messages.
+The output will also be set in the "lavfi.whisper.text" frame metadata.
+If the destination is a file and it already exists, it will be overwritten.
+
+@item format
+The destination format string; it could be "text" (only the transcribed text
+will be sent to the destination), "srt" (subtitle format) or "json".
+Default value: @code{"text"}
+
+@item max_len
+Maximum segment length in characters. When set to a value greater than 0,
+transcription segments will be split to not exceed this length. This is useful
+for generating subtitles with shorter lines.
+Default value: @code{"0"}
+
+@item vad_model
+Path to the VAD model file. If set, the filter will load an additional voice
+activity detection module (https://github.com/snakers4/silero-vad) that will be
+used to fragment the audio queue; use this option setting a valid path obtained
+from the whisper.cpp repository (e.g. "../whisper.cpp/models/ggml-silero-v5.1.2.bin")
+and increase the queue parameter to a higher value (e.g. 20).
+
+@item vad_threshold
+The VAD threshold to use.
+Default value: @code{"0.5"}
+
+@item vad_min_speech_duration
+The minimum VAD speaking duration.
+Default value: @code{"0.1"}
+
+@item vad_min_silence_duration
+The minimum VAD silence duration.
+Default value: @code{"0.5"}
+
+@end table
+
+@subsection Examples
+@itemize
+
+@item
+Run a transcription with srt file generation:
+@example
+ffmpeg -i input.mp4 -vn -af "whisper=model=../whisper.cpp/models/ggml-base.en.bin\
+:language=en\
+:queue=3\
+:destination=output.srt\
+:format=srt" -f null -
+@end example
+
+@item
+Run a transcription and send the output in JSON format to an HTTP service:
+@example
+ffmpeg -i input.mp4 -vn -af "whisper=model=../whisper.cpp/models/ggml-base.en.bin\
+:language=en\
+:queue=3\
+:destination=http\\://localhost\\:3000\
+:format=json' -f null -
+@end example
+
+@item
+Transcribe the microphone input using the VAD option:
+@example
+ffmpeg -loglevel warning -f pulse -i default \
+-af 'highpass=f=200,lowpass=f=3000,whisper=model=../whisper.cpp/models/ggml-medium.bin\
+:language=en\
+:queue=10\
+:destination=-\
+:format=json\
+:vad_model=../whisper.cpp/models/ggml-silero-v5.1.2.bin' -f null -
+@end example
+
+@end itemize
+
 @c man end AUDIO FILTERS
 
 @chapter Audio Sources
@@ -7904,7 +8059,7 @@ Gains are separated by white spaces and each gain is set in dBFS.
 Default is @code{0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0}.
 
 @item bands, b
-Set the custom bands from where custon equalizer gains are set.
+Set the custom bands from where custom equalizer gains are set.
 This must be in strictly increasing order. Only used if the preset option is set to @code{custom}.
 Bands are separated by white spaces and each band represent frequency in Hz.
 Default is @code{25 40 63 100 160 250 400 630 1000 1600 2500 4000 6300 10000 16000 24000}.
@@ -8619,45 +8774,6 @@ Set planes to filter. Default is first only.
 
 This filter supports the all above options as @ref{commands}.
 
-@section bilateral_cuda
-CUDA accelerated bilateral filter, an edge preserving filter.
-This filter is mathematically accurate thanks to the use of GPU acceleration.
-For best output quality, use one to one chroma subsampling, i.e. yuv444p format.
-
-The filter accepts the following options:
-@table @option
-@item sigmaS
-Set sigma of gaussian function to calculate spatial weight, also called sigma space.
-Allowed range is 0.1 to 512. Default is 0.1.
-
-@item sigmaR
-Set sigma of gaussian function to calculate color range weight, also called sigma color.
-Allowed range is 0.1 to 512. Default is 0.1.
-
-@item window_size
-Set window size of the bilateral function to determine the number of neighbours to loop on.
-If the number entered is even, one will be added automatically.
-Allowed range is 1 to 255. Default is 1.
-@end table
-@subsection Examples
-
-@itemize
-@item
-Apply the bilateral filter on a video.
-
-@example
-./ffmpeg -v verbose \
--hwaccel cuda -hwaccel_output_format cuda -i input.mp4  \
--init_hw_device cuda \
--filter_complex \
-" \
-[0:v]scale_cuda=format=yuv444p[scaled_video];
-[scaled_video]bilateral_cuda=window_size=9:sigmaS=3.0:sigmaR=50.0" \
--an -sn -c:v h264_nvenc -cq 20 out.mp4
-@end example
-
-@end itemize
-
 @section bitplanenoise
 
 Show and measure bit plane noise.
@@ -8673,7 +8789,7 @@ Filter out noisy pixels from @code{bitplane} set above.
 Default is disabled.
 @end table
 
-@section blackdetect
+@section blackdetect, blackdetect_vulkan
 
 Detect video intervals that are (almost) completely black. Can be
 useful to detect chapter transitions, commercials, or invalid
@@ -8726,6 +8842,12 @@ the input video format, the range is [0-255] for YUV full-range
 formats and [16-235] for YUV non full-range formats.
 
 Default value is 0.10.
+
+@item alpha
+If true, check the alpha channel instead of the luma channel. Detects frames
+which are (almost) transparent, instead of frames which are almost black.
+
+Default value is disabled.
 @end table
 
 The following example sets the maximum pixel threshold to the minimum
@@ -9243,63 +9365,11 @@ Only deinterlace frames marked as interlaced.
 The default value is @code{all}.
 @end table
 
-@section bwdif_cuda
-
-Deinterlace the input video using the @ref{bwdif} algorithm, but implemented
-in CUDA so that it can work as part of a GPU accelerated pipeline with nvdec
-and/or nvenc.
-
-It accepts the following parameters:
-
-@table @option
-@item mode
-The interlacing mode to adopt. It accepts one of the following values:
-
-@table @option
-@item 0, send_frame
-Output one frame for each frame.
-@item 1, send_field
-Output one frame for each field.
-@end table
-
-The default value is @code{send_field}.
-
-@item parity
-The picture field parity assumed for the input interlaced video. It accepts one
-of the following values:
-
-@table @option
-@item 0, tff
-Assume the top field is first.
-@item 1, bff
-Assume the bottom field is first.
-@item -1, auto
-Enable automatic detection of field parity.
-@end table
-
-The default value is @code{auto}.
-If the interlacing is unknown or the decoder does not export this information,
-top field first will be assumed.
-
-@item deint
-Specify which frames to deinterlace. Accepts one of the following
-values:
-
-@table @option
-@item 0, all
-Deinterlace all frames.
-@item 1, interlaced
-Only deinterlace frames marked as interlaced.
-@end table
-
-The default value is @code{all}.
-@end table
-
 @section ccrepack
 
 Repack CEA-708 closed captioning side data
 
-This filter fixes various issues seen with commerical encoders
+This filter fixes various issues seen with commercial encoders
 related to upstream malformed CEA-708 payloads, specifically
 incorrect number of tuples (wrong cc_count for the target FPS),
 and incorrect ordering of tuples (i.e. the CEA-608 tuples are not at
@@ -9408,48 +9478,6 @@ ffmpeg -f lavfi -i color=c=black:s=1280x720 -i video.mp4 -shortest -filter_compl
 @end example
 @end itemize
 
-@section chromakey_cuda
-CUDA accelerated YUV colorspace color/chroma keying.
-
-This filter works like normal chromakey filter but operates on CUDA frames.
-for more details and parameters see @ref{chromakey}.
-
-@subsection Examples
-
-@itemize
-@item
-Make all the green pixels in the input video transparent and use it as an overlay for another video:
-
-@example
-./ffmpeg \
-    -hwaccel cuda -hwaccel_output_format cuda -i input_green.mp4  \
-    -hwaccel cuda -hwaccel_output_format cuda -i base_video.mp4 \
-    -init_hw_device cuda \
-    -filter_complex \
-    " \
-        [0:v]chromakey_cuda=0x25302D:0.1:0.12:1[overlay_video]; \
-        [1:v]scale_cuda=format=yuv420p[base]; \
-        [base][overlay_video]overlay_cuda" \
-    -an -sn -c:v h264_nvenc -cq 20 output.mp4
-@end example
-
-@item
-Process two software sources, explicitly uploading the frames:
-
-@example
-./ffmpeg -init_hw_device cuda=cuda -filter_hw_device cuda \
-    -f lavfi -i color=size=800x600:color=white,format=yuv420p \
-    -f lavfi -i yuvtestsrc=size=200x200,format=yuv420p \
-    -filter_complex \
-    " \
-        [0]hwupload[under]; \
-        [1]hwupload,chromakey_cuda=green:0.1:0.12[over]; \
-        [under][over]overlay_cuda" \
-    -c:v hevc_nvenc -cq 18 -preset slow output.mp4
-@end example
-
-@end itemize
-
 @section chromanr
 Reduce chrominance noise.
 
@@ -9484,19 +9512,19 @@ Mostly useful to speed-up filtering.
 @item threy
 Set Y threshold for averaging chrominance values.
 Set finer control for max allowed difference between Y components
-of current pixel and neigbour pixels.
+of current pixel and neighbour pixels.
 Default value is 200. Allowed range is from 1 to 200.
 
 @item threu
 Set U threshold for averaging chrominance values.
 Set finer control for max allowed difference between U components
-of current pixel and neigbour pixels.
+of current pixel and neighbour pixels.
 Default value is 200. Allowed range is from 1 to 200.
 
 @item threv
 Set V threshold for averaging chrominance values.
 Set finer control for max allowed difference between V components
-of current pixel and neigbour pixels.
+of current pixel and neighbour pixels.
 Default value is 200. Allowed range is from 1 to 200.
 
 @item distance
@@ -9879,6 +9907,33 @@ colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131
 @subsection Commands
 
 This filter supports the all above options as @ref{commands}.
+
+@section colordetect
+Analyze the video frames to determine the effective value range and alpha
+mode.
+
+The filter accepts the following options:
+
+@table @option
+@item mode
+Set of properties to detect. Unavailable properties, such as alpha mode for
+an input image without an alpha channel, will be ignored automatically.
+
+Accepts a combination of the following flags:
+
+@table @samp
+@item color_range
+Detect if the source contains luma pixels outside the limited (MPEG) range,
+which indicates that this is a full range YUV source.
+@item alpha_mode
+Detect if the source contains color values above the alpha channel, which
+indicates that the alpha channel is independent (straight), rather than
+premultiplied. Also detects if the alpha plane is fully opaque or not.
+@item all
+Enable detection of all of the above properties. This is the default.
+@end table
+
+@end table
 
 @section colorize
 Overlay a solid color on the video stream.
@@ -10396,6 +10451,18 @@ von Kries whitepoint adaptation
 identity whitepoint adaptation (i.e. no whitepoint adaptation)
 @end table
 
+@item clipgamut
+Controls how to clip out-of-gamut colors that arise as a result of colorspace conversion.
+
+The accepted values are:
+@table @samp
+@item none
+No clipping of out of gamut colors.
+
+@item rgb
+Clips the RGB values to the [0, 1] range when building the gamma transfer LUTs.
+@end table
+
 @item iall
 Override all input properties at once. Same accepted values as @ref{all}.
 
@@ -10426,38 +10493,6 @@ For example to convert the input to SMPTE-240M, use the command:
 @example
 colorspace=smpte240m
 @end example
-
-@section colorspace_cuda
-
-CUDA accelerated implementation of the colorspace filter.
-
-It is by no means feature complete compared to the software colorspace filter,
-and at the current time only supports color range conversion between jpeg/full
-and mpeg/limited range.
-
-The filter accepts the following options:
-
-@table @option
-@item range
-Specify output color range.
-
-The accepted values are:
-@table @samp
-@item tv
-TV (restricted) range
-
-@item mpeg
-MPEG (restricted) range
-
-@item pc
-PC (full) range
-
-@item jpeg
-JPEG (full) range
-
-@end table
-
-@end table
 
 @section colortemperature
 Adjust color temperature in video to simulate variations in ambient color temperature.
@@ -11616,6 +11651,105 @@ Median
 @item bypass
 Do not actually modify frame. Useful when one only wants metadata.
 @end table
+
+@section deinterlace_d3d12
+
+Deinterlace the input video using D3D12 hardware-accelerated video processing.
+
+This filter uses the DirectX 12 Video Processor to perform deinterlacing on
+GPU, supporting both simple bob and driver-defined advanced (motion-adaptive)
+algorithms. It requires the input to be in @code{d3d12} hardware pixel format.
+
+The filter automatically queries the hardware for the required number of
+temporal reference frames (if needed) and manages a frame queue to supply them.
+
+It accepts the following options:
+
+@table @option
+
+@item method
+The deinterlacing method. It accepts one of the following values:
+
+@table @samp
+@item default
+Select the best deinterlacing method available on the hardware.
+If the driver supports @code{custom}, that method is used; otherwise
+falls back to @code{bob}. This is the default.
+
+@item bob
+Bob deinterlacing. Each field is independently scaled to full
+frame height. Simple and fast, but may produce visible bob artifacts
+on moving content.
+
+@item custom
+Driver-defined advanced deinterlacing. The exact algorithm is
+hardware-specific and typically employs motion-adaptive techniques
+with temporal reference frames for higher quality.
+@end table
+
+The default value is @code{default}.
+
+@item mode
+Specify the interlacing mode. It accepts one of the following values:
+
+@table @samp
+@item frame
+Send one frame for each frame. The output frame rate equals the input
+frame rate. This is the default.
+
+@item field
+Send one frame for each field. The output frame rate is double the
+input frame rate.
+@end table
+
+The default value is @code{frame}.
+
+@item deint
+Specify which frames to deinterlace. It accepts one of the following values:
+
+@table @samp
+@item all
+Deinterlace all frames. This is the default.
+
+@item interlaced
+Only deinterlace frames marked as interlaced; progressive frames are
+passed through unchanged.
+@end table
+
+The default value is @code{all}.
+@end table
+
+@subsection Examples
+
+@itemize
+
+@item
+Deinterlace an interlaced video using software decoding and the best
+available hardware deinterlacing method:
+@example
+ffmpeg -init_hw_device d3d12va=d3d12 -filter_hw_device d3d12 -i input.ts \
+       -vf "format=nv12,hwupload,deinterlace_d3d12=method=default,hwdownload,format=nv12" \
+       -c:v libx264 -crf 18 output.mp4
+@end example
+
+@item
+Deinterlace at field rate (double the frame rate) using bob method with
+hardware decoding (full d3d12 pipeline):
+@example
+ffmpeg -hwaccel d3d12va -hwaccel_output_format d3d12 -i input.ts \
+       -vf "deinterlace_d3d12=method=bob:mode=field" \
+       -c:v h264_d3d12va output.mp4
+@end example
+
+@item
+Deinterlace only interlaced frames, passing progressive frames through:
+@example
+ffmpeg -init_hw_device d3d12va=d3d12 -filter_hw_device d3d12 -i input.ts \
+       -vf "format=nv12,hwupload,deinterlace_d3d12=deint=interlaced,hwdownload,format=nv12" \
+       -c:v libx264 -crf 18 output.mp4
+@end example
+
+@end itemize
 
 @section dejudder
 
@@ -13052,6 +13186,80 @@ For more information about libfribidi, check:
 For more information about libharfbuzz, check:
 @url{https://github.com/harfbuzz/harfbuzz}.
 
+@anchor{drawvg}
+@section drawvg
+
+Draw vector graphics on top of video frames, by executing a script written in
+a custom language called VGS (@emph{Vector Graphics Script}).
+
+The documentation for the language can be found in
+@ref{,,drawvg - Language Reference,drawvg-reference}. A version of this reference
+with rendered examples can be found at the
+@uref{https://ayosec.github.io/ffmpeg-drawvg/playground/docs/langref.html, author's site}.
+
+Graphics are rendered using the @uref{https://cairographics.org/,cario 2D
+graphics library}.
+
+To enable compilation of this filter, you need to configure FFmpeg with
+@code{--enable-cairo}.
+
+@subsection Parameters
+
+Either @code{script} or @code{file} must be set.
+
+@table @option
+
+@item s, script
+Script source to draw the graphics.
+
+@item file
+Path of the file to load the script source.
+
+@end table
+
+@subsection Pixel Formats
+
+Since Cairo only supports RGB images, if the input video is something else (like
+YUV 4:2:0), before executing the script the video is converted to a format
+compatible with Cairo. Then, you have to use either the @ref{format} filter,
+or the @code{-pix_fmt} option, to convert it to the expected format in the
+output.
+
+@subsection Examples
+
+@itemize
+@item
+Draw the outline of an ellipse.
+
+@example
+ffmpeg -i input.webm \
+    -vf 'drawvg=ellipse (w/2) (h/2) (w/3) (h/3) stroke' \
+    -pix_fmt yuv420p \
+    output.webm
+@end example
+
+@item
+
+Draw a square rotating in the middle of the frame.
+
+The script for drawvg is in a file @code{draw.vgs}:
+
+@example
+translate (w/2) (h/2)
+rotate t
+rect -100 -100 200 200
+setcolor red@@0.5
+fill
+@end example
+
+Then:
+
+@example
+ffmpeg -i input.webm -vf 'drawvg=file=draw.vgs,format=yuv420p' output.webm
+@end example
+
+@end itemize
+
 @section edgedetect
 
 Detect and draw edges. The filter uses the Canny Edge Detection algorithm.
@@ -14330,7 +14538,11 @@ A '|'-separated list of color space names, such as
 
 @item color_ranges
 A '|'-separated list of color range names, such as
-"color_spaces=tv|pc".
+"color_ranges=tv|pc".
+
+@item alpha_modes
+A '|'-separated list of color range names, such as
+"alpha_modes=straight|premultiplied".
 
 @end table
 
@@ -14706,7 +14918,7 @@ e.g. quality comparison.
 
 Each line of the map file must contain three items per input frame, the input
 PTS (decimal), the output PTS (decimal) and the
-output TIMEBASE (decimal/decimal), seperated by a space.
+output TIMEBASE (decimal/decimal), separated by a space.
 This file format corresponds to the output
 of @code{-stats_mux_pre_fmt="@{ptsi@} @{pts@} @{tb@}"}.
 
@@ -16041,7 +16253,7 @@ If 0, plane will remain unchanged.
 
 This filter supports the all above options as @ref{commands}.
 
-@section interlace
+@section interlace, interlace_vulkan
 
 Simple interlacing filter from progressive contents. This interleaves upper (or
 lower) lines from odd frames with lower (or upper) lines from even frames,
@@ -16372,6 +16584,11 @@ ffmpeg -i input.mov -vf lensfun=make=Canon:model="Canon EOS 100D":lens_model="Ca
 
 @end itemize
 
+@section lcevc
+
+Low Complexity Enhancement Video Codec filter based on liblcevc_dec
+(@url{https://github.com/v-novaltd/LCEVCdec}).
+
 @section libplacebo
 
 Flexible GPU-accelerated processing filter based on libplacebo
@@ -16419,6 +16636,16 @@ and @code{(oh-ph)/2}.
 Set the output placement width/height expressions, default values are @code{ow}
 and @code{oh}.
 
+@item rotate
+Rotate the input frame clockwise by the specified angle.
+
+@table @samp
+@item 0, 360
+@item 90
+@item 180
+@item 270
+@end table
+
 @item fps
 Set the output frame rate. This can be rational, e.g. @code{60000/1001}. If
 set to the special string @code{none} (the default), input timestamps will
@@ -16433,13 +16660,18 @@ will be performed.
 
 @item force_original_aspect_ratio
 @item force_divisible_by
-Work the same as the identical @ref{scale} filter options.
+Work the same as the identical @ref{scale} filter options. Note that
+@option{force_divisible_by} also works with @code{fit_sense=constraint}.
+
+@item reset_sar
+If enabled, output frames will always have a pixel aspect ratio of 1:1.  If
+disabled (the default), any aspect ratio mismatches, including those from
+e.g. anamorphic video sources, are forwarded to the output pixel aspect ratio.
 
 @item normalize_sar
-If enabled, output frames will always have a pixel aspect ratio of 1:1. This
-will introduce additional padding/cropping as necessary. If disabled (the
-default), any aspect ratio mismatches, including those from e.g. anamorphic
-video sources, are forwarded to the output pixel aspect ratio.
+Like @option{reset_sar}, but instead of stretching the video content to fill
+the new output aspect ratio, the content is instead padded or cropped as
+necessary. Mutually exclusive with @option{fit_mode}. Disabled by default.
 
 @item pad_crop_ratio
 Specifies a ratio (between @code{0.0} and @code{1.0}) between padding and
@@ -16449,17 +16681,97 @@ content with black borders, while a value of @code{1.0} always crops off parts
 of the content. Intermediate values are possible, leading to a mix of the two
 approaches.
 
+@item fit_mode
+Specify the content fit strategy according to a list of predefined modes.
+Determines how the input image is to be placed inside the destination crop
+rectangle (as defined by @code{pos_x/y} and @code{pos_w/h}). The names and
+their implementations are taken from the CSS 'object-fit' property. Note that
+this option is mutually exclusive with @option{normalize_sar}. Defaults to
+@code{fill}. Valid values are:
+
+@table @samp
+@item fill
+Stretch the input to the output rectangle, ignoring aspect ratio mismatches.
+Note that unless @option{reset_sar} is also enabled, the output will still
+have the correct pixel aspect ratio tagged.
+
+@item contain
+Scale the input to fit inside the output, preserving aspect ratio by padding.
+Equivalent to @option{normalize_sar} with @option{pad_crop_ratio} set to
+@code{0.0}.
+
+@item cover
+Scale the input to fill the output, preserving aspect ratio by cropping.
+Equivalent to @option{normalize_sar} with @option{pad_crop_ratio} set to
+@code{1.0}.
+
+@item none, place
+Don't scale the input. The input will be placed inside the output rectangle at
+its natural size; which may result in additional padding or cropping.
+
+@item scale_down
+Scale the input down as much as needed to fit inside the output. Equivalent
+to either @code{contain} or @code{none}, depending on whether the input is
+larger than the output or not.
+@end table
+
+@item fit_sense
+When @option{fit_mode} is in use, this option controls how the fit strategy
+is applied against the specified output resolution. Mutually exclusive with
+@option{force_original_aspect_ratio}. Valid values are:
+
+@table @samp
+@item target
+The computed output resolution is taken as the exact size of the output frame.
+This is the default behavior.
+
+@item constraint
+The computed output resolution is a size reference against which the fit mode
+is applied, enlarging or decreasing the true frame size as needed to fit the
+content.
+@end table
+
 @item fillcolor
 Set the color used to fill the output area not covered by the output image, for
 example as a result of @option{normalize_sar}. For the general syntax of this
 option, check the @ref{color syntax,,"Color" section in the ffmpeg-utils
-manual,ffmpeg-utils}. Defaults to @code{black}.
+manual,ffmpeg-utils}. Defaults to @code{black@@0}.
 
 @item corner_rounding
 Render frames with rounded corners. The value, given as a float ranging from
 @code{0.0} to @code{1.0}, indicates the relative degree of rounding, from fully
 square to fully circular. In other words, it gives the radius divided by half
 the smaller side length. Defaults to @code{0.0}.
+
+@item lut
+Specifies a custom LUT (in Adobe .cube format) to apply to the colors
+as part of color conversion. The exact interpretation depends on the value
+of @option{lut_type}.
+
+@item lut_type
+Controls the interpretation of color values fed to and from the LUT
+specified as @option{lut}. Valid values are:
+
+@table @samp
+@item auto
+Chooses the interpretation of the LUT automatically from tagged
+metadata, and otherwise falls back to @samp{native}. (Default)
+
+@item native
+Applied to raw image contents in its native RGB colorspace (non-linear
+light), before conversion to the output color space.
+
+@item normalized
+Applied to the normalized RGB image contents, in linear light, before
+conversion to the output color space.
+
+@item conversion
+Fully replaces the conversion from the image color space to the output
+color space. If such a LUT is present, it has the highest priority, and
+overrides any ICC profiles, as well as options related to tone mapping
+and output colorimetry (@option{color_primaries}, @option{color_trc}).
+
+@end table
 
 @item extra_opts
 Pass extra libplacebo internal configuration options. These can be specified
@@ -16471,15 +16783,32 @@ to double the input image resolution:
 -vf "libplacebo=w=iw*2:h=ih*2:extra_opts='upscaler=custom\:upscaler_preset=ewa_lanczos\:upscaler_blur=0.9812505644269356'"
 @end example
 
+
+@item shader_cache
+File path of a cache directory that libplacebo will use to store and load
+cached shader objects. This cache is not cleaned up automatically. If the
+path does not end in a directory separator, the generated filenames will be
+effectively prefixed by the last path component. All directories must already
+exist.
+
+@example
+-vf "libplacebo=shader_cache=/tmp/pl-shader-"
+@end example
+
 @item colorspace
 @item color_primaries
 @item color_trc
 @item range
+@item chroma_location
 Configure the colorspace that output frames will be delivered in. The default
 value of @code{auto} outputs frames in the same format as the input frames,
 leading to no change. For any other value, conversion will be performed.
 
 See the @ref{setparams} filter for a list of possible values.
+
+@item alpha_mode
+Choose the desired output alpha mode, when the output format has an alpha
+channel. See the @ref{setparams} filter for a list of possible values.
 
 @item apply_filmgrain
 Apply film grain (e.g. AV1 or H.274) if present in source frames, and strip
@@ -16557,7 +16886,7 @@ Cubic spline approximation of lanczos. No difference in performance, but has
 very slightly less ringing.
 
 @item ewa_lanczos
-Elliptically weighted average version of lanczos, based on a jinc-sinc kernel.
+Elliptically weighted average version of lanczos, based on a jinc-jinc kernel.
 This is also popularly referred to as just "Jinc scaling". Slow but very high
 quality.
 
@@ -16595,11 +16924,6 @@ Linear blend/fade between frames. Especially useful for constructing e.g.
 slideshows.
 @end table
 
-@item lut_entries
-Configures the size of scaler LUTs, ranging from @code{1} to @code{256}. The
-default of @code{0} will pick libplacebo's internal default, typically
-@code{64}.
-
 @item antiringing
 Enables anti-ringing (for non-EWA filters). The value (between @code{0.0} and
 @code{1.0}) configures the strength of the anti-ringing algorithm. May increase
@@ -16608,6 +16932,32 @@ aliasing if set too high. Disabled by default.
 @item sigmoid
 Enable sigmoidal compression during upscaling. Reduces ringing slightly.
 Enabled by default.
+@end table
+
+@subsubsection Deinterlacing
+Deinterlacing is automatically supported when frames are tagged as interlaced,
+however frames are not deinterlaced unless a deinterlacing algorithm is chosen.
+@table @option
+@item deinterlace
+The the deinterlacing algorithm to use.
+@table @samp
+@item weave
+No deinterlacing, weave fields together into a single frame. This is the default.
+@item bob
+Naive bob deinterlacing, simply repeat each field line twice.
+@item yadif
+Yet another deinterlacing filter. See the @ref{yadif} filter for more details.
+@item bwdif
+Bob weaver deinterlacing filter. See the @ref{bwdif} filter for more details.
+@end table
+
+@item skip_spatial_check
+Skip the spatial deinterlacing check when using @code{yadif} deinterlacing.
+
+@item send_fields
+Output a frame for each field, rather than for each frame. Note that this will
+always double the tagged output frame rate, even if the input does not contain
+any interlaced frames. Disabled by default.
 @end table
 
 @subsubsection Debanding
@@ -16657,6 +17007,11 @@ coefficients for RGB inputs.
 @item gamma
 Gamma adjustment, between @code{0.0} and @code{16.0}. Defaults to @code{1.0}.
 
+@item temperature
+Color temperature adjustment. Lower values make the output warmer/redder,
+down to @code{1667}, while higher values make the output cooler/bluer, up to
+@code{25000}. Defaults to @code{6500} (neutral white).
+
 @item cones
 Cone model to use for color blindness simulation. Accepts any combination of
 @code{l}, @code{m} and @code{s}. Here are some examples:
@@ -16695,17 +17050,13 @@ process. Enabled by default.
 @item smoothing_period
 Peak detection smoothing period, between @code{0.0} and @code{1000.0}. Higher
 values result in peak detection becoming less responsive to changes in the
-input. Defaults to @code{100.0}.
-
-@item minimum_peak
-Lower bound on the detected peak (relative to SDR white), between @code{0.0}
-and @code{100.0}. Defaults to @code{1.0}.
+input. Defaults to @code{20.0}.
 
 @item scene_threshold_low
 @item scene_threshold_high
 Lower and upper thresholds for scene change detection. Expressed in a
-logarithmic scale between @code{0.0} and @code{100.0}. Default to @code{5.5}
-and @code{10.0}, respectively. Setting either to a negative value disables
+logarithmic scale between @code{0.0} and @code{100.0}. Default to @code{1.0}
+and @code{3.0}, respectively. Setting either to a negative value disables
 this functionality.
 
 @item percentile
@@ -16904,10 +17255,6 @@ attempting to squeeze the maximum performance at the cost of quality.
 @table @option
 @item skip_aa
 Disable anti-aliasing when downscaling.
-
-@item polar_cutoff
-Truncate polar (EWA) scaler kernels below this absolute magnitude, between
-@code{0.0} and @code{1.0}.
 
 @item disable_linear
 Disable linear light scaling.
@@ -17859,6 +18206,35 @@ Macroblock size. Default @code{16}.
 Search parameter. Default @code{7}.
 @end table
 
+@section mestimate_d3d12
+
+Estimate and export motion vectors using D3D12 hardware-accelerated motion estimation.
+This filter uses GPU hardware motion estimation capabilities available in
+DirectX 12 Video APIs to achieve significant performance improvements
+over the software-based @code{mestimate} filter.
+
+Motion vectors are stored in frame side data to be used by other filters.
+
+This filter requires the input to be in @code{d3d12} hardware pixel format.
+The filter uses quarter-pixel precision for motion vector estimation.
+
+This filter accepts the following options:
+@table @option
+@item mb_size
+Macroblock size. Only @code{8} and @code{16} are supported.
+Default @code{16}.
+@end table
+
+@subsection Examples
+
+Estimate motion vectors using D3D12 hardware acceleration with 16x16 blocks,
+and visualize them:
+@example
+ffmpeg -hwaccel d3d12va -hwaccel_output_format d3d12 -i input.mp4 \
+        -vf mestimate_d3d12=mb_size=16,hwdownload,format=nv12,codecview=mv=pf \
+        -c:v libx264 -preset fast -b:v 5M output.mp4
+@end example
+
 @section midequalizer
 
 Apply Midway Image Equalization effect using two video streams.
@@ -18521,6 +18897,69 @@ normalize=blackpt=red:whitept=cyan
 
 Pass the video source unchanged to the output.
 
+@section ocio
+OpenColorIO library filter
+
+This filter allows you to do color management using the OpenColorIO library.
+See https://opencolorio.org/ for more details. To Enable
+compilation of this filter, you need to configure FFmpeg with @code{--enable-libopencolorio}.
+
+It accepts the following options:
+
+@table @option
+@item config
+By default the filter will use the OCIO config defined by the OCIO environment variable, but this parameter allows you to explicitly specify its location.
+If you are getting started, you can use config=ocio://studio-config-v1.0.0_aces-v1.3_ocio-v2.1 which specifies one of the built in defaults.
+
+@item input
+Set the input colorspace.
+
+@item output
+Set the output colorspace.
+
+@item display
+Set the display colorspace, used in combination with view.
+
+@item view
+Set the view colorspace, used in combination with display.
+
+@item inverse
+When used in combination with display and view, this inverts the transform, so going from a display/view to the "input colorspace".
+
+@item filetransform
+Allows you to specify an external file-transform to use instead of the OCIO config file. This is useful for applying a single transform without needing a full OCIO config file.
+
+@item format
+Allow you to specify the output pix_fmt of the OCIO filter. This *has* to be a RGB colorspace, so you really are limited to rgb24, rgba, rgb48, rgba48, gbrp10, gbrp12, gbrpf32le, gbrapf32le, for most encoding we would recommend rgb48
+
+@item context_params
+Allow you to specify additional context parameters for the OCIO filter. This is a list of key=value pairs, separated by colons.
+
+@end table
+
+@subsection Examples
+
+Map from ACEScg to ACEScct, this assumes the OCIO file is defined with the OCIO environment variable.
+@example
+input=ACEScg:output=ACEScct:format=rgb48
+@end example
+
+Map from ACEScg to a sRGB display using the "ACES 1.0 - SDR Video" view transform, this assumes the OCIO file is defined with the OCIO environment variable. Note you will need to wrap the argument in quotes to ensure that the spaces are interpreted correctly.
+@example
+input=ACEScg:display=sRGB - Display:view=ACES 1.0 - SDR Video:format=rgb48
+@end example
+
+
+As above but using the OCIO file studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio rather than the OCIO environment variable.
+@example
+config=studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio:input=ACEScg:display=sRGB - Display:view=ACES 1.0 - SDR Video:format=rgb48
+@end example
+
+If you are converting to YCrCb you still will want to set the color matrix for the conversion. This is a good example of combining the two.
+@example
+ffmpeg -y -i SOURCEFRAMES.%05d.exr -c:v libx265 -vf "ocio=input=ACEScg:output=ACEScct:format=rgb48,scale=in_color_matrix=bt709:out_color_matrix=bt709,format=yuv444p10"  OUTPUTFILE.mov
+@end example
+
 @section ocr
 Optical Character Recognition
 
@@ -18818,7 +19257,8 @@ See @ref{framesync}.
 
 @item alpha
 Set format of alpha of the overlaid video, it can be @var{straight} or
-@var{premultiplied}. Default is @var{straight}.
+@var{premultiplied}, or @var{auto} to choose the alpha mode automatically.
+Default is @var{auto}.
 @end table
 
 The @option{x}, and @option{y} expressions can contain the following
@@ -18971,84 +19411,6 @@ testsrc=s=100x100, split=4 [in0][in1][in2][in3];
 @end example
 
 @end itemize
-
-@anchor{overlay_cuda}
-@section overlay_cuda
-
-Overlay one video on top of another.
-
-This is the CUDA variant of the @ref{overlay} filter.
-It only accepts CUDA frames. The underlying input pixel formats have to match.
-
-It takes two inputs and has one output. The first input is the "main"
-video on which the second input is overlaid.
-
-It accepts the following parameters:
-
-@table @option
-@item x
-@item y
-Set expressions for the x and y coordinates of the overlaid video
-on the main video.
-
-They can contain the following parameters:
-
-@table @option
-
-@item main_w, W
-@item main_h, H
-The main input width and height.
-
-@item overlay_w, w
-@item overlay_h, h
-The overlay input width and height.
-
-@item x
-@item y
-The computed values for @var{x} and @var{y}. They are evaluated for
-each new frame.
-
-@item n
-The ordinal index of the main input frame, starting from 0.
-
-@item pos
-The byte offset position in the file of the main input frame, NAN if unknown.
-Deprecated, do not use.
-
-@item t
-The timestamp of the main input frame, expressed in seconds, NAN if unknown.
-
-@end table
-
-Default value is "0" for both expressions.
-
-@item eval
-Set when the expressions for @option{x} and @option{y} are evaluated.
-
-It accepts the following values:
-@table @option
-@item init
-Evaluate expressions once during filter initialization or
-when a command is processed.
-
-@item frame
-Evaluate expressions for each incoming frame
-@end table
-
-Default value is @option{frame}.
-
-@item eof_action
-See @ref{framesync}.
-
-@item shortest
-See @ref{framesync}.
-
-@item repeatlast
-See @ref{framesync}.
-
-@end table
-
-This filter also supports the @ref{framesync} options.
 
 @section owdenoise
 
@@ -19614,181 +19976,6 @@ Set window Y position, relative offset on Y axis.
 
 This filter supports same @ref{commands} as options.
 
-@section pp
-
-Enable the specified chain of postprocessing subfilters using libpostproc. This
-library should be automatically selected with a GPL build (@code{--enable-gpl}).
-Subfilters must be separated by '/' and can be disabled by prepending a '-'.
-Each subfilter and some options have a short and a long name that can be used
-interchangeably, i.e. dr/dering are the same.
-
-The filters accept the following options:
-
-@table @option
-@item subfilters
-Set postprocessing subfilters string.
-@end table
-
-All subfilters share common options to determine their scope:
-
-@table @option
-@item a/autoq
-Honor the quality commands for this subfilter.
-
-@item c/chrom
-Do chrominance filtering, too (default).
-
-@item y/nochrom
-Do luma filtering only (no chrominance).
-
-@item n/noluma
-Do chrominance filtering only (no luma).
-@end table
-
-These options can be appended after the subfilter name, separated by a '|'.
-
-Available subfilters are:
-
-@table @option
-@item hb/hdeblock[|difference[|flatness]]
-Horizontal deblocking filter
-@table @option
-@item difference
-Difference factor where higher values mean more deblocking (default: @code{32}).
-@item flatness
-Flatness threshold where lower values mean more deblocking (default: @code{39}).
-@end table
-
-@item vb/vdeblock[|difference[|flatness]]
-Vertical deblocking filter
-@table @option
-@item difference
-Difference factor where higher values mean more deblocking (default: @code{32}).
-@item flatness
-Flatness threshold where lower values mean more deblocking (default: @code{39}).
-@end table
-
-@item ha/hadeblock[|difference[|flatness]]
-Accurate horizontal deblocking filter
-@table @option
-@item difference
-Difference factor where higher values mean more deblocking (default: @code{32}).
-@item flatness
-Flatness threshold where lower values mean more deblocking (default: @code{39}).
-@end table
-
-@item va/vadeblock[|difference[|flatness]]
-Accurate vertical deblocking filter
-@table @option
-@item difference
-Difference factor where higher values mean more deblocking (default: @code{32}).
-@item flatness
-Flatness threshold where lower values mean more deblocking (default: @code{39}).
-@end table
-@end table
-
-The horizontal and vertical deblocking filters share the difference and
-flatness values so you cannot set different horizontal and vertical
-thresholds.
-
-@table @option
-@item h1/x1hdeblock
-Experimental horizontal deblocking filter
-
-@item v1/x1vdeblock
-Experimental vertical deblocking filter
-
-@item dr/dering
-Deringing filter
-
-@item tn/tmpnoise[|threshold1[|threshold2[|threshold3]]], temporal noise reducer
-@table @option
-@item threshold1
-larger -> stronger filtering
-@item threshold2
-larger -> stronger filtering
-@item threshold3
-larger -> stronger filtering
-@end table
-
-@item al/autolevels[:f/fullyrange], automatic brightness / contrast correction
-@table @option
-@item f/fullyrange
-Stretch luma to @code{0-255}.
-@end table
-
-@item lb/linblenddeint
-Linear blend deinterlacing filter that deinterlaces the given block by
-filtering all lines with a @code{(1 2 1)} filter.
-
-@item li/linipoldeint
-Linear interpolating deinterlacing filter that deinterlaces the given block by
-linearly interpolating every second line.
-
-@item ci/cubicipoldeint
-Cubic interpolating deinterlacing filter deinterlaces the given block by
-cubically interpolating every second line.
-
-@item md/mediandeint
-Median deinterlacing filter that deinterlaces the given block by applying a
-median filter to every second line.
-
-@item fd/ffmpegdeint
-FFmpeg deinterlacing filter that deinterlaces the given block by filtering every
-second line with a @code{(-1 4 2 4 -1)} filter.
-
-@item l5/lowpass5
-Vertically applied FIR lowpass deinterlacing filter that deinterlaces the given
-block by filtering all lines with a @code{(-1 2 6 2 -1)} filter.
-
-@item fq/forceQuant[|quantizer]
-Overrides the quantizer table from the input with the constant quantizer you
-specify.
-@table @option
-@item quantizer
-Quantizer to use
-@end table
-
-@item de/default
-Default pp filter combination (@code{hb|a,vb|a,dr|a})
-
-@item fa/fast
-Fast pp filter combination (@code{h1|a,v1|a,dr|a})
-
-@item ac
-High quality pp filter combination (@code{ha|a|128|7,va|a,dr|a})
-@end table
-
-@subsection Examples
-
-@itemize
-@item
-Apply horizontal and vertical deblocking, deringing and automatic
-brightness/contrast:
-@example
-pp=hb/vb/dr/al
-@end example
-
-@item
-Apply default filters without brightness/contrast correction:
-@example
-pp=de/-al
-@end example
-
-@item
-Apply default filters and temporal denoiser:
-@example
-pp=default/tmpnoise|1|2|3
-@end example
-
-@item
-Apply deblocking on luma only, and switch vertical deblocking on or off
-automatically depending on available CPU time:
-@example
-pp=hb|y/vb|a
-@end example
-@end itemize
-
 @section pp7
 Apply Postprocessing filter 7. It is variant of the @ref{spp} filter,
 similar to spp = 6 with 7 point DCT, where only the center sample is
@@ -19830,6 +20017,20 @@ By default value 0xf, all planes will be processed.
 
 @item inplace
 Do not require 2nd input for processing, instead use alpha plane from input stream.
+@end table
+
+@section premultiply_dynamic
+Dynamically premultiply or unpremultiply the input video stream as needed,
+to match the requirements of the downstream filter graph. This is roughly
+equivalent to either @code{premultiply:inplace=yes} or
+@code{unpremultiply:inplace=yes}, or otherwise a noop.
+
+The filter accepts the following option:
+
+@table @option
+@item planes
+Set which planes will be processed, unprocessed planes will be copied.
+By default value 0xf, all planes will be processed.
 @end table
 
 @section prewitt
@@ -19985,7 +20186,7 @@ Specifies which version of the stats file format to use. Details of
 each format are written below.
 Default value is 1.
 
-@item stats_add_max
+@item output_max
 Determines whether the max value is output to the stats log.
 Default value is 0.
 Requires stats_version >= 2. If this is set and stats_version < 2,
@@ -20160,7 +20361,7 @@ To enable the compilation of this filter, you need to configure FFmpeg with
 @code{--enable-libqrencode}.
 
 The QR code is generated from the provided text or text pattern. The
-corresponding QR code is scaled and overlayed into the video output according to
+corresponding QR code is scaled and overlaid into the video output according to
 the specified options.
 
 In case no text is specified, no QR code is overlaied.
@@ -21066,7 +21267,38 @@ Set libswscale input parameters for scaling algorithms that need them. See
 complete documentation. If not explicitly specified the filter applies
 empty parameters.
 
+@item intent
+Set the ICC rendering intent to use when transforming between different color
+spaces. It accepts the following values:
 
+@table @samp
+@item perceptual
+Use a perceptually guided tone and gamut mapping curve. The exact details of
+the mapping used may change at any time and should not be relied on as stable.
+This intent is recommended for final viewing of image/video content in typical
+viewing settings.
+
+@item relative_colorimetric
+Statically clip out-of-gamut colors using a colorimetric clipping curve which
+attempts to find the colorimetrically least dissimilar in-gamut color. This
+intent performs white point adaptation and black point adaptation. This is
+the default. This intent is recommended wherever faithful color reproduction
+is of the utmost importance, even at the cost of clipping.
+
+@item absolute_colorimetric
+Hard clip out-of-gamut colors with no attempt at white or black point
+reproduction. This intent will reproduce in-gamut colors 1:1 on the output
+display as they would appear on the reference display, assuming the output
+display is appropriately calibrated.
+
+@item saturation
+Performs saturation mapping - that is, stretches the input color volume
+directly onto the output color volume, in non-linear fashion that preserves the
+original signal appearance as much as possible. This intent is recommended for
+signal content evaluation, as it will not lead to any clipping. It is roughly
+analogous to not performing any color mapping, although it still takes into
+account the mastering display primaries and any differences in encoding TRC.
+@end table
 
 @item size, s
 Set the video size. For the syntax of this option, check the
@@ -21153,6 +21385,62 @@ is used by default. Possible values:
 @item bottom
 @end table
 
+@item in_primaries
+@item out_primaries
+Set in/output RGB primaries.
+
+This allows the autodetected value to be overridden as well as allows forcing
+a specific value used for the output and encoder. Possible values:
+
+@table @samp
+@item auto
+Choose automatically. This is the default.
+
+@item bt709
+@item bt470m
+@item bt470bg
+@item smpte170m
+@item smpte240m
+@item film
+@item bt2020
+@item smpte428
+@item smpte431
+@item smpte432
+@item jedec-p22
+@item ebu3213
+@end table
+
+@item in_transfer
+@item out_transfer
+Set in/output transfer response curve (TRC).
+
+This allows the autodetected value to be overridden as well as allows forcing
+a specific value used for the output and encoder. Possible values:
+
+@table @samp
+@item auto
+Choose automatically. This is the default.
+
+@item bt709
+@item bt470m
+@item gamma22
+@item bt470bg
+@item gamma28
+@item smpte170m
+@item smpte240m
+@item linear
+@item iec61966-2-1
+@item srgb
+@item iec61966-2-4
+@item xvycc
+@item bt1361e
+@item bt2020-10
+@item bt2020-12
+@item smpte2084
+@item smpte428
+@item arib-std-b67
+@end table
+
 @item force_original_aspect_ratio
 Enable decreasing or increasing output video width or height if necessary to
 keep the original aspect ratio. Possible values:
@@ -21192,6 +21480,14 @@ may be slightly modified.
 This option can be handy if you need to have a video fit within or exceed
 a defined resolution using @option{force_original_aspect_ratio} but also have
 encoder restrictions on width or height divisibility.
+
+@item reset_sar
+Enabling this option leads to the output SAR being reset to 1.
+Additionally, if the user requests proportional scaling either
+through the width or height expressions, e.g. @code{w=-4:h=360} or @code{w=iw/2:h=-1}
+or by enabling @code{force_original_aspect_ratio}, then the input DAR is taken into
+account and the output is scaled to produce square pixels.
+Default is false.
 
 @end table
 
@@ -21353,10 +21649,28 @@ scale='trunc(ih*dar):ih',setsar=1/1
 @end example
 
 @item
-Make pixels square by combining scale and setsar,
+Make pixels square using reset_sar,
 making sure the resulting resolution is even (required by some codecs):
 @example
-scale='trunc(ih*dar/2)*2:trunc(ih/2)*2',setsar=1/1
+scale='-2:ih-mod(ih,2):reset_sar=1'
+@end example
+
+@item
+Scale to target exactly, however reset SAR to 1:
+@example
+scale='400:300:reset_sar=1'
+@end example
+
+@item
+Scale to even dimensions that fit within 400x300, preserving input SAR:
+@example
+scale='400:300:force_original_aspect_ratio=decrease:force_divisible_by=2'
+@end example
+
+@item
+Scale to produce square pixels with even dimensions that fit within 400x300:
+@example
+scale='400:300:force_original_aspect_ratio=decrease:force_divisible_by=2:reset_sar=1'
 @end example
 
 @item
@@ -21385,302 +21699,6 @@ The command accepts the same syntax of the corresponding option.
 
 If the specified expression is not valid, it is kept at its current
 value.
-@end table
-
-@anchor{scale_cuda}
-@section scale_cuda
-
-Scale (resize) and convert (pixel format) the input video, using accelerated CUDA kernels.
-Setting the output width and height works in the same way as for the @ref{scale} filter.
-
-The filter accepts the following options:
-@table @option
-@item w
-@item h
-Set the output video dimension expression. Default value is the input dimension.
-
-Allows for the same expressions as the @ref{scale} filter.
-
-@item interp_algo
-Sets the algorithm used for scaling:
-
-@table @var
-@item nearest
-Nearest neighbour
-
-Used by default if input parameters match the desired output.
-
-@item bilinear
-Bilinear
-
-@item bicubic
-Bicubic
-
-This is the default.
-
-@item lanczos
-Lanczos
-
-@end table
-
-@item format
-Controls the output pixel format. By default, or if none is specified, the input
-pixel format is used.
-
-The filter does not support converting between YUV and RGB pixel formats.
-
-@item passthrough
-If set to 0, every frame is processed, even if no conversion is necessary.
-This mode can be useful to use the filter as a buffer for a downstream
-frame-consumer that exhausts the limited decoder frame pool.
-
-If set to 1, frames are passed through as-is if they match the desired output
-parameters. This is the default behaviour.
-
-@item param
-Algorithm-Specific parameter.
-
-Affects the curves of the bicubic algorithm.
-
-@item force_original_aspect_ratio
-@item force_divisible_by
-Work the same as the identical @ref{scale} filter options.
-
-@end table
-
-@subsection Examples
-
-@itemize
-@item
-Scale input to 720p, keeping aspect ratio and ensuring the output is yuv420p.
-@example
-scale_cuda=-2:720:format=yuv420p
-@end example
-
-@item
-Upscale to 4K using nearest neighbour algorithm.
-@example
-scale_cuda=4096:2160:interp_algo=nearest
-@end example
-
-@item
-Don't do any conversion or scaling, but copy all input frames into newly allocated ones.
-This can be useful to deal with a filter and encode chain that otherwise exhausts the
-decoders frame pool.
-@example
-scale_cuda=passthrough=0
-@end example
-@end itemize
-
-@anchor{scale_npp}
-@section scale_npp
-
-Use the NVIDIA Performance Primitives (libnpp) to perform scaling and/or pixel
-format conversion on CUDA video frames. Setting the output width and height
-works in the same way as for the @var{scale} filter.
-
-The following additional options are accepted:
-@table @option
-@item format
-The pixel format of the output CUDA frames. If set to the string "same" (the
-default), the input format will be kept. Note that automatic format negotiation
-and conversion is not yet supported for hardware frames
-
-@item interp_algo
-The interpolation algorithm used for resizing. One of the following:
-@table @option
-@item nn
-Nearest neighbour.
-
-@item linear
-@item cubic
-@item cubic2p_bspline
-2-parameter cubic (B=1, C=0)
-
-@item cubic2p_catmullrom
-2-parameter cubic (B=0, C=1/2)
-
-@item cubic2p_b05c03
-2-parameter cubic (B=1/2, C=3/10)
-
-@item super
-Supersampling
-
-@item lanczos
-@end table
-
-@item force_original_aspect_ratio
-Enable decreasing or increasing output video width or height if necessary to
-keep the original aspect ratio. Possible values:
-
-@table @samp
-@item disable
-Scale the video as specified and disable this feature.
-
-@item decrease
-The output video dimensions will automatically be decreased if needed.
-
-@item increase
-The output video dimensions will automatically be increased if needed.
-
-@end table
-
-One useful instance of this option is that when you know a specific device's
-maximum allowed resolution, you can use this to limit the output video to
-that, while retaining the aspect ratio. For example, device A allows
-1280x720 playback, and your video is 1920x800. Using this option (set it to
-decrease) and specifying 1280x720 to the command line makes the output
-1280x533.
-
-Please note that this is a different thing than specifying -1 for @option{w}
-or @option{h}, you still need to specify the output resolution for this option
-to work.
-
-@item force_divisible_by
-Ensures that both the output dimensions, width and height, are divisible by the
-given integer when used together with @option{force_original_aspect_ratio}. This
-works similar to using @code{-n} in the @option{w} and @option{h} options.
-
-This option respects the value set for @option{force_original_aspect_ratio},
-increasing or decreasing the resolution accordingly. The video's aspect ratio
-may be slightly modified.
-
-This option can be handy if you need to have a video fit within or exceed
-a defined resolution using @option{force_original_aspect_ratio} but also have
-encoder restrictions on width or height divisibility.
-
-@item eval
-Specify when to evaluate @var{width} and @var{height} expression. It accepts the following values:
-
-@table @samp
-@item init
-Only evaluate expressions once during the filter initialization or when a command is processed.
-
-@item frame
-Evaluate expressions for each incoming frame.
-
-@end table
-
-@end table
-
-The values of the @option{w} and @option{h} options are expressions
-containing the following constants:
-
-@table @var
-@item in_w
-@item in_h
-The input width and height
-
-@item iw
-@item ih
-These are the same as @var{in_w} and @var{in_h}.
-
-@item out_w
-@item out_h
-The output (scaled) width and height
-
-@item ow
-@item oh
-These are the same as @var{out_w} and @var{out_h}
-
-@item a
-The same as @var{iw} / @var{ih}
-
-@item sar
-input sample aspect ratio
-
-@item dar
-The input display aspect ratio. Calculated from @code{(iw / ih) * sar}.
-
-@item n
-The (sequential) number of the input frame, starting from 0.
-Only available with @code{eval=frame}.
-
-@item t
-The presentation timestamp of the input frame, expressed as a number of
-seconds. Only available with @code{eval=frame}.
-
-@item pos
-The position (byte offset) of the frame in the input stream, or NaN if
-this information is unavailable and/or meaningless (for example in case of synthetic video).
-Only available with @code{eval=frame}.
-Deprecated, do not use.
-@end table
-
-@section scale2ref_npp
-
-Use the NVIDIA Performance Primitives (libnpp) to scale (resize) the input
-video, based on a reference video.
-
-See the @ref{scale_npp} filter for available options, scale2ref_npp supports the same
-but uses the reference video instead of the main input as basis. scale2ref_npp
-also supports the following additional constants for the @option{w} and
-@option{h} options:
-
-@table @var
-@item main_w
-@item main_h
-The main input video's width and height
-
-@item main_a
-The same as @var{main_w} / @var{main_h}
-
-@item main_sar
-The main input video's sample aspect ratio
-
-@item main_dar, mdar
-The main input video's display aspect ratio. Calculated from
-@code{(main_w / main_h) * main_sar}.
-
-@item main_n
-The (sequential) number of the main input frame, starting from 0.
-Only available with @code{eval=frame}.
-
-@item main_t
-The presentation timestamp of the main input frame, expressed as a number of
-seconds. Only available with @code{eval=frame}.
-
-@item main_pos
-The position (byte offset) of the frame in the main input stream, or NaN if
-this information is unavailable and/or meaningless (for example in case of synthetic video).
-Only available with @code{eval=frame}.
-@end table
-
-@subsection Examples
-
-@itemize
-@item
-Scale a subtitle stream (b) to match the main video (a) in size before overlaying
-@example
-'scale2ref_npp[b][a];[a][b]overlay_cuda'
-@end example
-
-@item
-Scale a logo to 1/10th the height of a video, while preserving its display aspect ratio.
-@example
-[logo-in][video-in]scale2ref_npp=w=oh*mdar:h=ih/10[logo-out][video-out]
-@end example
-@end itemize
-
-@section scale_vt
-
-Scale and convert the color parameters using VTPixelTransferSession.
-
-The filter accepts the following options:
-@table @option
-@item w
-@item h
-Set the output video dimension expression. Default value is the input dimension.
-
-@item color_matrix
-Set the output colorspace matrix.
-
-@item color_primaries
-Set the output color primaries.
-
-@item color_transfer
-Set the output transfer characteristics.
-
 @end table
 
 @section scharr
@@ -22106,22 +22124,18 @@ Keep the same chroma location (default).
 @item bottomleft
 @item bottom
 @end table
-@end table
 
-@section sharpen_npp
-Use the NVIDIA Performance Primitives (libnpp) to perform image sharpening with
-border control.
+@item alpha_mode
+Set the alpha moda.
+Available values are:
 
-The following additional options are accepted:
-@table @option
+@table @samp
+@item auto
+Keep the same alpha mode (default).
 
-@item border_type
-Type of sampling to be used ad frame borders. One of the following:
-@table @option
-
-@item replicate
-Replicate pixel values.
-
+@item unspecified, unknown
+@item premultiplied
+@item straight
 @end table
 @end table
 
@@ -22826,6 +22840,76 @@ input upscaled using bicubic upscaling with proper scale factor.
 @end table
 
 To get full functionality (such as async execution), please use the @ref{dnn_processing} filter.
+
+@anchor{sr_amf}
+@section sr_amf
+
+Upscale (size increasing) for the input video using AMD Advanced Media Framework library for hardware acceleration.
+Use advanced algorithms for upscaling with higher output quality.
+Setting the output width and height works in the same way as for the @ref{scale} filter.
+
+The filter accepts the following options:
+@table @option
+@item w
+@item h
+Set the output video dimension expression. Default value is the input dimension.
+
+Allows for the same expressions as the @ref{scale} filter.
+
+@item algorithm
+Sets the algorithm used for scaling:
+
+@table @var
+@item bilinear
+Bilinear
+
+@item bicubic
+Bicubic
+
+@item sr1-0
+Video SR1.0
+This is a default value
+
+@item point
+Point
+
+@item sr1-1
+Video SR1.1
+
+@end table
+
+@item sharpness
+Control hq scaler sharpening. The value is a float in the range of [0.0, 2.0]
+
+@item format
+Controls the output pixel format. By default, or if none is specified, the input
+pixel format is used.
+
+@item keep-ratio
+Force the scaler to keep the aspect ratio of the input image when the output size has a different aspect ratio.
+Default value is false.
+
+@item fill
+Specifies whether the output image outside the region of interest,
+which does not fill the entire output surface should be filled with a solid color.
+
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Scale input to 720p, keeping aspect ratio and ensuring the output is yuv420p.
+@example
+sr_amf=-2:720:format=yuv420p
+@end example
+
+@item
+Upscale to 4K with algorithm video SR1.1.
+@example
+sr_amf=4096:2160:algorithm=sr1-1
+@end example
+@end itemize
 
 @section ssim
 
@@ -23598,7 +23682,7 @@ by progressively selecting a different column from each input frame.
 
 The end result is a sort of inverted parallax, so that far away objects move
 much faster that the ones in the front. The ideal conditions for this video
-effect are when there is either very little motion and the backgroud is static,
+effect are when there is either very little motion and the background is static,
 or when there is a lot of motion and a very wide depth of field (e.g. wide
 panorama, while moving on a train).
 
@@ -23626,7 +23710,7 @@ How many columns should be inserted before end of filtering.
 
 Normally the filter shifts and tilts from the very first frame, and stops when
 the last one is received. However, before filtering starts, normal video may
-be preseved, so that the effect is slowly shifted in its place. Similarly,
+be preserved, so that the effect is slowly shifted in its place. Similarly,
 the last video frame may be reconstructed at the end. Alternatively it is
 possible to just start and end with black.
 
@@ -24211,47 +24295,6 @@ The command above can also be specified as:
 @example
 transpose=1:portrait
 @end example
-
-@section transpose_npp
-
-Transpose rows with columns in the input video and optionally flip it.
-For more in depth examples see the @ref{transpose} video filter, which shares mostly the same options.
-
-It accepts the following parameters:
-
-@table @option
-
-@item dir
-Specify the transposition direction.
-
-Can assume the following values:
-@table @samp
-@item cclock_flip
-Rotate by 90 degrees counterclockwise and vertically flip. (default)
-
-@item clock
-Rotate by 90 degrees clockwise.
-
-@item cclock
-Rotate by 90 degrees counterclockwise.
-
-@item clock_flip
-Rotate by 90 degrees clockwise and vertically flip.
-@end table
-
-@item passthrough
-Do not apply the transposition if the input geometry matches the one
-specified by the specified value. It accepts the following values:
-@table @samp
-@item none
-Always apply transposition. (default)
-@item portrait
-Preserve portrait geometry (when @var{height} >= @var{width}).
-@item landscape
-Preserve landscape geometry (when @var{width} >= @var{height}).
-@end table
-
-@end table
 
 @section trim
 Trim the input so that the output contains one continuous subpart of the input.
@@ -25565,6 +25608,175 @@ Example:
 ffmpeg -i ref.mpg -vf vmafmotion -f null -
 @end example
 
+@anchor{vpp_amf}
+@section vpp_amf
+
+Scale (resize) and convert colorspace, transfer characteristics or color primaries for the input video, using AMD Advanced Media Framework library for hardware acceleration.
+Setting the output width and height works in the same way as for the @ref{scale} filter.
+
+The filter accepts the following options:
+@table @option
+@item w
+@item h
+Set the output video dimension expression. Default value is the input dimension.
+
+Allows for the same expressions as the @ref{scale} filter.
+
+@item scale_type
+Sets the algorithm used for scaling:
+
+@table @var
+@item bilinear
+Bilinear
+
+This is the default.
+
+@item bicubic
+Bicubic
+
+@end table
+
+@item format
+Controls the output pixel format. By default, or if none is specified, the input
+pixel format is used.
+
+
+@item force_original_aspect_ratio
+@item force_divisible_by
+Work the same as the identical @ref{scale} filter options.
+
+@item reset_sar
+Works the same as the identical @ref{scale} filter option.
+
+@anchor{color_profile}
+@item color_profile
+Specify all color properties at once.
+
+The accepted values are:
+@table @samp
+@item bt601
+BT.601
+
+@item bt709
+BT.709
+
+@item bt2020
+BT.2020
+
+@end table
+
+@item trc
+Specify output transfer characteristics.
+
+The accepted values are:
+@table @samp
+@item bt709
+BT.709
+
+@item gamma22
+Constant gamma of 2.2
+
+@item gamma28
+Constant gamma of 2.8
+
+@item smpte170m
+SMPTE-170M
+
+@item smpte240m
+SMPTE-240M
+
+@item linear
+Linear
+
+@item log
+LOG
+
+@item log-sqrt
+LOG_SQRT
+
+@item iec61966-2-4
+iec61966-2-4
+
+@item bt1361-ecg
+BT1361_ECG
+
+@item iec61966-2-1
+iec61966-2-1
+
+@item bt2020-10
+BT.2020 for 10-bits content
+
+@item bt2020-12
+BT.2020 for 12-bits content
+
+@item smpte2084
+SMPTE2084
+
+@item smpte428
+SMPTE428
+
+@item arib-std-b67
+ARIB_STD_B67
+
+@end table
+
+@item primaries
+Specify output color primaries.
+
+The accepted values are:
+@table @samp
+@item bt709
+BT.709
+
+@item bt470m
+BT.470M
+
+@item bt470bg
+BT.470BG or BT.601-6 625
+
+@item smpte170m
+SMPTE-170M or BT.601-6 525
+
+@item smpte240m
+SMPTE-240M
+
+@item film
+film
+
+@item bt2020
+BT.2020
+
+@item smpte428
+SMPTE-428
+
+@item smpte431
+SMPTE-431
+
+@item smpte432
+SMPTE-432
+
+@item jedec-p22
+JEDEC P22 phosphors
+
+@end table
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Scale input to 720p, keeping aspect ratio and ensuring the output is yuv420p.
+@example
+vpp_amf=-2:720:format=yuv420p
+@end example
+
+@item
+Upscale to 4K and change color profile to bt2020.
+@example
+vpp_amf=4096:2160:color_profile=bt2020
+@end example
+@end itemize
+
 @anchor{vstack}
 @section vstack
 Stack input videos vertically.
@@ -25819,7 +26031,7 @@ pixel formats are not RGB.
 @item fitmode, fm
 Set sample aspect ratio of video output frames.
 Can be used to configure waveform so it is not
-streched too much in one of directions.
+stretched too much in one of directions.
 
 @table @samp
 @item none
@@ -26319,64 +26531,6 @@ Only deinterlace frames marked as interlaced.
 The default value is @code{all}.
 @end table
 
-@section yadif_cuda
-
-Deinterlace the input video using the @ref{yadif} algorithm, but implemented
-in CUDA so that it can work as part of a GPU accelerated pipeline with nvdec
-and/or nvenc.
-
-It accepts the following parameters:
-
-
-@table @option
-
-@item mode
-The interlacing mode to adopt. It accepts one of the following values:
-
-@table @option
-@item 0, send_frame
-Output one frame for each frame.
-@item 1, send_field
-Output one frame for each field.
-@item 2, send_frame_nospatial
-Like @code{send_frame}, but it skips the spatial interlacing check.
-@item 3, send_field_nospatial
-Like @code{send_field}, but it skips the spatial interlacing check.
-@end table
-
-The default value is @code{send_frame}.
-
-@item parity
-The picture field parity assumed for the input interlaced video. It accepts one
-of the following values:
-
-@table @option
-@item 0, tff
-Assume the top field is first.
-@item 1, bff
-Assume the bottom field is first.
-@item -1, auto
-Enable automatic detection of field parity.
-@end table
-
-The default value is @code{auto}.
-If the interlacing is unknown or the decoder does not export this information,
-top field first will be assumed.
-
-@item deint
-Specify which frames to deinterlace. Accepts one of the following
-values:
-
-@table @option
-@item 0, all
-Deinterlace all frames.
-@item 1, interlaced
-Only deinterlace frames marked as interlaced.
-@end table
-
-The default value is @code{all}.
-@end table
-
 @section yaepblur
 
 Apply blur filter while preserving edges ("yaepblur" means "yet another edge preserving blur filter").
@@ -26580,6 +26734,7 @@ Possible values are:
 @item bicubic
 @item spline16
 @item spline36
+@item spline64
 @item lanczos
 @end table
 
@@ -26797,6 +26952,771 @@ value.
 @end table
 
 @c man end VIDEO FILTERS
+
+@chapter CUDA Video Filters
+@c man begin CUDA Video Filters
+
+To enable CUDA and/or NPP filters please refer to configuration guidelines for @ref{CUDA} and for @ref{CUDA NPP} filters.
+
+Running CUDA filters requires you to initialize a hardware device and to pass that device to all filters in any filter graph.
+@table @option
+
+@item -init_hw_device cuda[=@var{name}][:@var{device}[,@var{key=value}...]]
+Initialise a new hardware device of type @var{cuda} called @var{name}, using the
+given device parameters.
+
+@item -filter_hw_device @var{name}
+Pass the hardware device called @var{name} to all filters in any filter graph.
+
+@end table
+
+For more detailed information see @url{https://www.ffmpeg.org/ffmpeg.html#Advanced-Video-options}
+
+@itemize
+@item
+Example of initializing second CUDA device on the system and running scale_cuda and bilateral_cuda filters.
+@example
+./ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i input.mp4 -init_hw_device cuda:1 -filter_complex \
+"[0:v]scale_cuda=format=yuv444p[scaled_video];[scaled_video]bilateral_cuda=window_size=9:sigmaS=3.0:sigmaR=50.0" \
+-an -sn -c:v h264_nvenc -cq 20 out.mp4
+@end example
+@end itemize
+
+Since CUDA filters operate exclusively on GPU memory, frame data must sometimes be uploaded (@ref{hwupload}) to hardware surfaces associated with the appropriate CUDA device before processing, and downloaded (@ref{hwdownload}) back to normal memory afterward, if required. Whether @ref{hwupload} or @ref{hwdownload} is necessary depends on the specific workflow:
+
+@itemize
+@item If the input frames are already in GPU memory (e.g., when using @code{-hwaccel cuda} or @code{-hwaccel_output_format cuda}), explicit use of @ref{hwupload} is not needed, as the data is already in the appropriate memory space.
+@item If the input frames are in CPU memory (e.g., software-decoded frames or frames processed by CPU-based filters), it is necessary to use @ref{hwupload} to transfer the data to GPU memory for CUDA processing.
+@item If the output of the CUDA filters needs to be further processed by software-based filters or saved in a format not supported by GPU-based encoders, @ref{hwdownload} is required to transfer the data back to CPU memory.
+@end itemize
+Note that @ref{hwupload} uploads data to a surface with the same layout as the software frame, so it may be necessary to add a @ref{format} filter immediately before @ref{hwupload} to ensure the input is in the correct format. Similarly, @ref{hwdownload} may not support all output formats, so an additional @ref{format} filter may need to be inserted immediately after @ref{hwdownload} in the filter graph to ensure compatibility.
+
+@anchor{CUDA}
+@section CUDA
+Below is a description of the currently available Nvidia CUDA video filters.
+
+Prerequisites:
+@itemize
+@item Install Nvidia CUDA Toolkit
+@end itemize
+
+Note: If FFmpeg detects the Nvidia CUDA Toolkit during configuration, it will enable CUDA filters automatically without requiring any additional flags. If you want to explicitly enable them, use the following options:
+
+@itemize
+@item Configure FFmpeg with @code{--enable-cuda-nvcc --enable-nonfree}.
+@item Configure FFmpeg with @code{--enable-cuda-llvm}. Additional requirement: @code{llvm} lib must be installed.
+@end itemize
+
+@subsection bilateral_cuda
+CUDA accelerated bilateral filter, an edge preserving filter.
+This filter is mathematically accurate thanks to the use of GPU acceleration.
+For best output quality, use one to one chroma subsampling, i.e. yuv444p format.
+
+The filter accepts the following options:
+@table @option
+@item sigmaS
+Set sigma of gaussian function to calculate spatial weight, also called sigma space.
+Allowed range is 0.1 to 512. Default is 0.1.
+
+@item sigmaR
+Set sigma of gaussian function to calculate color range weight, also called sigma color.
+Allowed range is 0.1 to 512. Default is 0.1.
+
+@item window_size
+Set window size of the bilateral function to determine the number of neighbours to loop on.
+If the number entered is even, one will be added automatically.
+Allowed range is 1 to 255. Default is 1.
+@end table
+@subsubsection Examples
+
+@itemize
+@item
+Apply the bilateral filter on a video.
+
+@example
+./ffmpeg -v verbose \
+-hwaccel cuda -hwaccel_output_format cuda -i input.mp4  \
+-init_hw_device cuda \
+-filter_complex \
+" \
+[0:v]scale_cuda=format=yuv444p[scaled_video];
+[scaled_video]bilateral_cuda=window_size=9:sigmaS=3.0:sigmaR=50.0" \
+-an -sn -c:v h264_nvenc -cq 20 out.mp4
+@end example
+
+@end itemize
+
+@subsection bwdif_cuda
+
+Deinterlace the input video using the @ref{bwdif} algorithm, but implemented
+in CUDA so that it can work as part of a GPU accelerated pipeline with nvdec
+and/or nvenc.
+
+It accepts the following parameters:
+
+@table @option
+@item mode
+The interlacing mode to adopt. It accepts one of the following values:
+
+@table @option
+@item 0, send_frame
+Output one frame for each frame.
+@item 1, send_field
+Output one frame for each field.
+@end table
+
+The default value is @code{send_field}.
+
+@item parity
+The picture field parity assumed for the input interlaced video. It accepts one
+of the following values:
+
+@table @option
+@item 0, tff
+Assume the top field is first.
+@item 1, bff
+Assume the bottom field is first.
+@item -1, auto
+Enable automatic detection of field parity.
+@end table
+
+The default value is @code{auto}.
+If the interlacing is unknown or the decoder does not export this information,
+top field first will be assumed.
+
+@item deint
+Specify which frames to deinterlace. Accepts one of the following
+values:
+
+@table @option
+@item 0, all
+Deinterlace all frames.
+@item 1, interlaced
+Only deinterlace frames marked as interlaced.
+@end table
+
+The default value is @code{all}.
+@end table
+
+@subsection chromakey_cuda
+CUDA accelerated YUV colorspace color/chroma keying.
+
+This filter works like normal chromakey filter but operates on CUDA frames.
+for more details and parameters see @ref{chromakey}.
+
+@subsubsection Examples
+
+@itemize
+@item
+Make all the green pixels in the input video transparent and use it as an overlay for another video:
+
+@example
+./ffmpeg \
+    -hwaccel cuda -hwaccel_output_format cuda -i input_green.mp4  \
+    -hwaccel cuda -hwaccel_output_format cuda -i base_video.mp4 \
+    -init_hw_device cuda \
+    -filter_complex \
+    " \
+        [0:v]chromakey_cuda=0x25302D:0.1:0.12:1[overlay_video]; \
+        [1:v]scale_cuda=format=yuv420p[base]; \
+        [base][overlay_video]overlay_cuda" \
+    -an -sn -c:v h264_nvenc -cq 20 output.mp4
+@end example
+
+@item
+Process two software sources, explicitly uploading the frames:
+
+@example
+./ffmpeg -init_hw_device cuda=cuda -filter_hw_device cuda \
+    -f lavfi -i color=size=800x600:color=white,format=yuv420p \
+    -f lavfi -i yuvtestsrc=size=200x200,format=yuv420p \
+    -filter_complex \
+    " \
+        [0]hwupload[under]; \
+        [1]hwupload,chromakey_cuda=green:0.1:0.12[over]; \
+        [under][over]overlay_cuda" \
+    -c:v hevc_nvenc -cq 18 -preset slow output.mp4
+@end example
+
+@end itemize
+
+@subsection colorspace_cuda
+
+CUDA accelerated implementation of the colorspace filter.
+
+It is by no means feature complete compared to the software colorspace filter,
+and at the current time only supports color range conversion between jpeg/full
+and mpeg/limited range.
+
+The filter accepts the following options:
+
+@table @option
+@item range
+Specify output color range.
+
+The accepted values are:
+@table @samp
+@item tv
+TV (restricted) range
+
+@item mpeg
+MPEG (restricted) range
+
+@item pc
+PC (full) range
+
+@item jpeg
+JPEG (full) range
+
+@end table
+
+@end table
+
+@anchor{overlay_cuda}
+@subsection overlay_cuda
+
+Overlay one video on top of another.
+
+This is the CUDA variant of the @ref{overlay} filter.
+It only accepts CUDA frames. The underlying input pixel formats have to match.
+
+It takes two inputs and has one output. The first input is the "main"
+video on which the second input is overlaid.
+
+It accepts the following parameters:
+
+@table @option
+@item x
+@item y
+Set expressions for the x and y coordinates of the overlaid video
+on the main video.
+
+They can contain the following parameters:
+
+@table @option
+
+@item main_w, W
+@item main_h, H
+The main input width and height.
+
+@item overlay_w, w
+@item overlay_h, h
+The overlay input width and height.
+
+@item x
+@item y
+The computed values for @var{x} and @var{y}. They are evaluated for
+each new frame.
+
+@item n
+The ordinal index of the main input frame, starting from 0.
+
+@item pos
+The byte offset position in the file of the main input frame, NAN if unknown.
+Deprecated, do not use.
+
+@item t
+The timestamp of the main input frame, expressed in seconds, NAN if unknown.
+
+@end table
+
+Default value is "0" for both expressions.
+
+@item eval
+Set when the expressions for @option{x} and @option{y} are evaluated.
+
+It accepts the following values:
+@table @option
+@item init
+Evaluate expressions once during filter initialization or
+when a command is processed.
+
+@item frame
+Evaluate expressions for each incoming frame
+@end table
+
+Default value is @option{frame}.
+
+@item eof_action
+See @ref{framesync}.
+
+@item shortest
+See @ref{framesync}.
+
+@item repeatlast
+See @ref{framesync}.
+
+@end table
+
+This filter also supports the @ref{framesync} options.
+
+
+@anchor{pad_cuda}
+@subsection pad_cuda
+Add paddings to an input video stream using CUDA.
+
+This filter is the CUDA-accelerated version of the @ref{pad} filter. It accepts the same options and expressions and provides the same core functionality.
+For a detailed description of available options, please see the documentation for the @ref{pad} filter.
+
+@subsubsection Examples
+
+@itemize
+@item
+Add a 200-pixel black border to all sides of a video frame:
+@example
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i input.mp4 -vf "pad_cuda=w=iw+400:h=ih+400:x=200:y=200" -c:v h264_nvenc out.mp4
+@end example
+
+@item
+Pad the input video to a 16:9 aspect ratio, filling with the color "blue":
+@example
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i input.mp4 -vf "pad_cuda=w=ih*16/9/sar:h=ih:x=(ow-iw)/2:y=(oh-ih)/2:color=blue" -c:v h264_nvenc out.mp4
+@end example
+@end itemize
+
+@anchor{scale_cuda}
+@subsection scale_cuda
+
+Scale (resize) and convert (pixel format) the input video, using accelerated CUDA kernels.
+Setting the output width and height works in the same way as for the @ref{scale} filter.
+
+The filter accepts the following options:
+@table @option
+@item w
+@item h
+Set the output video dimension expression. Default value is the input dimension.
+
+Allows for the same expressions as the @ref{scale} filter.
+
+@item interp_algo
+Sets the algorithm used for scaling:
+
+@table @var
+@item nearest
+Nearest neighbour
+
+Used by default if input parameters match the desired output.
+
+@item bilinear
+Bilinear
+
+@item bicubic
+Bicubic
+
+This is the default.
+
+@item lanczos
+Lanczos
+
+@end table
+
+@item format
+Controls the output pixel format. By default, or if none is specified, the input
+pixel format is used.
+
+The filter does not support converting between YUV and RGB pixel formats.
+
+@item passthrough
+If set to 0, every frame is processed, even if no conversion is necessary.
+This mode can be useful to use the filter as a buffer for a downstream
+frame-consumer that exhausts the limited decoder frame pool.
+
+If set to 1, frames are passed through as-is if they match the desired output
+parameters. This is the default behaviour.
+
+@item param
+Algorithm-Specific parameter.
+
+Affects the curves of the bicubic algorithm.
+
+@item force_original_aspect_ratio
+@item force_divisible_by
+Work the same as the identical @ref{scale} filter options.
+
+@item reset_sar
+Works the same as the identical @ref{scale} filter option.
+
+@end table
+
+@subsubsection Examples
+
+@itemize
+@item
+Scale input to 720p, keeping aspect ratio and ensuring the output is yuv420p.
+@example
+scale_cuda=-2:720:format=yuv420p
+@end example
+
+@item
+Upscale to 4K using nearest neighbour algorithm.
+@example
+scale_cuda=4096:2160:interp_algo=nearest
+@end example
+
+@item
+Don't do any conversion or scaling, but copy all input frames into newly allocated ones.
+This can be useful to deal with a filter and encode chain that otherwise exhausts the
+decoders frame pool.
+@example
+scale_cuda=passthrough=0
+@end example
+@end itemize
+
+@subsection thumbnail_cuda
+
+Select the most representative frame in a given sequence of consecutive frames using CUDA.
+
+The filter accepts the following options:
+
+@table @option
+@item n
+Set the frames batch size to analyze; in a set of @var{n} frames, the filter
+will pick one of them, and then handle the next batch of @var{n} frames until
+the end. Default is @code{100}.
+@end table
+
+Since the filter keeps track of the whole frames sequence, a bigger @var{n}
+value will result in a higher memory usage, so a high value is not recommended.
+
+@subsubsection Example
+
+@itemize
+
+@item
+Thumbnails are extracted from every @var{n}=150-frame batch, selecting one per batch. Chosen frames are then scaled with @ref{scale_cuda}.
+@example
+./ffmpeg  -hwaccel cuda -hwaccel_output_format cuda  -i ./input.mp4 -vf "thumbnail_cuda=150,scale_cuda=1920:1080,hwdownload,format=nv12" ./output/out%03d.png
+@end example
+
+@end itemize
+
+@subsection yadif_cuda
+
+Deinterlace the input video using the @ref{yadif} algorithm, but implemented
+in CUDA so that it can work as part of a GPU accelerated pipeline with nvdec
+and/or nvenc.
+
+It accepts the following parameters:
+
+
+@table @option
+
+@item mode
+The interlacing mode to adopt. It accepts one of the following values:
+
+@table @option
+@item 0, send_frame
+Output one frame for each frame.
+@item 1, send_field
+Output one frame for each field.
+@item 2, send_frame_nospatial
+Like @code{send_frame}, but it skips the spatial interlacing check.
+@item 3, send_field_nospatial
+Like @code{send_field}, but it skips the spatial interlacing check.
+@end table
+
+The default value is @code{send_frame}.
+
+@item parity
+The picture field parity assumed for the input interlaced video. It accepts one
+of the following values:
+
+@table @option
+@item 0, tff
+Assume the top field is first.
+@item 1, bff
+Assume the bottom field is first.
+@item -1, auto
+Enable automatic detection of field parity.
+@end table
+
+The default value is @code{auto}.
+If the interlacing is unknown or the decoder does not export this information,
+top field first will be assumed.
+
+@item deint
+Specify which frames to deinterlace. Accepts one of the following
+values:
+
+@table @option
+@item 0, all
+Deinterlace all frames.
+@item 1, interlaced
+Only deinterlace frames marked as interlaced.
+@end table
+
+The default value is @code{all}.
+@end table
+
+@anchor{CUDA NPP}
+@section CUDA NPP
+Below is a description of the currently available NVIDIA Performance Primitives (libnpp) video filters.
+
+Prerequisites:
+@itemize
+@item Install Nvidia CUDA Toolkit
+@item Install libnpp
+@end itemize
+
+To enable CUDA NPP filters:
+
+@itemize
+@item Configure FFmpeg with @code{--enable-nonfree --enable-libnpp}.
+@end itemize
+
+
+@anchor{scale_npp}
+@subsection scale_npp
+
+Use the NVIDIA Performance Primitives (libnpp) to perform scaling and/or pixel
+format conversion on CUDA video frames. Setting the output width and height
+works in the same way as for the @var{scale} filter.
+
+The following additional options are accepted:
+@table @option
+@item format
+The pixel format of the output CUDA frames. If set to the string "same" (the
+default), the input format will be kept. Note that automatic format negotiation
+and conversion is not yet supported for hardware frames
+
+@item interp_algo
+The interpolation algorithm used for resizing. One of the following:
+@table @option
+@item nn
+Nearest neighbour.
+
+@item linear
+@item cubic
+@item cubic2p_bspline
+2-parameter cubic (B=1, C=0)
+
+@item cubic2p_catmullrom
+2-parameter cubic (B=0, C=1/2)
+
+@item cubic2p_b05c03
+2-parameter cubic (B=1/2, C=3/10)
+
+@item super
+Supersampling
+
+@item lanczos
+@end table
+
+@item force_original_aspect_ratio
+Enable decreasing or increasing output video width or height if necessary to
+keep the original aspect ratio. Possible values:
+
+@table @samp
+@item disable
+Scale the video as specified and disable this feature.
+
+@item decrease
+The output video dimensions will automatically be decreased if needed.
+
+@item increase
+The output video dimensions will automatically be increased if needed.
+
+@end table
+
+One useful instance of this option is that when you know a specific device's
+maximum allowed resolution, you can use this to limit the output video to
+that, while retaining the aspect ratio. For example, device A allows
+1280x720 playback, and your video is 1920x800. Using this option (set it to
+decrease) and specifying 1280x720 to the command line makes the output
+1280x533.
+
+Please note that this is a different thing than specifying -1 for @option{w}
+or @option{h}, you still need to specify the output resolution for this option
+to work.
+
+@item force_divisible_by
+Ensures that both the output dimensions, width and height, are divisible by the
+given integer when used together with @option{force_original_aspect_ratio}. This
+works similar to using @code{-n} in the @option{w} and @option{h} options.
+
+This option respects the value set for @option{force_original_aspect_ratio},
+increasing or decreasing the resolution accordingly. The video's aspect ratio
+may be slightly modified.
+
+This option can be handy if you need to have a video fit within or exceed
+a defined resolution using @option{force_original_aspect_ratio} but also have
+encoder restrictions on width or height divisibility.
+
+@item reset_sar
+Works the same as the identical @ref{scale} filter option.
+
+@item eval
+Specify when to evaluate @var{width} and @var{height} expression. It accepts the following values:
+
+@table @samp
+@item init
+Only evaluate expressions once during the filter initialization or when a command is processed.
+
+@item frame
+Evaluate expressions for each incoming frame.
+
+@end table
+
+@end table
+
+The values of the @option{w} and @option{h} options are expressions
+containing the following constants:
+
+@table @var
+@item in_w
+@item in_h
+The input width and height
+
+@item iw
+@item ih
+These are the same as @var{in_w} and @var{in_h}.
+
+@item out_w
+@item out_h
+The output (scaled) width and height
+
+@item ow
+@item oh
+These are the same as @var{out_w} and @var{out_h}
+
+@item a
+The same as @var{iw} / @var{ih}
+
+@item sar
+input sample aspect ratio
+
+@item dar
+The input display aspect ratio. Calculated from @code{(iw / ih) * sar}.
+
+@item n
+The (sequential) number of the input frame, starting from 0.
+Only available with @code{eval=frame}.
+
+@item t
+The presentation timestamp of the input frame, expressed as a number of
+seconds. Only available with @code{eval=frame}.
+
+@item pos
+The position (byte offset) of the frame in the input stream, or NaN if
+this information is unavailable and/or meaningless (for example in case of synthetic video).
+Only available with @code{eval=frame}.
+Deprecated, do not use.
+@end table
+
+@subsection scale2ref_npp
+
+Use the NVIDIA Performance Primitives (libnpp) to scale (resize) the input
+video, based on a reference video.
+
+See the @ref{scale_npp} filter for available options, scale2ref_npp supports the same
+but uses the reference video instead of the main input as basis. scale2ref_npp
+also supports the following additional constants for the @option{w} and
+@option{h} options:
+
+@table @var
+@item main_w
+@item main_h
+The main input video's width and height
+
+@item main_a
+The same as @var{main_w} / @var{main_h}
+
+@item main_sar
+The main input video's sample aspect ratio
+
+@item main_dar, mdar
+The main input video's display aspect ratio. Calculated from
+@code{(main_w / main_h) * main_sar}.
+
+@item main_n
+The (sequential) number of the main input frame, starting from 0.
+Only available with @code{eval=frame}.
+
+@item main_t
+The presentation timestamp of the main input frame, expressed as a number of
+seconds. Only available with @code{eval=frame}.
+
+@item main_pos
+The position (byte offset) of the frame in the main input stream, or NaN if
+this information is unavailable and/or meaningless (for example in case of synthetic video).
+Only available with @code{eval=frame}.
+@end table
+
+@subsubsection Examples
+
+@itemize
+@item
+Scale a subtitle stream (b) to match the main video (a) in size before overlaying
+@example
+'scale2ref_npp[b][a];[a][b]overlay_cuda'
+@end example
+
+@item
+Scale a logo to 1/10th the height of a video, while preserving its display aspect ratio.
+@example
+[logo-in][video-in]scale2ref_npp=w=oh*mdar:h=ih/10[logo-out][video-out]
+@end example
+@end itemize
+
+@subsection sharpen_npp
+Use the NVIDIA Performance Primitives (libnpp) to perform image sharpening with
+border control.
+
+The following additional options are accepted:
+@table @option
+
+@item border_type
+Type of sampling to be used ad frame borders. One of the following:
+@table @option
+
+@item replicate
+Replicate pixel values.
+
+@end table
+@end table
+
+@subsection transpose_npp
+
+Transpose rows with columns in the input video and optionally flip it.
+For more in depth examples see the @ref{transpose} video filter, which shares mostly the same options.
+
+It accepts the following parameters:
+
+@table @option
+
+@item dir
+Specify the transposition direction.
+
+Can assume the following values:
+@table @samp
+@item cclock_flip
+Rotate by 90 degrees counterclockwise and vertically flip. (default)
+
+@item clock
+Rotate by 90 degrees clockwise.
+
+@item cclock
+Rotate by 90 degrees counterclockwise.
+
+@item clock_flip
+Rotate by 90 degrees clockwise and vertically flip.
+@end table
+
+@item passthrough
+Do not apply the transposition if the input geometry matches the one
+specified by the specified value. It accepts the following values:
+@table @samp
+@item none
+Always apply transposition. (default)
+@item portrait
+Preserve portrait geometry (when @var{height} >= @var{width}).
+@item landscape
+Preserve landscape geometry (when @var{width} >= @var{height}).
+@end table
+
+@end table
+
+@c man end CUDA Video Filters
 
 @chapter OpenCL Video Filters
 @c man begin OPENCL VIDEO FILTERS
@@ -28210,6 +29130,106 @@ drawbox=x=-t:y=0.5*(ih-iw/2.4)-t:w=iw+t*2:h=iw/2.4+t*2:t=2:c=red
 
 @c man end VAAPI VIDEO FILTERS
 
+@chapter VideoToolbox Video Filters
+@c man begin VIDEOTOOLBOX VIDEO FILTERS
+
+Below is a description of the currently available VideoToolbox video filters.
+
+VideoToolbox filter depends on VideoToolbox framework, and is auto detected
+when building ffmpeg for an Apple platform such as macOS. Add
+@code{--enable-videotoolbox} to configure if autodetect is disabled.
+
+@section scale_vt
+
+Scale and convert the color parameters using VTPixelTransferSession.
+
+The filter accepts the following options:
+@table @option
+@item w
+@item h
+Set the output video dimension expression. Default value is the input dimension.
+
+@item color_matrix
+Set the output colorspace matrix.
+
+@item color_primaries
+Set the output color primaries.
+
+@item color_transfer
+Set the output transfer characteristics.
+
+@end table
+
+@subsection Examples
+
+@itemize
+@item
+Perform HDR to SDR conversion, and scale to half size of input
+@example
+ffmpeg -hwaccel videotoolbox \
+        -hwaccel_output_format videotoolbox_vld \
+        -i hdr.mov \
+        -c:v hevc_videotoolbox \
+        -profile:v main \
+        -b:v 3M \
+        -vf scale_vt=w=iw/2:h=ih/2:color_matrix=bt709:color_primaries=bt709:color_transfer=bt709 \
+        -c:a copy \
+        -tag:v hvc1 \
+        sdr.mp4
+@end example
+
+@end itemize
+
+@section transpose_vt
+
+Transpose rows with columns in the input video and optionally flip it.
+For more in depth examples see the @ref{transpose} video filter, which shares mostly the same options.
+
+It accepts the following parameters:
+
+@table @option
+
+@item dir
+Specify the transposition direction.
+
+Can assume the following values:
+@table @samp
+@item cclock_flip
+Rotate by 90 degrees counterclockwise and vertically flip. (default)
+
+@item clock
+Rotate by 90 degrees clockwise.
+
+@item cclock
+Rotate by 90 degrees counterclockwise.
+
+@item clock_flip
+Rotate by 90 degrees clockwise and vertically flip.
+
+@item hflip
+Flip the input video horizontally.
+
+@item vflip
+Flip the input video vertically.
+
+@end table
+
+@item passthrough
+Do not apply the transposition if the input geometry matches the one
+specified by the specified value. It accepts the following values:
+@table @samp
+@item none
+Always apply transposition. (default)
+@item portrait
+Preserve portrait geometry (when @var{height} >= @var{width}).
+@item landscape
+Preserve landscape geometry (when @var{width} >= @var{height}).
+@end table
+
+@end table
+
+@c man end VIDEOTOOLBOX VIDEO FILTERS
+
 @chapter Vulkan Video Filters
 @c man begin VULKAN VIDEO FILTERS
 
@@ -28235,6 +29255,10 @@ Allocates linear images. Does not apply to decoding.
 
 @item disable_multiplane
 Disables multiplane images. Does not apply to decoding.
+
+@item avoid_host_import
+Avoids the use of dynamic host memory imports, in favor of a regular memcpy()
+into a previously mapped buffer.
 @end table
 
 @item -filter_hw_device @var{name}
@@ -28461,7 +29485,7 @@ The filter accepts the following options.
 
 @table @option
 @item s
-Set denoising strength for all components. Default is 1.0. Must be in range [1.0, 100.0].
+Set denoising strength for all components. Default is 1.0. Must be in range [0.0, 100.0].
 
 @item p
 Set patch size for all planes. Default is 7. Must be odd number in range [0, 99].
@@ -28470,17 +29494,16 @@ Set patch size for all planes. Default is 7. Must be odd number in range [0, 99]
 Set research size. Default is 15. Must be odd number in range [0, 99].
 
 @item t
-Set parallelism. Default is 36. Must be a number in the range [1, 168].
-Larger values may speed up processing, at the cost of more VRAM.
-Lower values will slow it down, reducing VRAM usage.
-Only supported on GPUs with atomic float operations (RDNA3+, Ampere+).
+Set parallelism. Default is 8. Must be a number in the range [1, 64].
+Larger values will use more VRAM but may not result in greater speed.
+The optimal value is hardware and input dependent.
 
 @item s0
 @item s1
 @item s2
 @item s3
-Set denoising strength for a specific component. Default is @var{1}, equal to @option{s}.
-Must be odd number in range [1, 100].
+Set denoising strength for a specific component. Default is @var{1.0}, equal to @option{s}.
+Must be in range [0.0, 100.0]. 0.0 disables denoising in that component.
 
 @item p0
 @item p1
@@ -28508,54 +29531,6 @@ Default value is @code{0}.
 @item y
 Set the y coordinate of the overlaid video on the main video.
 Default value is @code{0}.
-
-@end table
-
-@section transpose_vt
-
-Transpose rows with columns in the input video and optionally flip it.
-For more in depth examples see the @ref{transpose} video filter, which shares mostly the same options.
-
-It accepts the following parameters:
-
-@table @option
-
-@item dir
-Specify the transposition direction.
-
-Can assume the following values:
-@table @samp
-@item cclock_flip
-Rotate by 90 degrees counterclockwise and vertically flip. (default)
-
-@item clock
-Rotate by 90 degrees clockwise.
-
-@item cclock
-Rotate by 90 degrees counterclockwise.
-
-@item clock_flip
-Rotate by 90 degrees clockwise and vertically flip.
-
-@item hflip
-Flip the input video horizontally.
-
-@item vflip
-Flip the input video vertically.
-
-@end table
-
-@item passthrough
-Do not apply the transposition if the input geometry matches the one
-specified by the specified value. It accepts the following values:
-@table @samp
-@item none
-Always apply transposition. (default)
-@item portrait
-Preserve portrait geometry (when @var{height} >= @var{width}).
-@item landscape
-Preserve landscape geometry (when @var{width} >= @var{height}).
-@end table
 
 @end table
 
@@ -28736,6 +29711,11 @@ name.
 @item range
 A string representing the color range of the buffered video frames.
 It may be a number corresponding to a color range, or a color range
+name.
+
+@item alpha_mode
+A string representing the alpha mode of the buffered video frames.
+It may be a number corresponding to an alpha mode, or an alpha mode
 name.
 
 @item pixel_aspect, sar
@@ -29037,6 +30017,165 @@ ddagrab=video_size=800x600:offset_x=100:offset_y=100
 @end example
 
 
+@section gfxcapture
+
+Capture windows or monitors using Windows.Graphics.Capture API.
+
+This source provides low overhead capture of application windows or entire monitors.
+The filter outputs hardware frames in @code{d3d11} format; use @code{hwdownload,format=}
+if system memory frames are required.
+
+The window to be captured can be selected via regular expressions on its title,
+class name or backing executable name, by explicit native handles, or by monitor
+index or explicit native handle. A window must match all provided expressions to be
+selected. The first matching window will be picked, in whatever order Windows
+returns them.
+
+Explicit handles (@option{hwnd}, @option{hmonitor}) override pattern or index
+based selection. If neither handles nor a monitor index are given, the first
+window matching the provided regular expressions is captured.
+
+This source does NOT hold a stable FPS. It returns frames at whatever rate the compositor
+provides them, only capped by the @option{max_framerate}.
+If you need a stable rate, you need to add an fps filter to drop/duplicate frames as needed.
+
+If the capture source disappears mid-capture (window closed, monitor disconnected), the filter will return EOF.
+
+This source accepts the following options:
+@table @option
+@item window_title
+ECMAScript regular expression matched against the window title. Supports a
+PCRE style @code{(?i)} prefix for case-insensitive matching.
+
+@item window_class
+As @option{window_title}, but matched against the window class name.
+
+@item window_exe
+As @option{window_title}, but matched against the executable file name of the
+window's process.
+
+@item monitor_idx
+Zero-based index of the monitor to capture.
+
+Can also be set to @code{window} to capture the monitor the selected window
+is displayed on at filter initialization time.
+
+@item hwnd
+Explicit native window handle (HWND).
+
+@item hmonitor
+Explicit native monitor handle (HMONITOR).
+
+@item capture_cursor
+Capture the mouse cursor. Enabled by default.
+
+@item capture_border
+Capture the full area of the window, including its window decorarions/border.
+Disabled by default.
+
+@item display_border
+Draw a yellow highlight border around the captured window. Disabled by default.
+
+@item max_framerate
+Maximum capture frame rate. Accepts a video rate (e.g. @code{30}, @code{60/1},
+@code{24000/1001}). The default is @code{60} FPS.
+The actual rate is the rate at which the compositor renders the window/monitor,
+capped by this option.
+
+@item width
+Force the output canvas width. If zero (default) the initial captured source
+width is used. If a negative number is provided, the width will be rounded
+down to the next multiple of that number.
+
+See @option{resize_mode}.
+
+@item height
+Force the output canvas height. If zero (default) the initial captured source
+height is used. If a negative number is provided, the height will be rounded
+down to the next multiple of that number.
+
+See @option{resize_mode}.
+
+@item crop_left
+Crop this many pixels from the left side of the captured frames.
+
+@item crop_top
+Crop this many pixels from the left side of the captured frames.
+
+@item crop_right
+Crop this many pixels from the left side of the captured frames.
+
+@item crop_bottom
+Crop this many pixels from the left side of the captured frames.
+
+@item premultiplied
+If set to 1, return frames with premultiplied alpha. Default is 0 (straight
+alpha).
+
+@item resize_mode
+Defines how the captured content is fitted into the output canvas size.
+Possible values:
+@table @samp
+@item crop
+Crop (or pad with black) to the canvas size. (default)
+@item scale
+Scale the source to fill the canvas, potentially altering aspect ratio.
+@item scale_aspect
+Scale the source to fit inside the canvas while preserving aspect ratio.
+Remaining area is filled with black.
+@end table
+
+@item scale_mode
+Scaling algorithm used when resizing is required.
+
+Possible values:
+@table @samp
+@item point
+Nearest neighbour (pixelated) scaling.
+@item bilinear
+Bilinear filtering. (default)
+@item bicubic
+Bicubic filtering. Potentially more blurry, but fewer scaling artifacts depending on contents.
+@end table
+
+@item output_fmt
+Desired output pixel format inside the D3D11 hardware frames.
+
+Possible values:
+@table @samp
+@item bgra
+@item 8bit
+8 bit BGRA output (default)
+@item x2bgr10
+@item 10bit
+10 bit BGR output
+@item rgbaf16
+@item 16bit
+16bit float RGBA output
+@end table
+
+@end table
+
+@subsection Examples
+@itemize
+@item Capture a window by title (case-insensitive) at a maximum of 60 fps:
+@example
+ffmpeg -filter_complex gfxcapture=window_title='(?i)My Application':max_framerate=60,hwdownload,format=bgra,format=yuv420p -c:v libx264 -crf 15 capture.mp4
+@end example
+
+@item Capture monitor 1 at native refresh, 10bit color depth, scale to 1920x1080 preserving aspect:
+@example
+ffmpeg -filter_complex gfxcapture=monitor_idx=1:width=1920:height=1080:resize_mode=scale_aspect:output_fmt=10bit -c:v hevc_nvenc -cq 15 capture.mp4
+@end example
+
+@item Capture a window by executable name, draw border, force point scaling, fixed 60 fps:
+@example
+ffmpeg -filter_complex gfxcapture=window_exe='^firefox.exe$':display_border=1:scale_mode=point,fps=60 -rc qvbr -qvbr_quality_level 15 -c:v h264_amf capture.mp4
+@end example
+
+@end itemize
+
+
 @section gradients
 Generate several gradients.
 
@@ -29167,7 +30306,7 @@ Set the initial y position. Must be a floating point value between
 
 Generate various test patterns, as generated by the MPlayer test filter.
 
-The size of the generated video is fixed, and is 256x256.
+The size of the generated video is fixed, and is 512x512.
 This source is useful in particular for testing encoding features.
 
 This source accepts the following options:
@@ -30441,6 +31580,7 @@ bench=start,selectivecolor=reds=-.2 .12 -.49,bench=stop
 @end example
 @end itemize
 
+@anchor{concat filter}
 @section concat
 
 Concatenate audio and video streams, joining them together one after the
@@ -31385,6 +32525,12 @@ This filter accepts the following options:
 
 @item expr
 The expression which is evaluated for each frame to construct its timestamp.
+
+@item strip_fps (@emph{video only})
+Boolean option which determines if the original framerate and frame duration
+metadata is unset. If set to true, be advised that a sane frame rate should be
+explicitly specified if output is sent to a constant frame rate muxer.
+Default is @code{false}.
 
 @end table
 
@@ -32875,10 +34021,41 @@ data in the frame.
 @end table
 
 @item type
-Set side data type used with all modes. Must be set for @code{select} mode. For
-the list of frame side data types, refer to the @code{AVFrameSideDataType} enum
-in @file{libavutil/frame.h}. For example, to choose
-@code{AV_FRAME_DATA_PANSCAN} side data, you must specify @code{PANSCAN}.
+Set side data type used with all modes. Must be set for @code{select} mode.
+
+Possible values are:
+
+@table @samp
+@item PANSCAN
+@item A53_CC
+@item STEREO3D
+@item MATRIXENCODING
+@item DOWNMIX_INFO
+@item REPLAYGAIN
+@item DISPLAYMATRIX
+@item AFD
+@item MOTION_VECTORS
+@item SKIP_SAMPLES
+@item AUDIO_SERVICE_TYPE
+@item MASTERING_DISPLAY_METADATA
+@item GOP_TIMECODE
+@item SPHERICAL
+@item CONTENT_LIGHT_LEVEL
+@item ICC_PROFILE
+@item S12M_TIMECODE
+@item DYNAMIC_HDR_PLUS
+@item REGIONS_OF_INTEREST
+@item VIDEO_ENC_PARAMS
+@item SEI_UNREGISTERED
+@item FILM_GRAIN_PARAMS
+@item DETECTION_BOUNDING_BOXES
+@item DETECTION_BBOXES
+@item DOVI_RPU_BUFFER
+@item DOVI_METADATA
+@item DYNAMIC_HDR_VIVID
+@item AMBIENT_VIEWING_ENVIRONMENT
+@item VIDEO_HINT
+@end table
 
 @end table
 

@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/intfloat.h"
 #include "libavutil/mem.h"
 #include "avformat.h"
 #include "demux.h"
@@ -111,7 +112,7 @@ static int pdv_read_packet(AVFormatContext *s, AVPacket *pkt)
         return AVERROR_EOF;
 
     if (p->current_frame >= sti->nb_index_entries)
-        return AVERROR(EIO);
+        return AVERROR_INVALIDDATA;
 
     pos   = sti->index_entries[p->current_frame].pos;
     flags = sti->index_entries[p->current_frame].flags;

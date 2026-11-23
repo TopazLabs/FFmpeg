@@ -28,6 +28,8 @@
 #include "libavutil/attributes_internal.h"
 
 FF_VISIBILITY_PUSH_HIDDEN
+extern const uint16_t ff_opus_frame_duration[32];
+
 extern const uint8_t  ff_celt_band_end[];
 
 extern const uint8_t  ff_opus_default_coupled_streams[];
@@ -53,9 +55,9 @@ extern const uint16_t ff_silk_model_lsf_s2_ext[];
 extern const uint16_t ff_silk_model_lsf_interpolation_offset[];
 
 extern const uint16_t ff_silk_model_pitch_highbits[];
-extern const uint16_t ff_silk_model_pitch_lowbits_nb[];
+#define ff_silk_model_pitch_lowbits_nb ff_silk_model_lcg_seed
 extern const uint16_t ff_silk_model_pitch_lowbits_mb[];
-extern const uint16_t ff_silk_model_pitch_lowbits_wb[];
+#define ff_silk_model_pitch_lowbits_wb ff_silk_model_gain_lowbits
 extern const uint16_t ff_silk_model_pitch_delta[];
 extern const uint16_t ff_silk_model_pitch_contour_nb10ms[];
 extern const uint16_t ff_silk_model_pitch_contour_nb20ms[];
@@ -124,7 +126,7 @@ extern const int      ff_silk_stereo_interp_len[3];
 extern const uint16_t ff_celt_model_tapset[];
 extern const uint16_t ff_celt_model_spread[];
 extern const uint16_t ff_celt_model_alloc_trim[];
-extern const uint16_t ff_celt_model_energy_small[];
+#define ff_celt_model_energy_small ff_celt_model_tapset
 
 extern const uint8_t  ff_celt_freq_bands[];
 extern const uint8_t  ff_celt_freq_range[];
@@ -159,7 +161,7 @@ extern const float    ff_celt_postfilter_taps[3][3];
 extern const float    ff_celt_window2[120];
 
 extern const float    ff_celt_window_padded[];
-static const float *const ff_celt_window = &ff_celt_window_padded[8];
+#define ff_celt_window (ff_celt_window_padded + 8)
 
 extern const float    ff_opus_deemph_weights[];
 

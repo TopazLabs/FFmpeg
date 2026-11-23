@@ -71,6 +71,7 @@
 #include "bytestream.h"
 #include "jpeg2000.h"
 #include "version.h"
+#include "libavutil/attributes.h"
 #include "libavutil/common.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
@@ -146,76 +147,6 @@ typedef struct {
     char *lr_str;
 } Jpeg2000EncoderContext;
 
-
-/* debug */
-#if 0
-#undef ifprintf
-#undef printf
-
-static void nspaces(FILE *fd, int n)
-{
-    while(n--) putc(' ', fd);
-}
-
-static void printcomp(Jpeg2000Component *comp)
-{
-    int i;
-    for (i = 0; i < comp->y1 - comp->y0; i++)
-        ff_jpeg2000_printv(comp->i_data + i * (comp->x1 - comp->x0), comp->x1 - comp->x0);
-}
-
-static void dump(Jpeg2000EncoderContext *s, FILE *fd)
-{
-    int tileno, compno, reslevelno, bandno, precno;
-    fprintf(fd, "XSiz = %d, YSiz = %d, tile_width = %d, tile_height = %d\n"
-                "numXtiles = %d, numYtiles = %d, ncomponents = %d\n"
-                "tiles:\n",
-            s->width, s->height, s->tile_width, s->tile_height,
-            s->numXtiles, s->numYtiles, s->ncomponents);
-    for (tileno = 0; tileno < s->numXtiles * s->numYtiles; tileno++){
-        Jpeg2000Tile *tile = s->tile + tileno;
-        nspaces(fd, 2);
-        fprintf(fd, "tile %d:\n", tileno);
-        for(compno = 0; compno < s->ncomponents; compno++){
-            Jpeg2000Component *comp = tile->comp + compno;
-            nspaces(fd, 4);
-            fprintf(fd, "component %d:\n", compno);
-            nspaces(fd, 4);
-            fprintf(fd, "x0 = %d, x1 = %d, y0 = %d, y1 = %d\n",
-                        comp->x0, comp->x1, comp->y0, comp->y1);
-            for(reslevelno = 0; reslevelno < s->nreslevels; reslevelno++){
-                Jpeg2000ResLevel *reslevel = comp->reslevel + reslevelno;
-                nspaces(fd, 6);
-                fprintf(fd, "reslevel %d:\n", reslevelno);
-                nspaces(fd, 6);
-                fprintf(fd, "x0 = %d, x1 = %d, y0 = %d, y1 = %d, nbands = %d\n",
-                        reslevel->x0, reslevel->x1, reslevel->y0,
-                        reslevel->y1, reslevel->nbands);
-                for(bandno = 0; bandno < reslevel->nbands; bandno++){
-                    Jpeg2000Band *band = reslevel->band + bandno;
-                    nspaces(fd, 8);
-                    fprintf(fd, "band %d:\n", bandno);
-                    nspaces(fd, 8);
-                    fprintf(fd, "x0 = %d, x1 = %d, y0 = %d, y1 = %d,"
-                                "codeblock_width = %d, codeblock_height = %d cblknx = %d cblkny = %d\n",
-                                band->x0, band->x1,
-                                band->y0, band->y1,
-                                band->codeblock_width, band->codeblock_height,
-                                band->cblknx, band->cblkny);
-                    for (precno = 0; precno < reslevel->num_precincts_x * reslevel->num_precincts_y; precno++){
-                        Jpeg2000Prec *prec = band->prec + precno;
-                        nspaces(fd, 10);
-                        fprintf(fd, "prec %d:\n", precno);
-                        nspaces(fd, 10);
-                        fprintf(fd, "xi0 = %d, xi1 = %d, yi0 = %d, yi1 = %d\n",
-                                     prec->xi0, prec->xi1, prec->yi0, prec->yi1);
-                    }
-                }
-            }
-        }
-    }
-}
-#endif
 
 /* bitstream routines */
 
@@ -580,7 +511,7 @@ static void init_quantization(Jpeg2000EncoderContext *s)
     }
 }
 
-static void init_luts(void)
+static av_cold void init_luts(void)
 {
     int i, a,
         mask = ~((1<<NMSEDEC_FRACBITS)-1);
@@ -1268,7 +1199,7 @@ static void makelayer(Jpeg2000EncoderContext *s, int layno, double thresh, Jpeg2
 
 static void makelayers(Jpeg2000EncoderContext *s, Jpeg2000Tile *tile)
 {
-    int precno, compno, reslevelno, bandno, cblkno, lev, passno, layno;
+    int precno, compno, reslevelno, bandno, cblkno, passno, layno;
     int i;
     double min = DBL_MAX;
     double max = 0;
@@ -1279,7 +1210,7 @@ static void makelayers(Jpeg2000EncoderContext *s, Jpeg2000Tile *tile)
     for (compno = 0; compno < s->ncomponents; compno++){
         Jpeg2000Component *comp = tile->comp + compno;
 
-        for (reslevelno = 0, lev = codsty->nreslevels-1; reslevelno < codsty->nreslevels; reslevelno++, lev--){
+        for (reslevelno = 0; reslevelno < codsty->nreslevels; reslevelno++){
             Jpeg2000ResLevel *reslevel = comp->reslevel + reslevelno;
 
             for (precno = 0; precno < reslevel->num_precincts_x * reslevel->num_precincts_y; precno++){
@@ -1726,7 +1657,7 @@ static av_cold int j2kenc_init(AVCodecContext *avctx)
     s->avctx = avctx;
     av_log(s->avctx, AV_LOG_DEBUG, "init\n");
     if (parse_layer_rates(s)) {
-        av_log(s, AV_LOG_WARNING, "Layer rates invalid. Encoding with 1 layer based on quality metric.\n");
+        av_log(avctx, AV_LOG_WARNING, "Layer rates invalid. Encoding with 1 layer based on quality metric.\n");
         s->nlayers = 1;
         s->layer_rates[0] = 0;
         s->compression_rate_enc = 0;
@@ -1802,7 +1733,7 @@ static int j2kenc_destroy(AVCodecContext *avctx)
     return 0;
 }
 
-// taken from the libopenjpeg wraper so it matches
+// taken from the libopenjpeg wrapper so it matches
 
 #define OFFSET(x) offsetof(Jpeg2000EncoderContext, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
@@ -1845,7 +1776,7 @@ const FFCodec ff_jpeg2000_encoder = {
     .init           = j2kenc_init,
     FF_CODEC_ENCODE_CB(encode_frame),
     .close          = j2kenc_destroy,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
+    CODEC_PIXFMTS(
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB48,
         AV_PIX_FMT_GBR24P,AV_PIX_FMT_GBRP9, AV_PIX_FMT_GBRP10, AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRP14, AV_PIX_FMT_GBRP16,
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10, AV_PIX_FMT_GRAY12, AV_PIX_FMT_GRAY14, AV_PIX_FMT_GRAY16,
@@ -1862,9 +1793,7 @@ const FFCodec ff_jpeg2000_encoder = {
         AV_PIX_FMT_YUVA422P, AV_PIX_FMT_YUVA422P9, AV_PIX_FMT_YUVA422P10, AV_PIX_FMT_YUVA422P16,
         AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA444P9, AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P16,
 
-        AV_PIX_FMT_PAL8,
-        AV_PIX_FMT_NONE
-    },
+        AV_PIX_FMT_PAL8),
     .color_ranges   = AVCOL_RANGE_MPEG,
     .p.priv_class   = &j2k_class,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,

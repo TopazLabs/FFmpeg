@@ -288,7 +288,7 @@ static int config_props(AVFilterLink *outlink)
     double res;
     char *expr;
 
-    ret = ff_draw_init2(&rot->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
+    ret = ff_draw_init_from_link(&rot->draw, inlink, 0);
     if (ret < 0)
         return ret;
     ff_draw_color(&rot->draw, &rot->color, rot->fillcolor);
@@ -593,9 +593,11 @@ static const AVFilterPad rotate_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_rotate = {
-    .name          = "rotate",
-    .description   = NULL_IF_CONFIG_SMALL("Rotate the input image."),
+const FFFilter ff_vf_rotate = {
+    .p.name        = "rotate",
+    .p.description = NULL_IF_CONFIG_SMALL("Rotate the input image."),
+    .p.priv_class  = &rotate_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(RotContext),
     .init          = init,
     .uninit        = uninit,
@@ -603,6 +605,4 @@ const AVFilter ff_vf_rotate = {
     FILTER_INPUTS(rotate_inputs),
     FILTER_OUTPUTS(rotate_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &rotate_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };
