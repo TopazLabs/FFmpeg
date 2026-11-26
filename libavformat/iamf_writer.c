@@ -90,12 +90,6 @@ static int populate_audio_roll_distance(IAMFCodecConfig *codec_config)
         codec_config->audio_roll_distance = -1;
         break;
     case AV_CODEC_ID_FLAC:
-    case AV_CODEC_ID_PCM_S16BE:
-    case AV_CODEC_ID_PCM_S24BE:
-    case AV_CODEC_ID_PCM_S32BE:
-    case AV_CODEC_ID_PCM_S16LE:
-    case AV_CODEC_ID_PCM_S24LE:
-    case AV_CODEC_ID_PCM_S32LE:
         codec_config->audio_roll_distance = 0;
         break;
     default:
@@ -126,9 +120,14 @@ static int fill_codec_config(IAMFContext *iamf, const AVStreamGroup *stg,
     }
     populate_audio_roll_distance(codec_config);
     if (st->codecpar->extradata_size) {
-        codec_config->extradata = av_memdup(st->codecpar->extradata, st->codecpar->extradata_size);
+        if (st->codecpar->extradata_size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)
+            return AVERROR_INVALIDDATA;
+
+        codec_config->extradata = av_malloc(st->codecpar->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!codec_config->extradata)
             return AVERROR(ENOMEM);
+        memcpy(codec_config->extradata, st->codecpar->extradata, st->codecpar->extradata_size);
+        memset(codec_config->extradata + st->codecpar->extradata_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
         codec_config->extradata_size = st->codecpar->extradata_size;
         ret = update_extradata(codec_config);
         if (ret < 0)
@@ -530,35 +529,12 @@ static int iamf_write_codec_config(const IAMFContext *iamf,
         avio_write(dyn_bc, codec_config->extradata, codec_config->extradata_size);
         break;
     case AV_CODEC_ID_PCM_S16LE:
-        avio_w8(dyn_bc, 1);
-        avio_w8(dyn_bc, 16);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S24LE:
-        avio_w8(dyn_bc, 1);
-        avio_w8(dyn_bc, 24);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S32LE:
-        avio_w8(dyn_bc, 1);
-        avio_w8(dyn_bc, 32);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S16BE:
-        avio_w8(dyn_bc, 0);
-        avio_w8(dyn_bc, 16);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S24BE:
-        avio_w8(dyn_bc, 0);
-        avio_w8(dyn_bc, 24);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S32BE:
-        avio_w8(dyn_bc, 0);
-        avio_w8(dyn_bc, 32);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
+        return AVERROR(ENOSYS);
     default:
         break;
     }
@@ -1237,15 +1213,17 @@ int ff_iamf_write_audio_frame(const IAMFContext *iamf, AVIOContext *pb,
                                                                AV_PKT_DATA_NEW_EXTRADATA,
                                                                &new_extradata_size);
 
-        if (!new_extradata)
+        if (!new_extradata || new_extradata_size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)
             return AVERROR_INVALIDDATA;
 
         av_free(codec_config->extradata);
-        codec_config->extradata = av_memdup(new_extradata, new_extradata_size);
+        codec_config->extradata = av_malloc(new_extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!codec_config->extradata) {
             codec_config->extradata_size = 0;
             return AVERROR(ENOMEM);
         }
+        memcpy(codec_config->extradata, new_extradata, new_extradata_size);
+        memset(codec_config->extradata + new_extradata_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
         codec_config->extradata_size = new_extradata_size;
 
         return update_extradata(codec_config);

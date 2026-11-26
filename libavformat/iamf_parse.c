@@ -38,7 +38,7 @@ static int opus_decoder_config(IAMFCodecConfig *codec_config,
 {
     int ret, left = len - avio_tell(pb);
 
-    if (left < 11 || codec_config->audio_roll_distance >= 0)
+    if (left < 11 || codec_config->audio_roll_distance >= 0 || left > INT_MAX - 8)
         return AVERROR_INVALIDDATA;
 
     codec_config->extradata = av_malloc(left + 8);
@@ -816,6 +816,13 @@ static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
     }
 
     nb_substreams = ffio_read_leb(pbc);
+    /* Each substream consumes at least one byte (its leb128 id) from the
+     * remaining OBU buffer, so a count larger than that cannot be valid and
+     * would only serve to force an oversized allocation. */
+    if (nb_substreams > len - avio_tell(pbc) || !nb_substreams) {
+        ret = AVERROR_INVALIDDATA;
+        goto fail;
+    }
     audio_element->codec_config_id = codec_config_id;
     audio_element->audio_element_id = audio_element_id;
     audio_element->substreams = av_calloc(nb_substreams, sizeof(*audio_element->substreams));
